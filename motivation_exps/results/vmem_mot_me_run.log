@@ -1,0 +1,275 @@
+PASS cxl-vmem-identity (vmem0 software + Montage mem0/region0)
+vmem info: mode=3 flags=0x2 bar=0x0/0 logical=1954743148544 ram=34359738368 ssd=1920383410176 stripe=2097152 cache_limit=4294967296
+loaded header n=200000 dim=1024 base=0x4000000
+# M-E1 miss% → path breakdown | workset=8478 beam=32 hops=32 nq=16
+target_miss_pct,pin_n,qps,wall,miss_obs_pct,sec_dist,sec_hit,sec_soft,sec_ssd,ssd_time_frac,read_ios
+  thrash progress 512 MB
+  thrash progress 1024 MB
+  thrash progress 1536 MB
+  thrash progress 2048 MB
+  thrash progress 2560 MB
+  thrash progress 3072 MB
+  thrash progress 3584 MB
+  thrash progress 4096 MB
+  thrash progress 4608 MB
+  thrash progress 5120 MB
+thrashed soft-cache touch≈5120 MB
+0,8478,293.58,0.054,0.0,0.0092,0.0368,0.0000,0.0000,0.0,0
+  thrash progress 512 MB
+  thrash progress 1024 MB
+  thrash progress 1536 MB
+  thrash progress 2048 MB
+  thrash progress 2560 MB
+  thrash progress 3072 MB
+  thrash progress 3584 MB
+  thrash progress 4096 MB
+  thrash progress 4608 MB
+  thrash progress 5120 MB
+thrashed soft-cache touch≈5120 MB
+10,7630,130.91,0.122,5.2,0.0092,0.0349,0.0002,0.0690,66.3,831
+  thrash progress 512 MB
+  thrash progress 1024 MB
+  thrash progress 1536 MB
+  thrash progress 2048 MB
+  thrash progress 2560 MB
+  thrash progress 3072 MB
+  thrash progress 3584 MB
+  thrash progress 4096 MB
+  thrash progress 4608 MB
+  thrash progress 5120 MB
+thrashed soft-cache touch≈5120 MB
+25,6358,71.52,0.224,12.9,0.0093,0.0322,0.0003,0.1729,84.2,2071
+  thrash progress 512 MB
+  thrash progress 1024 MB
+  thrash progress 1536 MB
+  thrash progress 2048 MB
+  thrash progress 2560 MB
+  thrash progress 3072 MB
+  thrash progress 3584 MB
+  thrash progress 4096 MB
+  thrash progress 4608 MB
+  thrash progress 5120 MB
+thrashed soft-cache touch≈5120 MB
+50,4239,39.35,0.407,25.8,0.0095,0.0281,0.0005,0.3579,92.6,4136
+  thrash progress 512 MB
+  thrash progress 1024 MB
+  thrash progress 1536 MB
+  thrash progress 2048 MB
+  thrash progress 2560 MB
+  thrash progress 3072 MB
+  thrash progress 3584 MB
+  thrash progress 4096 MB
+  thrash progress 4608 MB
+  thrash progress 5120 MB
+thrashed soft-cache touch≈5120 MB
+100,0,21.66,0.739,51.7,0.0093,0.0178,0.0008,0.7007,97.4,8311
+# M-E3 promote top-L 2hop budget scan | beam=32 hops=32
+L,qps,hit_pct,read_ios,promote,used,precision_pct,leftover,wall
+  thrash progress 512 MB
+  thrash progress 1024 MB
+  thrash progress 1536 MB
+  thrash progress 2048 MB
+  thrash progress 2560 MB
+  thrash progress 3072 MB
+  thrash progress 3584 MB
+  thrash progress 4096 MB
+  thrash progress 4608 MB
+  thrash progress 5120 MB
+thrashed soft-cache touch≈5120 MB
+0,21.61,48.30,8311,0,0,0.0,0,0.740
+  thrash progress 512 MB
+  thrash progress 1024 MB
+  thrash progress 1536 MB
+  thrash progress 2048 MB
+  thrash progress 2560 MB
+  thrash progress 3072 MB
+  thrash progress 3584 MB
+  thrash progress 4096 MB
+  thrash progress 4608 MB
+  thrash progress 5120 MB
+thrashed soft-cache touch≈5120 MB
+1,20.88,48.30,8663,5238,4877,93.1,361,0.766
+  thrash progress 512 MB
+  thrash progress 1024 MB
+  thrash progress 1536 MB
+  thrash progress 2048 MB
+  thrash progress 2560 MB
+  thrash progress 3072 MB
+  thrash progress 3584 MB
+  thrash progress 4096 MB
+  thrash progress 4608 MB
+  thrash progress 5120 MB
+thrashed soft-cache touch≈5120 MB
+2,17.31,48.30,10664,9484,6971,73.5,2513,0.924
+  thrash progress 512 MB
+  thrash progress 1024 MB
+  thrash progress 1536 MB
+  thrash progress 2048 MB
+  thrash progress 2560 MB
+  thrash progress 3072 MB
+  thrash progress 3584 MB
+  thrash progress 4096 MB
+  thrash progress 4608 MB
+  thrash progress 5120 MB
+thrashed soft-cache touch≈5120 MB
+4,10.72,48.30,17539,18269,8469,46.4,9800,1.493
+  thrash progress 512 MB
+  thrash progress 1024 MB
+  thrash progress 1536 MB
+  thrash progress 2048 MB
+  thrash progress 2560 MB
+  thrash progress 3072 MB
+  thrash progress 3584 MB
+  thrash progress 4096 MB
+  thrash progress 4608 MB
+  thrash progress 5120 MB
+thrashed soft-cache touch≈5120 MB
+8,5.18,48.30,37366,39842,9042,22.7,30800,3.090
+  thrash progress 512 MB
+  thrash progress 1024 MB
+  thrash progress 1536 MB
+  thrash progress 2048 MB
+  thrash progress 2560 MB
+  thrash progress 3072 MB
+  thrash progress 3584 MB
+  thrash progress 4096 MB
+  thrash progress 4608 MB
+  thrash progress 5120 MB
+thrashed soft-cache touch≈5120 MB
+16,2.47,48.30,78015,82669,9042,10.9,73627,6.471
+# M-E4 beam×recall (hops=128) | loading GT...
+beam,qps,hit_pct,recall@10,read_ios,wall,recall_per_kio
+  thrash progress 512 MB
+  thrash progress 1024 MB
+  thrash progress 1536 MB
+  thrash progress 2048 MB
+  thrash progress 2560 MB
+  thrash progress 3072 MB
+  thrash progress 3584 MB
+  thrash progress 4096 MB
+  thrash progress 4608 MB
+  thrash progress 5120 MB
+thrashed soft-cache touch≈5120 MB
+4,23.98,61.96,0.2969,7223,0.667,0.658
+  thrash progress 512 MB
+  thrash progress 1024 MB
+  thrash progress 1536 MB
+  thrash progress 2048 MB
+  thrash progress 2560 MB
+  thrash progress 3072 MB
+  thrash progress 3584 MB
+  thrash progress 4096 MB
+  thrash progress 4608 MB
+  thrash progress 5120 MB
+thrashed soft-cache touch≈5120 MB
+8,13.65,59.83,0.5234,12633,1.172,0.663
+  thrash progress 512 MB
+  thrash progress 1024 MB
+  thrash progress 1536 MB
+  thrash progress 2048 MB
+  thrash progress 2560 MB
+  thrash progress 3072 MB
+  thrash progress 3584 MB
+  thrash progress 4096 MB
+  thrash progress 4608 MB
+  thrash progress 5120 MB
+thrashed soft-cache touch≈5120 MB
+16,8.51,62.11,0.6937,20470,1.881,0.542
+  thrash progress 512 MB
+  thrash progress 1024 MB
+  thrash progress 1536 MB
+  thrash progress 2048 MB
+  thrash progress 2560 MB
+  thrash progress 3072 MB
+  thrash progress 3584 MB
+  thrash progress 4096 MB
+  thrash progress 4608 MB
+  thrash progress 5120 MB
+thrashed soft-cache touch≈5120 MB
+32,6.13,55.01,0.5750,28946,2.609,0.318
+  thrash progress 512 MB
+  thrash progress 1024 MB
+  thrash progress 1536 MB
+  thrash progress 2048 MB
+  thrash progress 2560 MB
+  thrash progress 3072 MB
+  thrash progress 3584 MB
+  thrash progress 4096 MB
+  thrash progress 4608 MB
+  thrash progress 5120 MB
+thrashed soft-cache touch≈5120 MB
+64,6.20,56.85,0.7812,27760,2.581,0.450
+# M-E5 concurrent pin vs nopin | pin=8623 threads∈{1,4,16}
+threads,mode,beam,qps,hit_pct,read_ios,wall
+  thrash progress 512 MB
+  thrash progress 1024 MB
+  thrash progress 1536 MB
+  thrash progress 2048 MB
+  thrash progress 2560 MB
+  thrash progress 3072 MB
+  thrash progress 3584 MB
+  thrash progress 4096 MB
+  thrash progress 4608 MB
+  thrash progress 5120 MB
+thrashed soft-cache touch≈5120 MB
+1,nopin,32,21.52,48.30,8311,0.744
+  thrash progress 512 MB
+  thrash progress 1024 MB
+  thrash progress 1536 MB
+  thrash progress 2048 MB
+  thrash progress 2560 MB
+  thrash progress 3072 MB
+  thrash progress 3584 MB
+  thrash progress 4096 MB
+  thrash progress 4608 MB
+  thrash progress 5120 MB
+thrashed soft-cache touch≈5120 MB
+1,pin,8,392.20,100.00,0,0.041
+  thrash progress 512 MB
+  thrash progress 1024 MB
+  thrash progress 1536 MB
+  thrash progress 2048 MB
+  thrash progress 2560 MB
+  thrash progress 3072 MB
+  thrash progress 3584 MB
+  thrash progress 4096 MB
+  thrash progress 4608 MB
+  thrash progress 5120 MB
+thrashed soft-cache touch≈5120 MB
+4,nopin,32,7.51,48.27,8311,2.131
+  thrash progress 512 MB
+  thrash progress 1024 MB
+  thrash progress 1536 MB
+  thrash progress 2048 MB
+  thrash progress 2560 MB
+  thrash progress 3072 MB
+  thrash progress 3584 MB
+  thrash progress 4096 MB
+  thrash progress 4608 MB
+  thrash progress 5120 MB
+thrashed soft-cache touch≈5120 MB
+4,pin,8,584.84,100.00,0,0.027
+  thrash progress 512 MB
+  thrash progress 1024 MB
+  thrash progress 1536 MB
+  thrash progress 2048 MB
+  thrash progress 2560 MB
+  thrash progress 3072 MB
+  thrash progress 3584 MB
+  thrash progress 4096 MB
+  thrash progress 4608 MB
+  thrash progress 5120 MB
+thrashed soft-cache touch≈5120 MB
+16,nopin,32,4.63,47.46,8311,3.455
+  thrash progress 512 MB
+  thrash progress 1024 MB
+  thrash progress 1536 MB
+  thrash progress 2048 MB
+  thrash progress 2560 MB
+  thrash progress 3072 MB
+  thrash progress 3584 MB
+  thrash progress 4096 MB
+  thrash progress 4608 MB
+  thrash progress 5120 MB
+thrashed soft-cache touch≈5120 MB
+16,pin,8,687.83,100.00,0,0.023

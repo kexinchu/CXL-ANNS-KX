@@ -1,0 +1,12 @@
+===== cache-mb=4 =====
+# F2: page hit vs semantic next-hop hit | budget=4MB rec_cap=8192 page_cap=1024
+[F2-page_cache] q=64 hops=4096 fetches=131136 qps=8.3 hit%=11.27 page_hit%=5.97 semantic_next_hit%=10.03 ssd_reads=116359 ssd_MB=454.53 time=7.718s
+[F2-record_cache] q=64 hops=4096 fetches=131136 qps=8.5 hit%=11.92 page_hit%=0.00 semantic_next_hit%=10.71 ssd_reads=115500 ssd_MB=451.17 time=7.551s
+===== cache-mb=8 =====
+# F2: page hit vs semantic next-hop hit | budget=8MB rec_cap=16384 page_cap=2048
+[F2-page_cache] q=64 hops=4096 fetches=131136 qps=8.9 hit%=19.34 page_hit%=10.70 semantic_next_hit%=18.22 ssd_reads=105776 ssd_MB=413.19 time=7.202s
+[F2-record_cache] q=64 hops=4096 fetches=131136 qps=8.8 hit%=19.03 page_hit%=0.00 semantic_next_hit%=17.90 ssd_reads=106179 ssd_MB=414.76 time=7.286s
+===== cache-mb=16 =====
+# F2: page hit vs semantic next-hop hit | budget=16MB rec_cap=32768 page_cap=4096
+[F2-page_cache] q=64 hops=4096 fetches=131136 qps=10.3 hit%=34.37 page_hit%=20.75 semantic_next_hit%=33.43 ssd_reads=86070 ssd_MB=336.21 time=6.188s
+[F2-record_cache] q=64 hops=4096 fetches=131136 qps=10.4 hit%=32.45 page_hit%=0.00 semantic_next_hit%=31.52 ssd_reads=88581 ssd_MB=346.02 time=6.170s

@@ -1,0 +1,446 @@
+diff --git a/apps/search_disk_index.cpp b/apps/search_disk_index.cpp
+index 6b0793d..d349109 100644
+--- a/apps/search_disk_index.cpp
++++ b/apps/search_disk_index.cpp
+@@ -53,7 +53,8 @@ int search_disk_index(diskann::Metric &metric, const std::string &index_path_pre
+                       const uint32_t num_threads, const uint32_t recall_at, const uint32_t beamwidth,
+                       const uint32_t num_nodes_to_cache, const uint32_t search_io_limit,
+                       const std::vector<uint32_t> &Lvec, const float fail_if_recall_below,
+-                      const std::vector<std::string> &query_filters, const bool use_reorder_data = false)
++                      const std::vector<std::string> &query_filters, const bool use_reorder_data = false,
++                      const bool no_pq_nav = false)
+ {
+     diskann::cout << "Search parameters: #threads: " << num_threads << ", ";
+     if (beamwidth <= 0)
+@@ -64,6 +65,10 @@ int search_disk_index(diskann::Metric &metric, const std::string &index_path_pre
+         diskann::cout << "." << std::endl;
+     else
+         diskann::cout << ", io_limit: " << search_io_limit << "." << std::endl;
++    if (no_pq_nav)
++        diskann::cout << "Navigation: NO in-memory PQ (disk full-precision neighbor ranking)." << std::endl;
++    else
++        diskann::cout << "Navigation: in-memory PQ (default DiskANN)." << std::endl;
+ 
+     std::string warmup_query_file = index_path_prefix + "_sample_data.bin";
+ 
+@@ -118,6 +123,7 @@ int search_disk_index(diskann::Metric &metric, const std::string &index_path_pre
+     {
+         return res;
+     }
++    _pFlashIndex->set_no_pq_navigation(no_pq_nav);
+ 
+     std::vector<uint32_t> node_list;
+     diskann::cout << "Caching " << num_nodes_to_cache << " nodes around medoid(s)" << std::endl;
+@@ -320,6 +326,7 @@ int main(int argc, char **argv)
+     uint32_t num_threads, K, W, num_nodes_to_cache, search_io_limit;
+     std::vector<uint32_t> Lvec;
+     bool use_reorder_data = false;
++    bool no_pq_nav = false;
+     float fail_if_recall_below = 0.0f;
+ 
+     po::options_description desc{
+@@ -364,6 +371,9 @@ int main(int argc, char **argv)
+         optional_configs.add_options()("use_reorder_data", po::bool_switch()->default_value(false),
+                                        "Include full precision data in the index. Use only in "
+                                        "conjuction with compressed data on SSD.  Default value: false");
++        optional_configs.add_options()("no_pq_nav", po::bool_switch()->default_value(false),
++                                       "Disable in-memory PQ for neighbor ranking; use disk full-precision "
++                                       "reads instead (experimental). Default: false");
+         optional_configs.add_options()("filter_label",
+                                        po::value<std::string>(&filter_label)->default_value(std::string("")),
+                                        program_options_utils::FILTER_LABEL_DESCRIPTION);
+@@ -389,6 +399,8 @@ int main(int argc, char **argv)
+         po::notify(vm);
+         if (vm["use_reorder_data"].as<bool>())
+             use_reorder_data = true;
++        if (vm["no_pq_nav"].as<bool>())
++            no_pq_nav = true;
+     }
+     catch (const std::exception &ex)
+     {
+@@ -454,15 +466,18 @@ int main(int argc, char **argv)
+             if (data_type == std::string("float"))
+                 return search_disk_index<float, uint16_t>(
+                     metric, index_path_prefix, result_path_prefix, query_file, gt_file, num_threads, K, W,
+-                    num_nodes_to_cache, search_io_limit, Lvec, fail_if_recall_below, query_filters, use_reorder_data);
++                    num_nodes_to_cache, search_io_limit, Lvec, fail_if_recall_below, query_filters, use_reorder_data,
++                    no_pq_nav);
+             else if (data_type == std::string("int8"))
+                 return search_disk_index<int8_t, uint16_t>(
+                     metric, index_path_prefix, result_path_prefix, query_file, gt_file, num_threads, K, W,
+-                    num_nodes_to_cache, search_io_limit, Lvec, fail_if_recall_below, query_filters, use_reorder_data);
++                    num_nodes_to_cache, search_io_limit, Lvec, fail_if_recall_below, query_filters, use_reorder_data,
++                    no_pq_nav);
+             else if (data_type == std::string("uint8"))
+                 return search_disk_index<uint8_t, uint16_t>(
+                     metric, index_path_prefix, result_path_prefix, query_file, gt_file, num_threads, K, W,
+-                    num_nodes_to_cache, search_io_limit, Lvec, fail_if_recall_below, query_filters, use_reorder_data);
++                    num_nodes_to_cache, search_io_limit, Lvec, fail_if_recall_below, query_filters, use_reorder_data,
++                    no_pq_nav);
+             else
+             {
+                 std::cerr << "Unsupported data type. Use float or int8 or uint8" << std::endl;
+@@ -474,15 +489,15 @@ int main(int argc, char **argv)
+             if (data_type == std::string("float"))
+                 return search_disk_index<float>(metric, index_path_prefix, result_path_prefix, query_file, gt_file,
+                                                 num_threads, K, W, num_nodes_to_cache, search_io_limit, Lvec,
+-                                                fail_if_recall_below, query_filters, use_reorder_data);
++                                                fail_if_recall_below, query_filters, use_reorder_data, no_pq_nav);
+             else if (data_type == std::string("int8"))
+                 return search_disk_index<int8_t>(metric, index_path_prefix, result_path_prefix, query_file, gt_file,
+                                                  num_threads, K, W, num_nodes_to_cache, search_io_limit, Lvec,
+-                                                 fail_if_recall_below, query_filters, use_reorder_data);
++                                                 fail_if_recall_below, query_filters, use_reorder_data, no_pq_nav);
+             else if (data_type == std::string("uint8"))
+                 return search_disk_index<uint8_t>(metric, index_path_prefix, result_path_prefix, query_file, gt_file,
+                                                   num_threads, K, W, num_nodes_to_cache, search_io_limit, Lvec,
+-                                                  fail_if_recall_below, query_filters, use_reorder_data);
++                                                  fail_if_recall_below, query_filters, use_reorder_data, no_pq_nav);
+             else
+             {
+                 std::cerr << "Unsupported data type. Use float or int8 or uint8" << std::endl;
+diff --git a/include/pq_flash_index.h b/include/pq_flash_index.h
+index 07cff1d..7c6dbff 100644
+--- a/include/pq_flash_index.h
++++ b/include/pq_flash_index.h
+@@ -90,6 +90,17 @@ template <typename T, typename LabelT = uint32_t> class PQFlashIndex
+ 
+     DISKANN_DLLEXPORT uint64_t get_data_dim();
+ 
++    // Experiment hook: when true, neighbor ranking uses full-precision
++    // vectors from disk/cache instead of in-memory PQ codes.
++    DISKANN_DLLEXPORT void set_no_pq_navigation(bool enable)
++    {
++        _no_pq_navigation = enable;
++    }
++    DISKANN_DLLEXPORT bool no_pq_navigation() const
++    {
++        return _no_pq_navigation;
++    }
++
+     std::shared_ptr<AlignedFileReader> &reader;
+ 
+     DISKANN_DLLEXPORT diskann::Metric get_metric();
+@@ -194,6 +205,10 @@ template <typename T, typename LabelT = uint32_t> class PQFlashIndex
+     uint64_t _disk_pq_n_chunks = 0;
+     FixedChunkPQTable _disk_pq_table;
+ 
++    // When true, cached_beam_search ranks unseen neighbors with disk FP
++    // distances (extra IOs) instead of in-memory PQ approximate distances.
++    bool _no_pq_navigation = false;
++
+     // medoid/start info
+ 
+     // graph has one entry point by default,
+diff --git a/src/pq_flash_index.cpp b/src/pq_flash_index.cpp
+index 9580537..f8d8857 100644
+--- a/src/pq_flash_index.cpp
++++ b/src/pq_flash_index.cpp
+@@ -1344,13 +1344,82 @@ void PQFlashIndex<T, LabelT>::cached_beam_search(const T *query1, const uint64_t
+     float *dist_scratch = pq_query_scratch->aligned_dist_scratch;
+     uint8_t *pq_coord_scratch = pq_query_scratch->aligned_pq_coord_scratch;
+ 
++    Timer query_timer, io_timer, cpu_timer;
++    uint32_t num_ios = 0;
++
+     // lambda to batch compute query<-> node distances in PQ space
+     auto compute_dists = [this, pq_coord_scratch, pq_dists](const uint32_t *ids, const uint64_t n_ids,
+                                                             float *dists_out) {
+         diskann::aggregate_coords(ids, n_ids, this->data, this->_n_chunks, pq_coord_scratch);
+         diskann::pq_dist_lookup(pq_coord_scratch, n_ids, this->_n_chunks, pq_dists, dists_out);
+     };
+-    Timer query_timer, io_timer, cpu_timer;
++
++    // No-PQ navigation: rank unseen neighbors with full-precision vectors
++    // from coord cache or fresh disk reads (same sector layout as expansion).
++    auto compute_dists_fp = [this, aligned_query_T, &ctx, &num_ios, stats, &io_timer,
++                             num_sectors_per_node](const uint32_t *ids, const uint64_t n_ids, float *dists_out) {
++        std::vector<uint32_t> need_read;
++        std::vector<uint64_t> need_pos;
++        need_read.reserve(n_ids);
++        need_pos.reserve(n_ids);
++
++        for (uint64_t i = 0; i < n_ids; i++)
++        {
++            auto cache_it = this->_coord_cache.find(ids[i]);
++            if (cache_it != this->_coord_cache.end())
++            {
++                dists_out[i] =
++                    this->_dist_cmp->compare(aligned_query_T, cache_it->second, (uint32_t)this->_aligned_dim);
++            }
++            else
++            {
++                need_read.push_back(ids[i]);
++                need_pos.push_back(i);
++            }
++        }
++
++        if (need_read.empty())
++            return;
++
++        char *buf = nullptr;
++        diskann::alloc_aligned((void **)&buf, need_read.size() * num_sectors_per_node * defaults::SECTOR_LEN,
++                               defaults::SECTOR_LEN);
++        std::vector<AlignedRead> read_reqs;
++        read_reqs.reserve(need_read.size());
++        for (size_t i = 0; i < need_read.size(); i++)
++        {
++            read_reqs.emplace_back(this->get_node_sector((size_t)need_read[i]) * defaults::SECTOR_LEN,
++                                   num_sectors_per_node * defaults::SECTOR_LEN,
++                                   buf + i * num_sectors_per_node * defaults::SECTOR_LEN);
++        }
++
++        io_timer.reset();
++        this->reader->read(read_reqs, ctx);
++        if (stats != nullptr)
++        {
++            stats->io_us += (float)io_timer.elapsed();
++            stats->n_ios += (uint32_t)need_read.size();
++            stats->n_4k += (uint32_t)(need_read.size() * num_sectors_per_node);
++        }
++        num_ios += (uint32_t)need_read.size();
++
++        for (size_t i = 0; i < need_read.size(); i++)
++        {
++            char *node_buf = this->offset_to_node(buf + i * num_sectors_per_node * defaults::SECTOR_LEN, need_read[i]);
++            T *coords = this->offset_to_node_coords(node_buf);
++            dists_out[need_pos[i]] =
++                this->_dist_cmp->compare(aligned_query_T, coords, (uint32_t)this->_aligned_dim);
++        }
++        diskann::aligned_free(buf);
++    };
++
++    auto rank_neighbors = [this, &compute_dists, &compute_dists_fp](const uint32_t *ids, const uint64_t n_ids,
++                                                                    float *dists_out) {
++        if (this->_no_pq_navigation)
++            compute_dists_fp(ids, n_ids, dists_out);
++        else
++            compute_dists(ids, n_ids, dists_out);
++    };
+ 
+     tsl::robin_set<uint64_t> &visited = query_scratch->visited;
+     NeighborPriorityQueue &retset = query_scratch->retset;
+@@ -1381,7 +1450,8 @@ void PQFlashIndex<T, LabelT>::cached_beam_search(const T *query1, const uint64_t
+             {
+                 // for filtered index, we dont store global centroid data as for unfiltered index, so we use PQ distance
+                 // as approximation to decide closest medoid matching the query filter.
+-                compute_dists(&medoid_ids[cur_m], 1, dist_scratch);
++                // (no-PQ nav: use disk FP distances instead)
++                rank_neighbors(&medoid_ids[cur_m], 1, dist_scratch);
+                 float cur_expanded_dist = dist_scratch[0];
+                 if (cur_expanded_dist < best_dist)
+                 {
+@@ -1396,13 +1466,20 @@ void PQFlashIndex<T, LabelT>::cached_beam_search(const T *query1, const uint64_t
+         }
+     }
+ 
+-    compute_dists(&best_medoid, 1, dist_scratch);
+-    retset.insert(Neighbor(best_medoid, dist_scratch[0]));
++    if (_no_pq_navigation && !use_filter)
++    {
++        // Centroid comparison already used FP medoid data for unfiltered search.
++        retset.insert(Neighbor(best_medoid, best_dist));
++    }
++    else
++    {
++        rank_neighbors(&best_medoid, 1, dist_scratch);
++        retset.insert(Neighbor(best_medoid, dist_scratch[0]));
++    }
+     visited.insert(best_medoid);
+ 
+     uint32_t cmps = 0;
+     uint32_t hops = 0;
+-    uint32_t num_ios = 0;
+ 
+     // cleared every iteration
+     std::vector<uint32_t> frontier;
+@@ -1505,33 +1582,65 @@ void PQFlashIndex<T, LabelT>::cached_beam_search(const T *query1, const uint64_t
+             uint64_t nnbrs = cached_nhood.second.first;
+             uint32_t *node_nbrs = cached_nhood.second.second;
+ 
+-            // compute node_nbrs <-> query dists in PQ space
++            // Rank neighbors (PQ approx, or disk FP for unvisited only when no-PQ nav)
+             cpu_timer.reset();
+-            compute_dists(node_nbrs, nnbrs, dist_scratch);
+-            if (stats != nullptr)
+-            {
+-                stats->n_cmps += (uint32_t)nnbrs;
+-                stats->cpu_us += (float)cpu_timer.elapsed();
+-            }
+-
+-            // process prefetched nhood
+-            for (uint64_t m = 0; m < nnbrs; ++m)
++            if (_no_pq_navigation)
+             {
+-                uint32_t id = node_nbrs[m];
+-                if (visited.insert(id).second)
++                std::vector<uint32_t> fresh_ids;
++                fresh_ids.reserve(nnbrs);
++                for (uint64_t m = 0; m < nnbrs; ++m)
+                 {
++                    uint32_t id = node_nbrs[m];
++                    if (visited.find(id) != visited.end())
++                        continue;
+                     if (!use_filter && _dummy_pts.find(id) != _dummy_pts.end())
+                         continue;
+-
+                     if (use_filter && !(point_has_label(id, filter_label)) &&
+                         (!_use_universal_label || !point_has_label(id, _universal_filter_label)))
+                         continue;
+-                    cmps++;
+-                    float dist = dist_scratch[m];
+-                    Neighbor nn(id, dist);
+-                    retset.insert(nn);
++                    fresh_ids.push_back(id);
++                }
++                if (!fresh_ids.empty())
++                {
++                    // dist_scratch holds up to MAX_PQ_CHUNKS-related batch; use vector if large
++                    std::vector<float> fresh_dists(fresh_ids.size());
++                    rank_neighbors(fresh_ids.data(), fresh_ids.size(), fresh_dists.data());
++                    for (size_t fi = 0; fi < fresh_ids.size(); ++fi)
++                    {
++                        if (visited.insert(fresh_ids[fi]).second)
++                        {
++                            cmps++;
++                            retset.insert(Neighbor(fresh_ids[fi], fresh_dists[fi]));
++                        }
++                    }
+                 }
+             }
++            else
++            {
++                rank_neighbors(node_nbrs, nnbrs, dist_scratch);
++                for (uint64_t m = 0; m < nnbrs; ++m)
++                {
++                    uint32_t id = node_nbrs[m];
++                    if (visited.insert(id).second)
++                    {
++                        if (!use_filter && _dummy_pts.find(id) != _dummy_pts.end())
++                            continue;
++
++                        if (use_filter && !(point_has_label(id, filter_label)) &&
++                            (!_use_universal_label || !point_has_label(id, _universal_filter_label)))
++                            continue;
++                        cmps++;
++                        float dist = dist_scratch[m];
++                        Neighbor nn(id, dist);
++                        retset.insert(nn);
++                    }
++                }
++            }
++            if (stats != nullptr)
++            {
++                stats->n_cmps += (uint32_t)nnbrs;
++                stats->cpu_us += (float)cpu_timer.elapsed();
++            }
+         }
+ #ifdef USE_BING_INFRA
+         // process each frontier nhood - compute distances to unvisited nodes
+@@ -1567,43 +1676,82 @@ void PQFlashIndex<T, LabelT>::cached_beam_search(const T *query1, const uint64_t
+             }
+             full_retset.push_back(Neighbor(frontier_nhood.first, cur_expanded_dist));
+             uint32_t *node_nbrs = (node_buf + 1);
+-            // compute node_nbrs <-> query dist in PQ space
+             cpu_timer.reset();
+-            compute_dists(node_nbrs, nnbrs, dist_scratch);
+-            if (stats != nullptr)
+-            {
+-                stats->n_cmps += (uint32_t)nnbrs;
+-                stats->cpu_us += (float)cpu_timer.elapsed();
+-            }
+-
+-            cpu_timer.reset();
+-            // process prefetch-ed nhood
+-            for (uint64_t m = 0; m < nnbrs; ++m)
++            if (_no_pq_navigation)
+             {
+-                uint32_t id = node_nbrs[m];
+-                if (visited.insert(id).second)
++                std::vector<uint32_t> fresh_ids;
++                fresh_ids.reserve(nnbrs);
++                for (uint64_t m = 0; m < nnbrs; ++m)
+                 {
++                    uint32_t id = node_nbrs[m];
++                    if (visited.find(id) != visited.end())
++                        continue;
+                     if (!use_filter && _dummy_pts.find(id) != _dummy_pts.end())
+                         continue;
+-
+                     if (use_filter && !(point_has_label(id, filter_label)) &&
+                         (!_use_universal_label || !point_has_label(id, _universal_filter_label)))
+                         continue;
+-                    cmps++;
+-                    float dist = dist_scratch[m];
+-                    if (stats != nullptr)
++                    fresh_ids.push_back(id);
++                }
++                if (!fresh_ids.empty())
++                {
++                    std::vector<float> fresh_dists(fresh_ids.size());
++                    rank_neighbors(fresh_ids.data(), fresh_ids.size(), fresh_dists.data());
++                    for (size_t fi = 0; fi < fresh_ids.size(); ++fi)
+                     {
+-                        stats->n_cmps++;
++                        if (visited.insert(fresh_ids[fi]).second)
++                        {
++                            cmps++;
++                            if (stats != nullptr)
++                                stats->n_cmps++;
++                            retset.insert(Neighbor(fresh_ids[fi], fresh_dists[fi]));
++                        }
+                     }
+-
+-                    Neighbor nn(id, dist);
+-                    retset.insert(nn);
++                }
++                if (stats != nullptr)
++                {
++                    stats->n_cmps += (uint32_t)nnbrs;
++                    stats->cpu_us += (float)cpu_timer.elapsed();
+                 }
+             }
+-
+-            if (stats != nullptr)
++            else
+             {
+-                stats->cpu_us += (float)cpu_timer.elapsed();
++                rank_neighbors(node_nbrs, nnbrs, dist_scratch);
++                if (stats != nullptr)
++                {
++                    stats->n_cmps += (uint32_t)nnbrs;
++                    stats->cpu_us += (float)cpu_timer.elapsed();
++                }
++
++                cpu_timer.reset();
++                // process prefetch-ed nhood
++                for (uint64_t m = 0; m < nnbrs; ++m)
++                {
++                    uint32_t id = node_nbrs[m];
++                    if (visited.insert(id).second)
++                    {
++                        if (!use_filter && _dummy_pts.find(id) != _dummy_pts.end())
++                            continue;
++
++                        if (use_filter && !(point_has_label(id, filter_label)) &&
++                            (!_use_universal_label || !point_has_label(id, _universal_filter_label)))
++                            continue;
++                        cmps++;
++                        float dist = dist_scratch[m];
++                        if (stats != nullptr)
++                        {
++                            stats->n_cmps++;
++                        }
++
++                        Neighbor nn(id, dist);
++                        retset.insert(nn);
++                    }
++                }
++
++                if (stats != nullptr)
++                {
++                    stats->cpu_us += (float)cpu_timer.elapsed();
++                }
+             }
+         }
+ 

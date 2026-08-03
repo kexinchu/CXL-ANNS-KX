@@ -1,0 +1,84 @@
+===== VMEM-H0 =====
+PASS cxl-vmem-identity (vmem0 software + Montage mem0/region0)
+vmem info: mode=3 flags=0x2 bar=0x0/0 logical=1954743148544 ram=34359738368 ssd=1920383410176 stripe=2097152 cache_limit=4294967296
+loaded header n=200000 dim=1024 base=0x4000000
+[H0-vmem_warm_hit] ns_per_vec=613.5 sink=-2.7
+[vmem_warm_hit] Δread_ios=0 Δwrite_ios=0 Δfaults=0 Δcache_used=0 Δram_allocated=0 dirty=4096 io_errors=0
+  thrash progress 512 MB
+  thrash progress 1024 MB
+  thrash progress 1536 MB
+  thrash progress 2048 MB
+  thrash progress 2560 MB
+  thrash progress 3072 MB
+  thrash progress 3584 MB
+  thrash progress 4096 MB
+  thrash progress 4608 MB
+  thrash progress 5120 MB
+thrashed soft-cache touch≈5120 MB
+[H0-vmem_cold_miss] ns_per_vec=81360.9 sink=21.0
+[vmem_cold_miss] Δread_ios=390 Δwrite_ios=0 Δfaults=400 Δcache_used=0 Δram_allocated=0 dirty=0 io_errors=0
+[H0-odirect_file] ns_per_vec=70615.3 ssd_reads=400
+===== VMEM-F2 (CXL-SSD record vs page16k) =====
+PASS cxl-vmem-identity (vmem0 software + Montage mem0/region0)
+vmem info: mode=3 flags=0x2 bar=0x0/0 logical=1954743148544 ram=34359738368 ssd=1920383410176 stripe=2097152 cache_limit=4294967296
+loaded header n=200000 dim=1024 base=0x4000000
+# VMEM-F2 record vs 16KiB-page | budget=64MB beam=32
+  thrash progress 512 MB
+  thrash progress 1024 MB
+  thrash progress 1536 MB
+  thrash progress 2048 MB
+  thrash progress 2560 MB
+  thrash progress 3072 MB
+  thrash progress 3584 MB
+  thrash progress 4096 MB
+  thrash progress 4608 MB
+  thrash progress 5120 MB
+thrashed soft-cache touch≈5120 MB
+[VMEM-F2-record] q=16 hops=512 fetches=16400 qps=23.3 hit%=51.06 page_hit%=0.00 semantic_next_hit%=100.00 ssd_reads=7873 ssd_MB=30.75 time=0.687s
+[VMEM-F2-record] Δread_ios=7873 Δwrite_ios=0 Δfaults=8026 Δcache_used=0 Δram_allocated=0 dirty=0 io_errors=0
+  policy_cap rec=16384 page_blocks=4096 budget_MB=64
+  thrash progress 512 MB
+  thrash progress 1024 MB
+  thrash progress 1536 MB
+  thrash progress 2048 MB
+  thrash progress 2560 MB
+  thrash progress 3072 MB
+  thrash progress 3584 MB
+  thrash progress 4096 MB
+  thrash progress 4608 MB
+  thrash progress 5120 MB
+thrashed soft-cache touch≈5120 MB
+[VMEM-F2-page16k] q=16 hops=512 fetches=16400 qps=6.3 hit%=51.55 page_hit%=51.55 semantic_next_hit%=100.00 ssd_reads=29583 ssd_MB=115.56 time=2.538s
+[VMEM-F2-page16k] Δread_ios=29583 Δwrite_ios=0 Δfaults=30148 Δcache_used=0 Δram_allocated=0 dirty=0 io_errors=0
+  policy_cap rec=16384 page_blocks=4096 budget_MB=64
+===== VMEM-F8 dual cliff =====
+PASS cxl-vmem-identity (vmem0 software + Montage mem0/region0)
+vmem info: mode=3 flags=0x2 bar=0x0/0 logical=1954743148544 ram=34359738368 ssd=1920383410176 stripe=2097152 cache_limit=4294967296
+loaded header n=200000 dim=1024 base=0x4000000
+# VMEM-F8 two-level cliff | probes=400
+  thrash progress 512 MB
+  thrash progress 1024 MB
+  thrash progress 1536 MB
+  thrash progress 2048 MB
+  thrash progress 2560 MB
+  thrash progress 3072 MB
+  thrash progress 3584 MB
+  thrash progress 4096 MB
+  thrash progress 4608 MB
+  thrash progress 5120 MB
+thrashed soft-cache touch≈5120 MB
+[F8-cold_ssd] n=400 ns/vec=83323.2 Δfaults=399 Δread_ios=394 time=0.0333s
+[F8-warm_pte] n=400 ns/vec=2103.5 Δfaults=0 Δread_ios=0 time=0.0008s
+[F8-softcache_pte_cold] n=400 ns/vec=4139.7 Δfaults=399 Δread_ios=0 time=0.0017s
+  thrash progress 512 MB
+  thrash progress 1024 MB
+  thrash progress 1536 MB
+  thrash progress 2048 MB
+  thrash progress 2560 MB
+  thrash progress 3072 MB
+  thrash progress 3584 MB
+  thrash progress 4096 MB
+  thrash progress 4608 MB
+  thrash progress 5120 MB
+thrashed soft-cache touch≈5120 MB
+[F8-after_thrash] n=400 ns/vec=80002.6 Δfaults=399 Δread_ios=394 time=0.0320s

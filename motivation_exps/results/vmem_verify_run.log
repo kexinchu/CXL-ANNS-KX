@@ -1,0 +1,49 @@
+PASS cxl-vmem-identity (vmem0 software + Montage mem0/region0)
+VERIFY identity: backend=software nvme=/dev/nvme3n2 bdf=0000:d8:00.0
+PASS cxl-vmem-identity (vmem0 software + Montage mem0/region0)
+vmem info: mode=3 flags=0x2 bar=0x0/0 logical=1954743148544 ram=34359738368 ssd=1920383410176 stripe=2097152 cache_limit=4294967296
+loaded header n=200000 dim=1024 base=0x4000000
+VERIFY map: fd=/dev/vmem0 logical_base=0x4000000 n=200000 dim=1024 vec_logical(0)=0x4001000
+  thrash progress 512 MB
+  thrash progress 1024 MB
+  thrash progress 1536 MB
+  thrash progress 2048 MB
+  thrash progress 2560 MB
+  thrash progress 3072 MB
+  thrash progress 3584 MB
+  thrash progress 4096 MB
+  thrash progress 4608 MB
+  thrash progress 5120 MB
+thrashed soft-cache touch≈5120 MB
+VERIFY-A cold_touch: n=256 ns/vec=84400.2 Δvmem_read_ios=253 Δfaults=256 Δnvme_reads=253
+PASS-A: cold path hit vmem soft-miss → NVMe
+VERIFY-B warm_pte: n=256 ns/vec=2147.8 Δvmem_read_ios=0 Δfaults=0 Δnvme_reads=0
+PASS-B: warm path is PTE hit on vmem mmap (no SSD)
+VERIFY-C soft_pte_cold: n=256 ns/vec=4367.9 Δvmem_read_ios=0 Δfaults=256 Δnvme_reads=0
+PASS-C: soft-cache hit without NVMe (PTE rebuild only)
+  thrash progress 512 MB
+  thrash progress 1024 MB
+  thrash progress 1536 MB
+  thrash progress 2048 MB
+  thrash progress 2560 MB
+  thrash progress 3072 MB
+  thrash progress 3584 MB
+  thrash progress 4096 MB
+  thrash progress 4608 MB
+  thrash progress 5120 MB
+thrashed soft-cache touch≈5120 MB
+  thrash progress 512 MB
+  thrash progress 1024 MB
+  thrash progress 1536 MB
+  thrash progress 2048 MB
+  thrash progress 2560 MB
+  thrash progress 3072 MB
+  thrash progress 3584 MB
+  thrash progress 4096 MB
+  thrash progress 4608 MB
+  thrash progress 5120 MB
+thrashed soft-cache touch≈5120 MB
+VERIFY-D cold_search: q=8 fetches=8200 qps=18.78 Δvmem_read_ios=4837 Δnvme_reads=4837 hits=3290 misses=4910
+PASS-D: cold ANNS search uses CXL-SSD miss path
+PASS-E: ANNS header magic on /dev/vmem0 region
+VERIFY RESULT: ALL PASS — experiments use /dev/vmem0 → NVMe (/dev/nvme3n2) with Montage CXL present

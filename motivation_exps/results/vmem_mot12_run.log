@@ -1,0 +1,220 @@
+PASS cxl-vmem-identity (vmem0 software + Montage mem0/region0)
+vmem info: mode=3 flags=0x2 bar=0x0/0 logical=1954743148544 ram=34359738368 ssd=1920383410176 stripe=2097152 cache_limit=4294967296
+loaded header n=200000 dim=1024 base=0x4000000
+[MOT12-1a-odirect_ssd] n=400 ns/vec=71089.0 ssd_reads_app=400 Δvmem_read_ios=0 time=0.0284s
+  thrash progress 512 MB
+  thrash progress 1024 MB
+  thrash progress 1536 MB
+  thrash progress 2048 MB
+  thrash progress 2560 MB
+  thrash progress 3072 MB
+  thrash progress 3584 MB
+  thrash progress 4096 MB
+  thrash progress 4608 MB
+  thrash progress 5120 MB
+thrashed soft-cache touch≈5120 MB
+[MOT12-1a-vmem_cold_ssd] n=400 ns/vec=81788.4 Δfaults=398 Δread_ios=390 time=0.0327s
+[MOT12-1a-vmem_warm_pte] n=400 ns/vec=2180.7 Δfaults=0 Δread_ios=0 time=0.0009s
+[MOT12-1a-vmem_soft_pte_cold] n=400 ns/vec=3832.4 Δfaults=398 Δread_ios=0 time=0.0015s
+# MOT12-1b full search beam=32 hops=32 nq=16
+  thrash progress 512 MB
+  thrash progress 1024 MB
+  thrash progress 1536 MB
+  thrash progress 2048 MB
+  thrash progress 2560 MB
+  thrash progress 3072 MB
+  thrash progress 3584 MB
+  thrash progress 4096 MB
+  thrash progress 4608 MB
+  thrash progress 5120 MB
+thrashed soft-cache touch≈5120 MB
+[MOT12-1b-search_cold_ssd] q=16 qps=22.76 wall_s=0.703 unique=8013 fetches=16400 Δread_ios=7876 Δfaults=8013 | path_hit:n=8387,s=0.0188 path_soft:n=141,s=0.0006 path_ssd:n=7872,s=0.6638
+  thrash progress 512 MB
+  thrash progress 1024 MB
+  thrash progress 1536 MB
+  thrash progress 2048 MB
+  thrash progress 2560 MB
+  thrash progress 3072 MB
+  thrash progress 3584 MB
+  thrash progress 4096 MB
+  thrash progress 4608 MB
+  thrash progress 5120 MB
+thrashed soft-cache touch≈5120 MB
+[MOT12-1b-search_warm_pte] q=16 qps=290.54 wall_s=0.055 unique=8013 fetches=16400 Δread_ios=0 Δfaults=0 | path_hit:n=16400,s=0.0368 path_soft:n=0,s=0.0000 path_ssd:n=0,s=0.0000
+  thrash progress 512 MB
+  thrash progress 1024 MB
+  thrash progress 1536 MB
+  thrash progress 2048 MB
+  thrash progress 2560 MB
+  thrash progress 3072 MB
+  thrash progress 3584 MB
+  thrash progress 4096 MB
+  thrash progress 4608 MB
+  thrash progress 5120 MB
+thrashed soft-cache touch≈5120 MB
+[MOT12-1b-search_soft_pte_cold] q=16 qps=247.79 wall_s=0.065 unique=8013 fetches=16400 Δread_ios=0 Δfaults=8013 | path_hit:n=8387,s=0.0185 path_soft:n=8010,s=0.0268 path_ssd:n=3,s=0.0002
+# MOT12-3 prefetch slowdown analysis beam=32
+  thrash progress 512 MB
+  thrash progress 1024 MB
+  thrash progress 1536 MB
+  thrash progress 2048 MB
+  thrash progress 2560 MB
+  thrash progress 3072 MB
+  thrash progress 3584 MB
+  thrash progress 4096 MB
+  thrash progress 4608 MB
+  thrash progress 5120 MB
+thrashed soft-cache touch≈5120 MB
+[MOT12-3-demand_L0] qps=21.66 wall=0.739 Δread_ios=8177 hit%=49.22 | sec_pref=0.000 sec_touch=0.719 sec_dist=0.009 | promote=0 used=0 leftover_unused=0 precision%=0.0
+  thrash progress 512 MB
+  thrash progress 1024 MB
+  thrash progress 1536 MB
+  thrash progress 2048 MB
+  thrash progress 2560 MB
+  thrash progress 3072 MB
+  thrash progress 3584 MB
+  thrash progress 4096 MB
+  thrash progress 4608 MB
+  thrash progress 5120 MB
+thrashed soft-cache touch≈5120 MB
+[MOT12-3-pref_L1] qps=19.95 wall=0.802 Δread_ios=8760 hit%=49.22 | sec_pref=0.399 sec_touch=0.381 sec_dist=0.010 | promote=5211 used=4589 leftover_unused=622 precision%=88.1
+  thrash progress 512 MB
+  thrash progress 1024 MB
+  thrash progress 1536 MB
+  thrash progress 2048 MB
+  thrash progress 2560 MB
+  thrash progress 3072 MB
+  thrash progress 3584 MB
+  thrash progress 4096 MB
+  thrash progress 4608 MB
+  thrash progress 5120 MB
+thrashed soft-cache touch≈5120 MB
+[MOT12-3-pref_L2] qps=16.98 wall=0.942 Δread_ios=10817 hit%=49.22 | sec_pref=0.734 sec_touch=0.187 sec_dist=0.009 | promote=9984 used=6994 leftover_unused=2990 precision%=70.1
+  thrash progress 512 MB
+  thrash progress 1024 MB
+  thrash progress 1536 MB
+  thrash progress 2048 MB
+  thrash progress 2560 MB
+  thrash progress 3072 MB
+  thrash progress 3584 MB
+  thrash progress 4096 MB
+  thrash progress 4608 MB
+  thrash progress 5120 MB
+thrashed soft-cache touch≈5120 MB
+[MOT12-3-pref_L8] qps=5.16 wall=3.103 Δread_ios=37397 hit%=49.22 | sec_pref=3.030 sec_touch=0.047 sec_dist=0.009 | promote=40046 used=8792 leftover_unused=31254 precision%=22.0
+# MOT12-4 beam sweep | hops=32 nq=16
+beam,qps,hit_pct,unique_ids,fetches,hops,ssd_reads,faults,fetches_per_q,unique_per_q,wall_s
+  thrash progress 512 MB
+  thrash progress 1024 MB
+  thrash progress 1536 MB
+  thrash progress 2048 MB
+  thrash progress 2560 MB
+  thrash progress 3072 MB
+  thrash progress 3584 MB
+  thrash progress 4096 MB
+  thrash progress 4608 MB
+  thrash progress 5120 MB
+thrashed soft-cache touch≈5120 MB
+4,27.63,58.90,6503,15824,494,6401,6503,989.0,406.4,0.579
+  thrash progress 512 MB
+  thrash progress 1024 MB
+  thrash progress 1536 MB
+  thrash progress 2048 MB
+  thrash progress 2560 MB
+  thrash progress 3072 MB
+  thrash progress 3584 MB
+  thrash progress 4096 MB
+  thrash progress 4608 MB
+  thrash progress 5120 MB
+thrashed soft-cache touch≈5120 MB
+8,22.71,51.16,8009,16400,512,7879,8009,1025.0,500.6,0.704
+  thrash progress 512 MB
+  thrash progress 1024 MB
+  thrash progress 1536 MB
+  thrash progress 2048 MB
+  thrash progress 2560 MB
+  thrash progress 3072 MB
+  thrash progress 3584 MB
+  thrash progress 4096 MB
+  thrash progress 4608 MB
+  thrash progress 5120 MB
+thrashed soft-cache touch≈5120 MB
+16,23.51,52.46,7796,16400,512,7661,7796,1025.0,487.2,0.680
+  thrash progress 512 MB
+  thrash progress 1024 MB
+  thrash progress 1536 MB
+  thrash progress 2048 MB
+  thrash progress 2560 MB
+  thrash progress 3072 MB
+  thrash progress 3584 MB
+  thrash progress 4096 MB
+  thrash progress 4608 MB
+  thrash progress 5120 MB
+thrashed soft-cache touch≈5120 MB
+32,23.37,52.18,7842,16400,512,7709,7842,1025.0,490.1,0.685
+  thrash progress 512 MB
+  thrash progress 1024 MB
+  thrash progress 1536 MB
+  thrash progress 2048 MB
+  thrash progress 2560 MB
+  thrash progress 3072 MB
+  thrash progress 3584 MB
+  thrash progress 4096 MB
+  thrash progress 4608 MB
+  thrash progress 5120 MB
+thrashed soft-cache touch≈5120 MB
+64,23.39,52.18,7842,16400,512,7709,7842,1025.0,490.1,0.684
+# MOT12-5 pin vs nopin SAME beam | pin=8192
+  thrash progress 512 MB
+  thrash progress 1024 MB
+  thrash progress 1536 MB
+  thrash progress 2048 MB
+  thrash progress 2560 MB
+  thrash progress 3072 MB
+  thrash progress 3584 MB
+  thrash progress 4096 MB
+  thrash progress 4608 MB
+  thrash progress 5120 MB
+thrashed soft-cache touch≈5120 MB
+[MOT12-5-beam8_nopin] q=16 hops=0 fetches=16400 qps=21.8 hit%=48.96 page_hit%=0.00 semantic_next_hit%=0.00 ssd_reads=8224 ssd_MB=32.12 time=0.734s
+[MOT12-5-beam8_nopin] Δread_ios=8224 Δwrite_ios=0 Δfaults=8371 Δcache_used=0 Δram_allocated=0 dirty=0 io_errors=0
+  thrash progress 512 MB
+  thrash progress 1024 MB
+  thrash progress 1536 MB
+  thrash progress 2048 MB
+  thrash progress 2560 MB
+  thrash progress 3072 MB
+  thrash progress 3584 MB
+  thrash progress 4096 MB
+  thrash progress 4608 MB
+  thrash progress 5120 MB
+thrashed soft-cache touch≈5120 MB
+[MOT12-5-beam8_pin] q=16 hops=0 fetches=16400 qps=60.0 hit%=82.41 page_hit%=0.00 semantic_next_hit%=0.00 ssd_reads=2832 ssd_MB=11.06 time=0.266s
+[MOT12-5-beam8_pin] Δread_ios=2832 Δwrite_ios=0 Δfaults=2884 Δcache_used=0 Δram_allocated=0 dirty=0 io_errors=0
+  thrash progress 512 MB
+  thrash progress 1024 MB
+  thrash progress 1536 MB
+  thrash progress 2048 MB
+  thrash progress 2560 MB
+  thrash progress 3072 MB
+  thrash progress 3584 MB
+  thrash progress 4096 MB
+  thrash progress 4608 MB
+  thrash progress 5120 MB
+thrashed soft-cache touch≈5120 MB
+[MOT12-5-beam32_nopin] q=16 hops=0 fetches=16400 qps=21.9 hit%=49.04 page_hit%=0.00 semantic_next_hit%=0.00 ssd_reads=8212 ssd_MB=32.08 time=0.729s
+[MOT12-5-beam32_nopin] Δread_ios=8212 Δwrite_ios=0 Δfaults=8358 Δcache_used=0 Δram_allocated=0 dirty=0 io_errors=0
+  thrash progress 512 MB
+  thrash progress 1024 MB
+  thrash progress 1536 MB
+  thrash progress 2048 MB
+  thrash progress 2560 MB
+  thrash progress 3072 MB
+  thrash progress 3584 MB
+  thrash progress 4096 MB
+  thrash progress 4608 MB
+  thrash progress 5120 MB
+thrashed soft-cache touch≈5120 MB
+[MOT12-5-beam32_pin] q=16 hops=0 fetches=16400 qps=407.7 hit%=98.99 page_hit%=0.00 semantic_next_hit%=0.00 ssd_reads=161 ssd_MB=0.63 time=0.039s
+[MOT12-5-beam32_pin] Δread_ios=161 Δwrite_ios=0 Δfaults=166 Δcache_used=0 Δram_allocated=0 dirty=0 io_errors=0
+EXIT:0

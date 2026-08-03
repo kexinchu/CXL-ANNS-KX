@@ -1,0 +1,26 @@
+# build artifacts
+motivation_exps/motivation
+motivation_exps/motivation_dbg
+*.o
+*.a
+*.so
+build/
+cmake-build-*/
+
+# large / machine-local data
+motivation_exps/data/
+*.bin
+*.npy
+*.index
+*.data
+
+# editor / OS
+.DS_Store
+.vscode/
+.idea/
+*.swp
+*~
+
+# logs that are huge or transient (keep curated results/)
+*.tmp
+__pycache__/
