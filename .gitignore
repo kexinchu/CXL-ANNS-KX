@@ -28,3 +28,4 @@ tools/cap_smoke
 tools/build_layout_25m
 serving/search_beam
 *.o
+tools/load_index_cxl_dram

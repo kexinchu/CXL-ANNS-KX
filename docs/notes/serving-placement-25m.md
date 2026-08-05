@@ -1,8 +1,8 @@
 # Serving placement — LAION-25M schema lock
 
-**Available now:** LAION-ish CLIP **1024-d** float32; `N≈984k` (`diskann_data_1m/base.bin`), working subset `N=200k`. **No 25M file on disk yet** — layout/quotas designed for 25M; logic validated on 200k/1M.
+**Available now / replacement:** 原 LAION≈1M（1024-d）保留作对照；**规模替换进行中**：Wikipedia-Cohere **25M×768**（公开包，见 `cxl-dram-index-25m.md`）。无公开 LAION-25M embedding 整包。
 
-**Locked target config:**
+**Locked target config（容量账仍按 25M@1024 float16 设计；实跑先用 wiki 25M@768 float32≈71.5 GiB）：**
 
 ```text
 N=25000000 dim=1024 R=32 pq_bytes=32 vec_bytes=2 (float16) metric=L2
