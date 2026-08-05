@@ -221,10 +221,37 @@ static PrefetchPolicy parse_policy(const std::string& s) {
   exit(2);
 }
 
+static double percentile(std::vector<double>& v, double p) {
+  if (v.empty()) return 0;
+  std::sort(v.begin(), v.end());
+  double idx = p * (v.size() - 1);
+  size_t i = (size_t)idx;
+  double f = idx - i;
+  if (i + 1 >= v.size()) return v.back();
+  return v[i] * (1 - f) + v[i + 1] * f;
+}
+
+static std::vector<uint32_t> load_gt_row(const uint32_t* gt, uint32_t gt_k, uint32_t qi,
+                                         uint32_t k) {
+  std::vector<uint32_t> row;
+  uint32_t m = std::min(k, gt_k);
+  for (uint32_t i = 0; i < m; ++i) row.push_back(gt[(size_t)qi * gt_k + i]);
+  return row;
+}
+
+static double recall_at_k(const std::vector<uint32_t>& pred, const std::vector<uint32_t>& gt) {
+  if (gt.empty()) return 0;
+  std::unordered_set<uint32_t> g(gt.begin(), gt.end());
+  uint32_t hit = 0;
+  for (uint32_t id : pred) if (g.count(id)) hit++;
+  return (double)hit / (double)gt.size();
+}
+
 int main(int argc, char** argv) {
   const char* image = nullptr;
   const char* entry = nullptr;
   const char* queries = nullptr;
+  const char* gt_path = nullptr;
   std::string policy_s = "P0";
   size_t budget = 256 * 1024;
   size_t dram_bytes = getenv("CXAN_DRAM_BYTES")
@@ -243,6 +270,7 @@ int main(int argc, char** argv) {
     if (a == "--image") image = need(a.c_str());
     else if (a == "--entry") entry = need(a.c_str());
     else if (a == "--queries") queries = need(a.c_str());
+    else if (a == "--gt") gt_path = need(a.c_str());
     else if (a == "--policy") policy_s = need(a.c_str());
     else if (a == "--budget") budget = strtoull(need(a.c_str()), nullptr, 10);
     else if (a == "--dram-bytes") dram_bytes = strtoull(need(a.c_str()), nullptr, 10);
@@ -257,7 +285,7 @@ int main(int argc, char** argv) {
     }
   }
   if (!image || !entry || !queries) {
-    fprintf(stderr, "need --image --entry --queries\n");
+    fprintf(stderr, "need --image --entry --queries [--gt gt.ibin]\n");
     return 2;
   }
   if (numa_available() < 0) {
@@ -290,7 +318,6 @@ int main(int argc, char** argv) {
 
   EntryGraph eg = load_entry(entry);
 
-  // queries: DiskANN fbin
   int qfd = open(queries, O_RDONLY);
   if (qfd < 0) die("open queries");
   uint32_t nq = 0, qdim = 0;
@@ -304,6 +331,26 @@ int main(int argc, char** argv) {
   if (read(qfd, qbuf.data(), qbuf.size() * 4) != (ssize_t)(qbuf.size() * 4)) die("query body");
   close(qfd);
 
+  uint32_t gt_n = 0, gt_k = 0;
+  std::vector<uint32_t> gt;
+  if (gt_path) {
+    int gfd = open(gt_path, O_RDONLY);
+    if (gfd < 0) die("open gt");
+    if (read(gfd, &gt_n, 4) != 4 || read(gfd, &gt_k, 4) != 4) die("gt hdr");
+    if (gt_n < nq) {
+      fprintf(stderr, "gt n=%u < nq=%u\n", gt_n, nq);
+      return 2;
+    }
+    gt.resize((size_t)nq * gt_k);
+    if (read(gfd, gt.data(), gt.size() * 4) != (ssize_t)(gt.size() * 4)) die("gt body");
+    close(gfd);
+  }
+
+  std::vector<double> lat_ms;
+  lat_ms.reserve(nq);
+  double recall_sum = 0;
+  uint32_t recall_n = 0;
+
   auto t0 = std::chrono::steady_clock::now();
   for (uint32_t qi = 0; qi < nq; ++qi) {
     const float* qf = qbuf.data() + (size_t)qi * qdim;
@@ -315,23 +362,39 @@ int main(int argc, char** argv) {
       if (v > 255) v = 255;
       qpq[i] = (uint8_t)v;
     }
+    auto tq0 = std::chrono::steady_clock::now();
     auto ids = search_one(pl, win, pref, eg, qf, qpq.data(), beam, k, iters, rerank);
-    (void)ids;
+    auto tq1 = std::chrono::steady_clock::now();
+    lat_ms.push_back(std::chrono::duration<double, std::milli>(tq1 - tq0).count());
+    if (gt_path) {
+      auto g = load_gt_row(gt.data(), gt_k, qi, k);
+      recall_sum += recall_at_k(ids, g);
+      recall_n++;
+    }
     metrics.queries++;
   }
   auto t1 = std::chrono::steady_clock::now();
   double sec = std::chrono::duration<double>(t1 - t0).count();
   double qps = nq / sec;
+  double mean_lat = 0;
+  for (double x : lat_ms) mean_lat += x;
+  mean_lat /= lat_ms.empty() ? 1 : lat_ms.size();
+  double p50 = percentile(lat_ms, 0.50);
+  double p90 = percentile(lat_ms, 0.90);
+  double p99 = percentile(lat_ms, 0.99);
+  double recall = recall_n ? recall_sum / recall_n : -1.0;
 
   printf("policy=%s budget=%zu dram_bytes=%zu nq=%u beam=%u k=%u iters=%u rerank=%d\n",
          policy_s.c_str(), budget, dram_bytes, nq, beam, k, iters, (int)rerank);
-  printf("wall_s=%.3f QPS=%.2f\n", sec, qps);
+  printf("wall_s=%.3f throughput_QPS=%.2f\n", sec, qps);
+  printf("latency_ms mean=%.3f p50=%.3f p90=%.3f p99=%.3f\n", mean_lat, p50, p90, p99);
+  if (recall_n)
+    printf("recall@%u=%.4f\n", k, recall);
   metrics.print();
-  printf("CSV,%s,%zu,%.2f,%llu,%llu,%.2f\n", policy_s.c_str(), budget, qps,
-         (unsigned long long)metrics.dram_hits, (unsigned long long)metrics.ssd_misses,
-         (metrics.dram_hits + metrics.ssd_misses)
-             ? 100.0 * metrics.dram_hits / (metrics.dram_hits + metrics.ssd_misses)
-             : 0.0);
+  printf("CSV,%s,%zu,%zu,%u,%.2f,%.3f,%.3f,%.3f,%.3f,%.4f,%llu,%llu\n",
+         policy_s.c_str(), budget, dram_bytes, nq, qps, mean_lat, p50, p90, p99,
+         recall, (unsigned long long)metrics.dram_hits,
+         (unsigned long long)metrics.ssd_misses);
 
   if (pref.policy == PrefetchPolicy::P2) pref.stop_async();
   munmap(dram, dram_bytes);
