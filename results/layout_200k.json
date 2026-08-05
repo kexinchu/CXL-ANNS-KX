@@ -1,0 +1,15 @@
+{
+  "n": 200000,
+  "dim": 1024,
+  "R": 32,
+  "pq_bytes": 32,
+  "vec_bytes": 2,
+  "entry_id": 87834,
+  "entry_nodes": 4096,
+  "image_bytes": 441671680,
+  "off_pq": 4096,
+  "off_graph": 6406144,
+  "off_vectors": 32006144,
+  "out_image": "/mnt/disk0/chukexin_motivation/serving_layout_200k.bin",
+  "out_entry": "/mnt/disk0/chukexin_motivation/serving_entry_200k.bin"
+}

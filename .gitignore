@@ -24,3 +24,7 @@ motivation_exps/data/
 # logs that are huge or transient (keep curated results/)
 *.tmp
 __pycache__/
+tools/cap_smoke
+tools/build_layout_25m
+serving/search_beam
+*.o
