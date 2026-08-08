@@ -1,0 +1,91 @@
+=== 2026-08-07T14:41:29+00:00 pol=P0 budget=0 rerank=1 shuffle=42 flush=1 ===
+mapped vmem /dev/vmem0 off=214748364800 len=80800071680
+query_select nq=10000/10000 shuffle_seed=42 flush_window=1
+policy=P0 budget=0 dram_bytes=67108864 nq=10000 beam=32 k=10 iters=48 rerank=1
+wall_s=649.656 throughput_QPS=15.39
+latency_ms mean=64.499 p50=58.768 p90=102.589 p99=154.375
+recall@10=0.0016
+metrics queries=10000 dram_hits=210517871 ssd_misses=152921570 hit_pct=57.92 promote_bytes=626366750720 avg_promote_ns=3903.0 prefetch_pages=0 evicts=13074844 dist=351773240
+CSV,P0,0,67108864,10000,15.39,64.499,58.768,102.589,154.375,0.0016,210517871,152921570
+=== 2026-08-07T14:52:19+00:00 pol=P1 budget=0 rerank=1 shuffle=42 flush=1 ===
+mapped vmem /dev/vmem0 off=214748364800 len=80800071680
+query_select nq=10000/10000 shuffle_seed=42 flush_window=1
+policy=P1 budget=0 dram_bytes=67108864 nq=10000 beam=32 k=10 iters=48 rerank=1
+wall_s=611.229 throughput_QPS=16.36
+latency_ms mean=60.683 p50=55.800 p90=95.262 p99=138.962
+recall@10=0.0016
+metrics queries=10000 dram_hits=210517871 ssd_misses=152921570 hit_pct=57.92 promote_bytes=626366750720 avg_promote_ns=3221.8 prefetch_pages=0 evicts=13074844 dist=351773240
+CSV,P1,0,67108864,10000,16.36,60.683,55.800,95.262,138.962,0.0016,210517871,152921570
+=== 2026-08-07T15:02:30+00:00 pol=P1 budget=262144 rerank=1 shuffle=42 flush=1 ===
+mapped vmem /dev/vmem0 off=214748364800 len=80800071680
+query_select nq=10000/10000 shuffle_seed=42 flush_window=1
+policy=P1 budget=262144 dram_bytes=67108864 nq=10000 beam=32 k=10 iters=48 rerank=1
+wall_s=615.383 throughput_QPS=16.25
+latency_ms mean=61.018 p50=56.263 p90=95.786 p99=138.253
+recall@10=0.0016
+metrics queries=10000 dram_hits=211158210 ssd_misses=152921231 hit_pct=58.00 promote_bytes=626365362176 avg_promote_ns=3230.6 prefetch_pages=640000 evicts=13074505 dist=351773240
+CSV,P1,262144,67108864,10000,16.25,61.018,56.263,95.786,138.253,0.0016,211158210,152921231
+=== 2026-08-07T15:12:46+00:00 pol=P1 budget=1048576 rerank=1 shuffle=42 flush=1 ===
+mapped vmem /dev/vmem0 off=214748364800 len=80800071680
+query_select nq=10000/10000 shuffle_seed=42 flush_window=1
+policy=P1 budget=1048576 dram_bytes=67108864 nq=10000 beam=32 k=10 iters=48 rerank=1
+wall_s=622.097 throughput_QPS=16.07
+latency_ms mean=61.723 p50=56.815 p90=97.161 p99=140.988
+recall@10=0.0015
+metrics queries=10000 dram_hits=212156807 ssd_misses=153842686 hit_pct=57.97 promote_bytes=630139641856 avg_promote_ns=3233.9 prefetch_pages=2560000 evicts=13404716 dist=351773290
+CSV,P1,1048576,67108864,10000,16.07,61.723,56.815,97.161,140.988,0.0015,212156807,153842686
+=== 2026-08-07T15:23:08+00:00 pol=P1 budget=4194304 rerank=1 shuffle=42 flush=1 ===
+mapped vmem /dev/vmem0 off=214748364800 len=80800071680
+query_select nq=10000/10000 shuffle_seed=42 flush_window=1
+policy=P1 budget=4194304 dram_bytes=67108864 nq=10000 beam=32 k=10 iters=48 rerank=1
+wall_s=641.564 throughput_QPS=15.59
+latency_ms mean=63.700 p50=58.899 p90=99.216 p99=142.537
+recall@10=0.0016
+metrics queries=10000 dram_hits=216071581 ssd_misses=157607722 hit_pct=57.82 promote_bytes=645561229312 avg_promote_ns=3279.5 prefetch_pages=10240000 evicts=14816385 dist=351773104
+CSV,P1,4194304,67108864,10000,15.59,63.700,58.899,99.216,142.537,0.0016,216071581,157607722
+=== 2026-08-07T15:33:50+00:00 pol=P3 budget=262144 rerank=1 shuffle=42 flush=1 ===
+mapped vmem /dev/vmem0 off=214748364800 len=80800071680
+query_select nq=10000/10000 shuffle_seed=42 flush_window=1
+policy=P3 budget=262144 dram_bytes=67108864 nq=10000 beam=32 k=10 iters=48 rerank=1
+wall_s=619.240 throughput_QPS=16.15
+latency_ms mean=61.452 p50=56.523 p90=96.757 p99=140.783
+recall@10=0.0016
+metrics queries=10000 dram_hits=211158210 ssd_misses=152921231 hit_pct=58.00 promote_bytes=626365362176 avg_promote_ns=3239.0 prefetch_pages=640000 evicts=13074505 dist=351773240
+CSV,P3,262144,67108864,10000,16.15,61.452,56.523,96.757,140.783,0.0016,211158210,152921231
+=== 2026-08-07T15:44:09+00:00 pol=P0 budget=0 rerank=0 shuffle=42 flush=1 ===
+mapped vmem /dev/vmem0 off=214748364800 len=80800071680
+query_select nq=10000/10000 shuffle_seed=42 flush_window=1
+policy=P0 budget=0 dram_bytes=67108864 nq=10000 beam=32 k=10 iters=48 rerank=0
+wall_s=539.427 throughput_QPS=18.54
+latency_ms mean=53.608 p50=48.893 p90=86.629 p99=123.715
+recall@10=0.0014
+metrics queries=10000 dram_hits=210475524 ssd_misses=152643944 hit_pct=57.96 promote_bytes=625229594624 avg_promote_ns=3205.3 prefetch_pages=0 evicts=12971242 dist=351453267
+CSV,P0,0,67108864,10000,18.54,53.608,48.893,86.629,123.715,0.0014,210475524,152643944
+=== 2026-08-07T15:53:09+00:00 pol=P1 budget=0 rerank=0 shuffle=42 flush=1 ===
+mapped vmem /dev/vmem0 off=214748364800 len=80800071680
+query_select nq=10000/10000 shuffle_seed=42 flush_window=1
+policy=P1 budget=0 dram_bytes=67108864 nq=10000 beam=32 k=10 iters=48 rerank=0
+wall_s=504.501 throughput_QPS=19.82
+latency_ms mean=50.129 p50=45.300 p90=81.925 p99=118.922
+recall@10=0.0014
+metrics queries=10000 dram_hits=210475524 ssd_misses=152643944 hit_pct=57.96 promote_bytes=625229594624 avg_promote_ns=2948.6 prefetch_pages=0 evicts=12971242 dist=351453267
+CSV,P1,0,67108864,10000,19.82,50.129,45.300,81.925,118.922,0.0014,210475524,152643944
+=== 2026-08-07T16:01:34+00:00 pol=P1 budget=262144 rerank=0 shuffle=42 flush=1 ===
+mapped vmem /dev/vmem0 off=214748364800 len=80800071680
+query_select nq=10000/10000 shuffle_seed=42 flush_window=1
+policy=P1 budget=262144 dram_bytes=67108864 nq=10000 beam=32 k=10 iters=48 rerank=0
+wall_s=507.394 throughput_QPS=19.71
+latency_ms mean=50.423 p50=45.564 p90=82.658 p99=119.879
+recall@10=0.0014
+metrics queries=10000 dram_hits=211115863 ssd_misses=152643605 hit_pct=58.04 promote_bytes=625228206080 avg_promote_ns=2959.9 prefetch_pages=640000 evicts=12970903 dist=351453267
+CSV,P1,262144,67108864,10000,19.71,50.423,45.564,82.658,119.879,0.0014,211115863,152643605
+=== 2026-08-07T16:10:01+00:00 pol=P1 budget=1048576 rerank=0 shuffle=42 flush=1 ===
+mapped vmem /dev/vmem0 off=214748364800 len=80800071680
+query_select nq=10000/10000 shuffle_seed=42 flush_window=1
+policy=P1 budget=1048576 dram_bytes=67108864 nq=10000 beam=32 k=10 iters=48 rerank=0
+wall_s=517.478 throughput_QPS=19.32
+latency_ms mean=51.422 p50=46.508 p90=83.956 p99=121.447
+recall@10=0.0014
+metrics queries=10000 dram_hits=212114460 ssd_misses=153565060 hit_pct=58.01 promote_bytes=629002485760 avg_promote_ns=3005.3 prefetch_pages=2560000 evicts=13299402 dist=351453317
+CSV,P1,1048576,67108864,10000,19.32,51.422,46.508,83.956,121.447,0.0014,212114460,153565060
+DONE 2026-08-07T16:18:39+00:00

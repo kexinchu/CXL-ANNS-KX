@@ -1,0 +1,76 @@
+policy=P0 budget=0 dram_bytes=1073741824 nq=50 beam=32 k=10 iters=48 rerank=0
+wall_s=0.107 QPS=468.46
+metrics queries=50 dram_hits=313643 ssd_misses=7774 hit_pct=97.58 promote_bytes=31842304 avg_promote_ns=6067.1 prefetch_pages=0 evicts=0 dist=268720
+CSV,P0,0,468.46,313643,7774,97.58
+policy=P0 budget=65536 dram_bytes=1073741824 nq=50 beam=32 k=10 iters=48 rerank=0
+wall_s=0.057 QPS=881.07
+metrics queries=50 dram_hits=313643 ssd_misses=7774 hit_pct=97.58 promote_bytes=31842304 avg_promote_ns=3025.3 prefetch_pages=0 evicts=0 dist=268720
+CSV,P0,65536,881.07,313643,7774,97.58
+policy=P0 budget=262144 dram_bytes=1073741824 nq=50 beam=32 k=10 iters=48 rerank=0
+wall_s=0.133 QPS=375.32
+metrics queries=50 dram_hits=313643 ssd_misses=7774 hit_pct=97.58 promote_bytes=31842304 avg_promote_ns=8166.6 prefetch_pages=0 evicts=0 dist=268720
+CSV,P0,262144,375.32,313643,7774,97.58
+policy=P0 budget=1048576 dram_bytes=1073741824 nq=50 beam=32 k=10 iters=48 rerank=0
+wall_s=0.129 QPS=388.59
+metrics queries=50 dram_hits=313643 ssd_misses=7774 hit_pct=97.58 promote_bytes=31842304 avg_promote_ns=7866.1 prefetch_pages=0 evicts=0 dist=268720
+CSV,P0,1048576,388.59,313643,7774,97.58
+policy=P0 budget=4194304 dram_bytes=1073741824 nq=50 beam=32 k=10 iters=48 rerank=0
+wall_s=0.107 QPS=467.59
+metrics queries=50 dram_hits=313643 ssd_misses=7774 hit_pct=97.58 promote_bytes=31842304 avg_promote_ns=6888.6 prefetch_pages=0 evicts=0 dist=268720
+CSV,P0,4194304,467.59,313643,7774,97.58
+policy=P1 budget=0 dram_bytes=1073741824 nq=50 beam=32 k=10 iters=48 rerank=0
+wall_s=0.122 QPS=409.48
+metrics queries=50 dram_hits=313643 ssd_misses=7774 hit_pct=97.58 promote_bytes=31842304 avg_promote_ns=7601.4 prefetch_pages=0 evicts=0 dist=268720
+CSV,P1,0,409.48,313643,7774,97.58
+policy=P1 budget=65536 dram_bytes=1073741824 nq=50 beam=32 k=10 iters=48 rerank=0
+wall_s=0.065 QPS=772.28
+metrics queries=50 dram_hits=314163 ssd_misses=7807 hit_pct=97.58 promote_bytes=31977472 avg_promote_ns=3023.9 prefetch_pages=553 evicts=0 dist=268720
+CSV,P1,65536,772.28,314163,7807,97.58
+policy=P1 budget=262144 dram_bytes=1073741824 nq=50 beam=32 k=10 iters=48 rerank=0
+wall_s=0.127 QPS=393.19
+metrics queries=50 dram_hits=315025 ssd_misses=7809 hit_pct=97.58 promote_bytes=31985664 avg_promote_ns=7454.7 prefetch_pages=1417 evicts=0 dist=268720
+CSV,P1,262144,393.19,315025,7809,97.58
+policy=P1 budget=1048576 dram_bytes=1073741824 nq=50 beam=32 k=10 iters=48 rerank=0
+wall_s=0.129 QPS=386.60
+metrics queries=50 dram_hits=316628 ssd_misses=7810 hit_pct=97.59 promote_bytes=31989760 avg_promote_ns=7604.1 prefetch_pages=3021 evicts=0 dist=268720
+CSV,P1,1048576,386.60,316628,7810,97.59
+policy=P1 budget=4194304 dram_bytes=1073741824 nq=50 beam=32 k=10 iters=48 rerank=0
+wall_s=0.150 QPS=333.01
+metrics queries=50 dram_hits=318736 ssd_misses=7811 hit_pct=97.61 promote_bytes=31993856 avg_promote_ns=8899.1 prefetch_pages=5130 evicts=0 dist=268720
+CSV,P1,4194304,333.01,318736,7811,97.61
+policy=P3 budget=0 dram_bytes=1073741824 nq=50 beam=32 k=10 iters=48 rerank=0
+wall_s=0.119 QPS=421.63
+metrics queries=50 dram_hits=313643 ssd_misses=7774 hit_pct=97.58 promote_bytes=31842304 avg_promote_ns=7011.7 prefetch_pages=0 evicts=0 dist=268720
+CSV,P3,0,421.63,313643,7774,97.58
+policy=P3 budget=65536 dram_bytes=1073741824 nq=50 beam=32 k=10 iters=48 rerank=0
+wall_s=0.105 QPS=475.57
+metrics queries=50 dram_hits=314163 ssd_misses=7807 hit_pct=97.58 promote_bytes=31977472 avg_promote_ns=4921.1 prefetch_pages=553 evicts=0 dist=268720
+CSV,P3,65536,475.57,314163,7807,97.58
+policy=P3 budget=262144 dram_bytes=1073741824 nq=50 beam=32 k=10 iters=48 rerank=0
+wall_s=0.064 QPS=779.14
+metrics queries=50 dram_hits=315025 ssd_misses=7809 hit_pct=97.58 promote_bytes=31985664 avg_promote_ns=2775.1 prefetch_pages=1417 evicts=0 dist=268720
+CSV,P3,262144,779.14,315025,7809,97.58
+policy=P3 budget=1048576 dram_bytes=1073741824 nq=50 beam=32 k=10 iters=48 rerank=0
+wall_s=0.116 QPS=430.22
+metrics queries=50 dram_hits=316628 ssd_misses=7810 hit_pct=97.59 promote_bytes=31989760 avg_promote_ns=6670.2 prefetch_pages=3021 evicts=0 dist=268720
+CSV,P3,1048576,430.22,316628,7810,97.59
+policy=P3 budget=4194304 dram_bytes=1073741824 nq=50 beam=32 k=10 iters=48 rerank=0
+wall_s=0.104 QPS=482.17
+metrics queries=50 dram_hits=318736 ssd_misses=7811 hit_pct=97.61 promote_bytes=31993856 avg_promote_ns=5332.3 prefetch_pages=5130 evicts=0 dist=268720
+CSV,P3,4194304,482.17,318736,7811,97.61
+policy=P2 budget=0 dram_bytes=1073741824 nq=50 beam=32 k=10 iters=48 rerank=0
+wall_s=0.354 QPS=141.13
+metrics queries=50 dram_hits=317016 ssd_misses=7810 hit_pct=97.60 promote_bytes=31989760 avg_promote_ns=6701.8 prefetch_pages=3409 evicts=0 dist=268720
+CSV,P2,0,141.13,317016,7810,97.60
+policy=P2 budget=262144 dram_bytes=1073741824 nq=50 beam=32 k=10 iters=48 rerank=0
+wall_s=0.396 QPS=126.37
+metrics queries=50 dram_hits=316956 ssd_misses=7811 hit_pct=97.59 promote_bytes=31993856 avg_promote_ns=7438.4 prefetch_pages=3350 evicts=0 dist=268720
+CSV,P2,262144,126.37,316956,7811,97.59
+policy=P2 budget=1048576 dram_bytes=1073741824 nq=50 beam=32 k=10 iters=48 rerank=0
+wall_s=0.399 QPS=125.22
+metrics queries=50 dram_hits=317218 ssd_misses=7810 hit_pct=97.60 promote_bytes=31989760 avg_promote_ns=6429.3 prefetch_pages=3611 evicts=0 dist=268720
+CSV,P2,1048576,125.22,317218,7810,97.60
+policy=P1 budget=262144 dram_bytes=1073741824 nq=50 beam=32 k=10 iters=48 rerank=1
+wall_s=0.130 QPS=384.18
+metrics queries=50 dram_hits=315304 ssd_misses=9130 hit_pct=97.19 promote_bytes=37396480 avg_promote_ns=6635.4 prefetch_pages=1417 evicts=0 dist=270320
+CSV,P1,262144,384.18,315304,9130,97.19

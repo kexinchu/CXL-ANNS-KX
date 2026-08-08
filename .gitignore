@@ -26,6 +26,7 @@ motivation_exps/data/
 __pycache__/
 tools/cap_smoke
 tools/build_layout_25m
+tools/build_layout_stream
 serving/search_beam
 *.o
 tools/load_index_cxl_dram

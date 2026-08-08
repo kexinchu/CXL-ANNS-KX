@@ -1,0 +1,44 @@
+=== 2026-08-07T21:17:41+00:00 P0 budget=0 L=200 flush ===
+mapped vmem /dev/vmem0 off=214748364800 len=80800071680
+query_select nq=100/10000 shuffle_seed=42 flush_window=1 oneshot_fp=1 host_used=1392556 host_cap=33554432 dram_bytes=1073741824
+policy=P0 budget=0 dram_bytes=1073741824 nq=100 beam=200 k=10 iters=0 oneshot_fp=1
+wall_s=29.408 throughput_QPS=3.40
+latency_ms mean=293.804 p50=46.909 p90=681.381 p99=765.800
+recall@10=0.8970
+cxl_dram_hit_pct=4.62
+metrics queries=100 dram_hits=32570 ssd_misses=672810 hit_pct=4.62 promote_bytes=2755829760 avg_promote_ns=42635.2 prefetch_pages=0 evicts=0 dist=456292
+CSV,P0,0,1073741824,100,200,0,3.40,293.804,46.909,681.381,765.800,0.8970,4.62,32570,672810
+=== 2026-08-07T21:18:10+00:00 P1 budget=16777216 L=200 flush ===
+mapped vmem /dev/vmem0 off=214748364800 len=80800071680
+query_select nq=100/10000 shuffle_seed=42 flush_window=1 oneshot_fp=1 host_used=1392556 host_cap=33554432 dram_bytes=1073741824
+policy=P1 budget=16777216 dram_bytes=1073741824 nq=100 beam=200 k=10 iters=0 oneshot_fp=1
+wall_s=4.116 throughput_QPS=24.30
+latency_ms mean=40.870 p50=39.589 p90=48.301 p99=67.101
+recall@10=0.8970
+cxl_dram_hit_pct=5.70
+metrics queries=100 dram_hits=64774 ssd_misses=1072534 hit_pct=5.70 promote_bytes=4393099264 avg_promote_ns=3124.9 prefetch_pages=409600 evicts=0 dist=456292
+CSV,P1,16777216,1073741824,100,200,0,24.30,40.870,39.589,48.301,67.101,0.8970,5.70,64774,1072534
+DONE
+
+=== L=300 confirm recall>=0.90 ===
+=== 2026-08-07T21:18:23+00:00 P0 budget=0 L=300 flush ===
+mapped vmem /dev/vmem0 off=214748364800 len=80800071680
+query_select nq=100/10000 shuffle_seed=42 flush_window=1 oneshot_fp=1 host_used=1392556 host_cap=33554432 dram_bytes=1073741824
+policy=P0 budget=0 dram_bytes=1073741824 nq=100 beam=300 k=10 iters=0 oneshot_fp=1
+wall_s=15.354 throughput_QPS=6.51
+latency_ms mean=153.245 p50=66.415 p90=314.292 p99=354.374
+recall@10=0.9290
+cxl_dram_hit_pct=4.97
+metrics queries=100 dram_hits=49471 ssd_misses=946651 hit_pct=4.97 promote_bytes=3877482496 avg_promote_ns=14983.0 prefetch_pages=0 evicts=0 dist=643533
+CSV,P0,0,1073741824,100,300,0,6.51,153.245,66.415,314.292,354.374,0.9290,4.97,49471,946651
+=== 2026-08-07T21:18:39+00:00 P1 budget=16777216 L=300 flush ===
+mapped vmem /dev/vmem0 off=214748364800 len=80800071680
+query_select nq=100/10000 shuffle_seed=42 flush_window=1 oneshot_fp=1 host_used=1392556 host_cap=33554432 dram_bytes=1073741824
+policy=P1 budget=16777216 dram_bytes=1073741824 nq=100 beam=300 k=10 iters=0 oneshot_fp=1
+wall_s=6.072 throughput_QPS=16.47
+latency_ms mean=60.371 p50=62.504 p90=76.588 p99=87.310
+recall@10=0.9290
+cxl_dram_hit_pct=6.38
+metrics queries=100 dram_hits=91748 ssd_misses=1346209 hit_pct=6.38 promote_bytes=5514072064 avg_promote_ns=3566.1 prefetch_pages=409600 evicts=0 dist=643533
+CSV,P1,16777216,1073741824,100,300,0,16.47,60.371,62.504,76.588,87.310,0.9290,6.38,91748,1346209
+DONE

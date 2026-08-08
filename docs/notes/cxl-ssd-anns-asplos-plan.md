@@ -28,7 +28,7 @@ Findings → Challenges → Design → Evaluation
 
 ### 1.1 为何需要把 CXL–SSD 引入 ANNS？（机会 / Opportunity）
 
-Billion-scale ANNS 必须同时扩展两个**基本独立**的维度：**语料容量**与**查询吞吐**。核心部署问题是：
+Billion-scale ANNS 必须同时扩展两个**基本独立**的维度：**语料容量**与**查询吞吐**。一个核心部署问题是：
 
 > **加查询算力时，能不能不再按 \(R\) 倍复制整库，也不把冷数据全体抬到 DRAM 价？**
 
@@ -68,13 +68,12 @@ one query replica ≈ CPU + DRAM working set (PQ / node cache) + local SSD index
 
 记 \(D\) = 全精度语料，\(H\) = 有效热点工作集；图 ANNS 通常 \(H \ll D\)。对 **CXL-ANNS / Cosmos 这类 full-in-memory baseline**：
 
-\[
+$$
 \mathrm{MediaCost}_{\text{CXL-DRAM}} \;\sim\; D \cdot c_{\mathrm{DRAM}}
-\]
+$$
 
 共享内存池可以做到逻辑 **one-copy**，却**没有**把容量定价压到闪存。大量几乎不碰的冷向量仍占用昂贵 DRAM，造成 **stranded memory** / 功耗与采购浪费（Bauhaus 等对 CXL DRAM 分层的动机也指向同一问题）。
 
-**降调：** 「CXL-DRAM 让所有冷数据付 DRAM 价」只适用于上述 **full-in-memory** 基线；CXL-DRAM 也可以只存热层/压缩码（如 DistVS 一类分层）。本文对照的是 **已发表 CXL-ANNS 主线的全库进 DRAM 主张**。
 
 #### （3）CXL–SSD 的折中部署点
 
@@ -90,17 +89,17 @@ CXL–SSD（Type-3 memory-semantic SSD：NAND 容量层 + 设备/主机 DRAM 热
 
 对 CXL–SSD，更合理的**介质容量**叙事是：
 
-\[
+$$
 \mathrm{MediaCost}_{\text{CXL-SSD}} \;\sim\; n_{\mathrm{HA}} D \cdot c_{\mathrm{flash}} + H \cdot c_{\mathrm{cache}} + C_{\mathrm{fabric/controller}}
-\]
+$$
 
 其中 \(n_{\mathrm{HA}}\) 是高可用副本数（通常 \(\ll R\)），**不是**简单的 \(D\cdot c_{\mathrm{flash}}\)。相对 replicated DiskANN，机会在于 **减少随 \(R\) 增长的 provisioned 冗余**；相对 CXL-DRAM full-in-memory，机会在于 **冷库按 flash 计价**。两者合在一起，才是「折中」。
 
-**必须分清三种 CXL 条件（写 Intro 时禁止混写）：**
+<!-- **必须分清三种 CXL 条件（写 Intro 时禁止混写）：**
 
 1. **单 host direct-attach CXL–SSD：** 已能做「闪存价 + memory-semantic」；相对「NVMe + record cache」的差异主要在接口与 residency，**不能**单独支撑 multi-host one-copy。  
 2. **CXL 2.0 pooling / MLD：** 多个 host 可共享**物理设备**，但同一 HDM 区通常**同一时刻只属于一个 host**——这是 pooling，不是 concurrent sharing。  
-3. **CXL 3.x Shared FAM / GFAM：** 多个 host 才能**同时**映射同一区域；这才是严格 **multi-host one-copy** 的标准前提（还依赖 MHD/GFAM、Fabric Manager、可选 HDM-DB / Back-Invalidate，以及只读索引发布协议）。
+3. **CXL 3.x Shared FAM / GFAM：** 多个 host 才能**同时**映射同一区域；这才是严格 **multi-host one-copy** 的标准前提（还依赖 MHD/GFAM、Fabric Manager、可选 HDM-DB / Back-Invalidate，以及只读索引发布协议）。 -->
 
 #### 与最接近工作的划界（机会成立 ≠ 已有同构系统）
 
@@ -118,21 +117,21 @@ CXL–SSD（Type-3 memory-semantic SSD：NAND 容量层 + 设备/主机 DRAM 热
 | **CXL-AnySSD** (UIUC thesis’25) | 真实 Type-2 CXL-SSD；vector-DB workload 上相对 OS swap 提速 | 主线是 **composable SSD + 去 swap**，不是 graph-ANNS 语义缓存/升迁/stall |
 | **P-HNSW** | 持久内存上 crash-consistent HNSW；文中提及 CXL-SSD | 重点是 **一致性与恢复**；实验用 DRAM 模拟 PM，不是 CXL-SSD 上的 serving residency |
 
-**受限的 “first” 表述（推荐用于 Intro，禁止更宽）：**
+<!-- **受限的 “first” 表述（推荐用于 Intro，禁止更宽）：**
 
 > To our knowledge, this is the first **graph-ANNS serving system** that **directly operates over an SSD-backed CXL address space** and **jointly manages ANNS-specific residency, promotion, and search stalls**.
 
-不要写成「第一个把 CXL-SSD 用于向量数据库 / ANNS 的工作」。
+不要写成「第一个把 CXL-SSD 用于向量数据库 / ANNS 的工作」。 -->
 
 **一句话（Why introduce）：**  
 常见 replicated DiskANN 扩吞吐要付 **存储冗余税**；CXL-ANNS/Cosmos 类方案用 CXL 做 disaggregation，却让冷库付 **DRAM 容量税**；CXL–SSD 提供折中：**闪存价承载全精度库 + memory-semantic 热路径**，并在 Shared FAM 条件下让多查询节点共享**一份**逻辑索引——这是**部署机会**，不是本文系统贡献。系统贡献是：在该介质上控制 graph ANNS 的 residency / stall。
 
-#### 论据成立的前提（写 Intro / Evaluation 时必须交代）
+<!-- #### 论据成立的前提（写 Intro / Evaluation 时必须交代）
 
 1. **分条件陈述部署模型：** 单 host 论证「闪存价 + 内存语义」；multi-host one-copy **仅**在 CXL 3.x Shared FAM/GFAM（或等价共享区域）下主张；禁止把 CXL 2.0 pooling 写成同区共享。  
 2. **成本只做定性 + provisioning 曲线：** 展示随 \(R\)、\(H/D\)、\(n_{\mathrm{HA}}\) 相对「replicated DiskANN / full-in-memory CXL-DRAM」的交叉点；检查共享 CXL–SSD 带宽是否成为中心化瓶颈；**不要**直接宣称端到端 TCO 更低。  
 3. **只读查询与更新/HA 分开：** one-copy 首先针对只读 serving；索引发布、版本切换、metadata ownership、HA 副本仍可能 \(n_{\mathrm{HA}}>1\)。  
-4. **实验平台对齐：** 本机 `/dev/vmem0`（host-NVMe software 路径）用于 **residency/stall 机制研究**；§1.1 的 fabric one-copy 是最终部署叙事，论文须显式声明当前平台为 proxy。
+4. **实验平台对齐：** 本机 `/dev/vmem0`（host-NVMe software 路径）用于 **residency/stall 机制研究**；§1.1 的 fabric one-copy 是最终部署叙事，论文须显式声明当前平台为 proxy。 -->
 
 ### 1.2 引入之后有什么问题？
 
@@ -263,37 +262,6 @@ CXL–SSD（Type-3 memory-semantic SSD：NAND 容量层 + 设备/主机 DRAM 热
 
 ### 1.3.2 Motivation 实验设计
 
-- Settiing
-   - 数据集：LAION-25M
-   - ANNS 方法： DiskANN on CXL-DRAM
-
-   - CXL-SSD Storage
-
-   |组件|Size|占比|
-   |--|--|--|
-   |PQ|0.745 GB| 1.0%|
-   |Index(图邻接R=32)|2.98 GB|4%|
-   |Vectors(float32)|71.53 GB|95%|
-   |合计|75.25 GB| 100%|
-
-   - CXL-DRAM 存储 (只使用1GB)
-      - Index + Vectors
-
-   - Host 
-
-
-关键结果（1 GiB CXL-DRAM，flush-window，nq=100）
-recall@10	QPS	mean ms	CXL-DRAM hit%
-P0 无预取
-0.929
-6.51
-153
-4.97%
-P1 邻居向量页预取
-0.929
-16.47
-60
-6.38%
 
 
 ### 1.4 Related Work（细对比）
