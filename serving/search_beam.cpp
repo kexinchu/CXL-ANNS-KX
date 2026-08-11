@@ -266,6 +266,7 @@ static std::vector<uint32_t> search_one_fp(Placement& pl, DramWindow& win, Prefe
     struct PendingInstall {
       uint64_t page_off = 0;
       std::vector<uint8_t> data;
+      uint16_t soft_ttl = 0;
     };
     std::deque<PendingInstall> pending_install;
 
@@ -273,7 +274,7 @@ static std::vector<uint32_t> search_one_fp(Placement& pl, DramWindow& win, Prefe
       size_t n = 0;
       while (n < max_n && !pending_install.empty()) {
         auto& pi = pending_install.front();
-        win.install_full_page(pi.page_off, pi.data.data());
+        win.install_full_page(pi.page_off, pi.data.data(), pi.soft_ttl);
         pending_install.pop_front();
         ++n;
       }
@@ -495,6 +496,10 @@ static std::vector<uint32_t> search_one_fp(Placement& pl, DramWindow& win, Prefe
         PendingInstall pi;
         pi.page_off = pu.page;
         pi.data = std::move(host[pu.idx]);
+        // Likely-next-expand pages get longer soft-pin TTL.
+        if (pu.util >= 500.f) pi.soft_ttl = 64;
+        else if (pu.util >= 1.f) pi.soft_ttl = 32;
+        else pi.soft_ttl = 16;
         pending_install.push_back(std::move(pi));
         ++queued_n;
       }
@@ -534,6 +539,7 @@ static std::vector<uint32_t> search_one_fp(Placement& pl, DramWindow& win, Prefe
         to_score.push_back(nb);
       }
       hop_parallel_score(to_score);
+      win.tick_soft_pins();
     }
 
     drain_installs(pending_install.size());
@@ -943,7 +949,7 @@ int main(int argc, char** argv) {
   if (false && pref.policy == PrefetchPolicy::P2) pref.start_async(&pl, &win);
 
   if (pref.policy == PrefetchPolicy::P3) {
-    printf("P3v2 smart-install pool W=%u budget=%zu install_top=%u\n",
+    printf("P3v2 smart-install+softpin W=%u budget=%zu install_top=%u\n",
            pref.pipe_w, budget, pref.install_top);
   }
 

@@ -23,11 +23,15 @@ struct DramWindow {
 
   std::unordered_map<uint64_t, size_t> map;  // page_off -> frame idx
   std::vector<uint64_t> frame_key;            // key or UINT64_MAX if free
-  std::vector<uint8_t> frame_pinned;          // 1 = never evict
+  std::vector<uint8_t> frame_pinned;          // 1 = never evict (hard pin)
+  std::vector<uint16_t> frame_soft_ttl;       // >0 = soft-pin hops remaining
+  std::vector<size_t> soft_pin_frames;        // frames with soft_ttl > 0 (for O(#pins) tick)
   std::unordered_set<uint64_t> pinned_pages;
   size_t clock_hand = 0;
   size_t pin_bytes_used = 0;
   size_t pin_bytes_cap = 0;  // 0 = default 64MiB or 1/16 capacity
+  size_t soft_pin_bytes_used = 0;
+  size_t soft_pin_bytes_cap = 0;  // 0 = default 256MiB or 1/4 capacity
 
   std::vector<std::vector<uint8_t>> spill;
   size_t spill_hand = 0;
@@ -41,13 +45,22 @@ struct DramWindow {
     map.clear();
     frame_key.assign(n_frames, UINT64_MAX);
     frame_pinned.assign(n_frames, 0);
+    frame_soft_ttl.assign(n_frames, 0);
+    soft_pin_frames.clear();
+    soft_pin_frames.reserve(4096);
     pinned_pages.clear();
     clock_hand = 0;
     pin_bytes_used = 0;
+    soft_pin_bytes_used = 0;
     if (pin_bytes_cap == 0) {
       size_t def = 64ull << 20;
       size_t frac = capacity / 16;
       pin_bytes_cap = def < frac ? def : frac;
+    }
+    if (soft_pin_bytes_cap == 0) {
+      size_t def = 256ull << 20;
+      size_t frac = capacity / 4;
+      soft_pin_bytes_cap = def < frac ? def : frac;
     }
     spill.assign(kSpillSlots, {});
     spill_hand = 0;
@@ -61,7 +74,13 @@ struct DramWindow {
       uint64_t key = frame_key[i];
       if (key != UINT64_MAX) map.erase(key);
       frame_key[i] = UINT64_MAX;
+      if (frame_soft_ttl[i]) {
+        soft_pin_bytes_used =
+            soft_pin_bytes_used > page_bytes ? soft_pin_bytes_used - page_bytes : 0;
+        frame_soft_ttl[i] = 0;
+      }
     }
+    soft_pin_frames.clear();
     clock_hand = 0;
   }
 
@@ -70,9 +89,50 @@ struct DramWindow {
     map.clear();
     std::fill(frame_key.begin(), frame_key.end(), UINT64_MAX);
     std::fill(frame_pinned.begin(), frame_pinned.end(), 0);
+    std::fill(frame_soft_ttl.begin(), frame_soft_ttl.end(), 0);
+    soft_pin_frames.clear();
     pinned_pages.clear();
     pin_bytes_used = 0;
+    soft_pin_bytes_used = 0;
     clock_hand = 0;
+  }
+
+  void clear_soft_ttl_unlocked(size_t fr) {
+    if (fr >= n_frames || frame_soft_ttl[fr] == 0) return;
+    frame_soft_ttl[fr] = 0;
+    soft_pin_bytes_used =
+        soft_pin_bytes_used > page_bytes ? soft_pin_bytes_used - page_bytes : 0;
+  }
+
+  void set_soft_ttl_unlocked(size_t fr, uint16_t soft_ttl) {
+    if (fr >= n_frames || soft_ttl == 0 || frame_pinned[fr]) return;
+    if (frame_soft_ttl[fr] == 0) {
+      if (soft_pin_bytes_used + page_bytes > soft_pin_bytes_cap) return;
+      soft_pin_bytes_used += page_bytes;
+      soft_pin_frames.push_back(fr);
+      frame_soft_ttl[fr] = soft_ttl;
+    } else if (soft_ttl > frame_soft_ttl[fr]) {
+      frame_soft_ttl[fr] = soft_ttl;
+    }
+  }
+
+  // Decrement soft-pin TTLs (call once per expand). Soft-pinned pages resist eviction.
+  void tick_soft_pins() {
+    std::lock_guard<std::mutex> g(mu);
+    if (soft_pin_frames.empty()) return;
+    size_t w = 0;
+    for (size_t r = 0; r < soft_pin_frames.size(); ++r) {
+      size_t fr = soft_pin_frames[r];
+      if (fr >= n_frames || frame_soft_ttl[fr] == 0) continue;
+      frame_soft_ttl[fr]--;
+      if (frame_soft_ttl[fr] == 0) {
+        soft_pin_bytes_used =
+            soft_pin_bytes_used > page_bytes ? soft_pin_bytes_used - page_bytes : 0;
+        continue;
+      }
+      soft_pin_frames[w++] = fr;
+    }
+    soft_pin_frames.resize(w);
   }
 
   size_t evict_frame_unlocked() {
@@ -80,6 +140,7 @@ struct DramWindow {
       size_t i = clock_hand % n_frames;
       clock_hand++;
       if (frame_pinned[i]) continue;
+      if (frame_soft_ttl[i] > 0) continue;
       uint64_t key = frame_key[i];
       if (key == UINT64_MAX) return i;
       map.erase(key);
@@ -87,18 +148,24 @@ struct DramWindow {
       if (metrics) metrics->evicts++;
       return i;
     }
-    // All frames pinned or full of pins — fall back to any free, else frame 0.
+    // All frames hard/soft pinned — evict smallest soft-ttl (or free).
+    size_t best = n_frames;
+    uint16_t best_ttl = UINT16_MAX;
     for (size_t i = 0; i < n_frames; ++i) {
       if (frame_key[i] == UINT64_MAX) return i;
-    }
-    for (size_t i = 0; i < n_frames; ++i) {
-      if (!frame_pinned[i]) {
-        uint64_t key = frame_key[i];
-        if (key != UINT64_MAX) map.erase(key);
-        frame_key[i] = UINT64_MAX;
-        if (metrics) metrics->evicts++;
-        return i;
+      if (frame_pinned[i]) continue;
+      if (frame_soft_ttl[i] < best_ttl) {
+        best_ttl = frame_soft_ttl[i];
+        best = i;
       }
+    }
+    if (best < n_frames) {
+      uint64_t key = frame_key[best];
+      if (key != UINT64_MAX) map.erase(key);
+      frame_key[best] = UINT64_MAX;
+      clear_soft_ttl_unlocked(best);
+      if (metrics) metrics->evicts++;
+      return best;
     }
     return 0;
   }
@@ -134,6 +201,7 @@ struct DramWindow {
     }
     frame_key[frame] = page_off;
     frame_pinned[frame] = 0;
+    clear_soft_ttl_unlocked(frame);
     map[page_off] = frame;
     if (pin && pin_bytes_used + page_bytes <= pin_bytes_cap) {
       frame_pinned[frame] = 1;
@@ -279,11 +347,14 @@ struct DramWindow {
 
   // Install one full SSD page already fetched into host (CXL-SSD→host done by caller).
   // Search thread only: host → CXL-DRAM window.
-  void install_full_page(uint64_t page_off, const uint8_t* host_page) {
+  // soft_ttl>0: resist eviction for that many expands (soft-pin; respects soft_pin_bytes_cap).
+  void install_full_page(uint64_t page_off, const uint8_t* host_page, uint16_t soft_ttl = 0) {
     std::lock_guard<std::mutex> g(mu);
     if (!host_page) return;
-    if (map.count(page_off)) {
+    auto it = map.find(page_off);
+    if (it != map.end()) {
       if (metrics) metrics->dram_hits++;
+      set_soft_ttl_unlocked(it->second, soft_ttl);
       return;
     }
     auto t0 = std::chrono::steady_clock::now();
@@ -298,7 +369,9 @@ struct DramWindow {
     std::memcpy(arena + frame * page_bytes, host_page, page_bytes);
     frame_key[frame] = page_off;
     frame_pinned[frame] = 0;
+    clear_soft_ttl_unlocked(frame);
     map[page_off] = frame;
+    set_soft_ttl_unlocked(frame, soft_ttl);
     auto t1 = std::chrono::steady_clock::now();
     if (metrics) {
       metrics->ssd_misses++;

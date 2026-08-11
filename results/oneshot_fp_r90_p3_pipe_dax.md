@@ -1,33 +1,32 @@
-# P3v2 smart-install + install_top/W sweep
+# P3v2 smart-install + soft-pin
 
-**Change:** install pages ranked by utility = likely-next-expand boost + inverse distance + page cover; cap `--install-top` pages/hop (not top-T ids blindly).
+## Git
 
-## Setup
+Pushed to `kexinchu/CXL-ANNS-KX` (`main`). Soft-pin follow-up on top of P3v2 pool commit.
 
-L=300, k=10, nq=100, seed=42, pin-entry, no flush, DAX 1 GiB, oneshot FP, budget=64 MiB, `ram_size_gib=28`.
+## Soft-pin
 
-## Sweep (all `dist=643533`, recall=0.929)
+Installed utility-ranked pages get a hop TTL and resist clock eviction (`soft_pin_bytes_cap` ≤256 MiB). `tick_soft_pins` is O(#soft-pins), not O(frames).
 
-| Config | QPS | hit% | mean ms |
-|--------|-----|------|---------|
-| P0 | 1.45 | 10.47 | 689 |
-| **P3 W=4 install_top=4** | **12.65** | **22.41** | **79** |
-| P3 W=4 install_top=8 | 5.93 | 19.42 | 169 |
-| P3 W=4 install_top=12 | 3.76 | 16.99 | 266 |
-| P3 W=4 install_top=16 | 2.98 | 14.99 | 336 |
-| P3 W=8 install_top=4 | 10.87 | 22.41 | 92 |
-| P3 W=8 install_top=8 | 5.78 | 19.36 | 173 |
+## Results (L=300, nq=100, seed=42, budget=64 MiB, W=4)
 
-Prior pool+pipeline (distance top-8 ids): ~4.23 QPS, ~16.2% hit.
+| Config | QPS | hit% | recall | notes |
+|--------|-----|------|--------|-------|
+| P0 | 1.44 | 10.47 | 0.929 | |
+| **P3 install_top=4 + soft-pin** | **13.70** | **22.41** | **0.929** | evicts=0 |
+| P3 install_top=8 + soft-pin | 6.38 | 19.41 | 0.929 | |
+| Prior P3 install_top=4 (no soft-pin) | ~12.65 | 22.41 | 0.929 | |
+
+`dist=643533` on all runs.
 
 ```
-CSV,P0,67108864,1073741824,100,300,0,1.45,688.819,751.469,966.771,1043.745,0.9290,10.47,105216,899476
-CSV,P3,67108864,1073741824,100,300,0,12.65,79.049,78.257,108.129,122.261,0.9290,22.41,43903,151982
-CSV,P3,67108864,1073741824,100,300,0,5.93,168.589,154.546,292.504,324.931,0.9290,19.42,64099,265906
+CSV,P0,67108864,1073741824,100,300,0,1.44,695.358,769.796,986.378,1076.602,0.9290,10.47,105216,899476
+CSV,P3,67108864,1073741824,100,300,0,13.70,73.001,72.152,99.293,112.293,0.9290,22.41,43903,151982
+CSV,P3,67108864,1073741824,100,300,0,6.38,156.809,143.665,278.534,341.396,0.9290,19.41,64016,265837
 ```
 
 ## Takeaways
 
-1. **Lean + smart beats fat install:** `install_top=4` raises both QPS and hit% vs 8/16 (extra installs inflate `ssd_misses` and evict useful frames).
-2. **W=4 ≥ W=8** here; more workers add little once pool is warm.
-3. **Defaults:** `--policy P3 --budget $((64<<20)) --pipe-w 4 --install-top 4`.
+1. At `install_top=4` the 1 GiB window never evicts — soft-pin cannot raise hit further; default remains lean install.
+2. Fixing full-frame soft-pin tick restored/improved QPS (~13.7 vs ~12.7).
+3. Next: **fetch_top** (fewer wasted SSD→host pages) while keeping iso-recall.
