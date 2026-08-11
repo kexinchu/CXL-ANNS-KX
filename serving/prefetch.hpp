@@ -7,6 +7,7 @@
 #include <cstring>
 #include <thread>
 #include <mutex>
+#include <condition_variable>
 #include <deque>
 #include <atomic>
 #include <vector>
@@ -22,41 +23,71 @@ struct Prefetch {
   uint32_t neighbor_k = 16;
   uint32_t lookahead_k = 8;  // prefetch nbrs of top-K unexpanded cands by distance
   bool pin_entry = true;
+  size_t async_q_cap = 4096;
 
-  std::deque<const uint8_t*> q;
+  struct Job {
+    const uint8_t* ptr = nullptr;
+    size_t len = 0;
+  };
+
+  std::deque<Job> q;
   std::mutex mu;
+  std::condition_variable cv;
   std::atomic<bool> stop{false};
   std::thread worker;
   Placement* pl = nullptr;
   DramWindow* win = nullptr;
   bool entry_pinned = false;
 
+  static size_t bytes_charge(size_t page_bytes, size_t len) {
+    if (len == 0) len = page_bytes;
+    // 3072B vectors often span 2 pages.
+    size_t n = (len + page_bytes - 1) / page_bytes;
+    if (len <= page_bytes && len > page_bytes / 2) n = 2;
+    if (n < 1) n = 1;
+    return n * page_bytes;
+  }
+
+  void enqueue(const uint8_t* ptr, size_t len) {
+    if (!ptr || !win) return;
+    size_t need = bytes_charge(win->page_bytes, len);
+    std::lock_guard<std::mutex> g(mu);
+    if (budget_left < need) return;
+    if (q.size() >= async_q_cap) return;
+    budget_left -= need;
+    q.push_back({ptr, len});
+    cv.notify_one();
+  }
+
   void start_async(Placement* p, DramWindow* w) {
     pl = p;
     win = w;
     stop = false;
     worker = std::thread([this] {
-      while (!stop.load()) {
-        const uint8_t* ptr = nullptr;
+      while (true) {
+        Job job;
         {
-          std::lock_guard<std::mutex> g(mu);
-          if (!q.empty()) {
-            ptr = q.front();
-            q.pop_front();
-          }
+          std::unique_lock<std::mutex> g(mu);
+          cv.wait_for(g, std::chrono::milliseconds(1),
+                      [&] { return stop.load() || !q.empty(); });
+          if (stop.load() && q.empty()) break;
+          if (q.empty()) continue;
+          job = q.front();
+          q.pop_front();
         }
-        if (!ptr) {
-          std::this_thread::sleep_for(std::chrono::microseconds(50));
-          continue;
-        }
-        size_t b = win->page_bytes;
-        win->try_prefetch(pl->ssd_base, ptr, &b);
+        if (!job.ptr || !win || !pl) continue;
+        size_t b = SIZE_MAX / 4;
+        win->try_prefetch(pl->ssd_base, job.ptr, &b, job.len ? job.len : win->page_bytes);
       }
     });
   }
 
   void stop_async() {
-    stop = true;
+    {
+      std::lock_guard<std::mutex> g(mu);
+      stop = true;
+    }
+    cv.notify_all();
     if (worker.joinable()) worker.join();
   }
 
@@ -66,10 +97,8 @@ struct Prefetch {
     if (!pin_entry || entry_pinned) return;
     size_t vb = (size_t)p.hdr->dim * p.hdr->vec_bytes;
     size_t nb = (size_t)p.hdr->R * 4;
-    // Always pin medoid/start vector + adjacency.
     w.pin(p.ssd_base, p.vec(start_id), vb);
     w.pin(p.ssd_base, reinterpret_cast<const uint8_t*>(p.nbrs(start_id)), nb);
-    // Pin adjacency of entry subgraph (small); vectors only for a prefix to stay in pin cap.
     uint32_t vec_pin_lim = 256;
     for (size_t i = 0; i < entry_ids.size(); ++i) {
       uint32_t id = entry_ids[i];
@@ -84,15 +113,17 @@ struct Prefetch {
     budget_left = budget_per_query;
     pin_entry_hot(p, w, entry_ids, start_id);
     if (policy == PrefetchPolicy::P0) return;
-    // Budget-warm a few entry vectors beyond pins.
+    size_t vb = (size_t)p.hdr->dim * p.hdr->vec_bytes;
     for (uint32_t id : entry_ids) {
       if (budget_left < w.page_bytes) break;
-      w.try_prefetch(p.ssd_base, p.vec(id), &budget_left,
-                     (size_t)p.hdr->dim * p.hdr->vec_bytes);
+      if (policy == PrefetchPolicy::P2) {
+        enqueue(p.vec(id), vb);
+      } else {
+        w.try_prefetch(p.ssd_base, p.vec(id), &budget_left, vb);
+      }
     }
   }
 
-  // Legacy: prefetch first neighbor_k nbr vectors of `node` (no distance order).
   void on_expand(Placement& p, DramWindow& w, uint32_t node) {
     if (policy == PrefetchPolicy::P0) return;
     const uint32_t* nbr_ptr = reinterpret_cast<const uint32_t*>(
@@ -102,16 +133,15 @@ struct Prefetch {
     uint32_t nbr_local[64];
     if (lim > 64) lim = 64;
     std::memcpy(nbr_local, nbr_ptr, lim * sizeof(uint32_t));
+    size_t vb = (size_t)p.hdr->dim * p.hdr->vec_bytes;
     for (uint32_t i = 0; i < lim; ++i) {
       uint32_t nb = nbr_local[i];
       if (nb >= p.hdr->n) continue;
       if (policy == PrefetchPolicy::P2) {
-        std::lock_guard<std::mutex> g(mu);
-        if (q.size() < 1024) q.push_back(p.vec(nb));
+        enqueue(p.vec(nb), vb);
       } else {
         if (budget_left < w.page_bytes) return;
-        w.try_prefetch(p.ssd_base, p.vec(nb), &budget_left,
-                       (size_t)p.hdr->dim * p.hdr->vec_bytes);
+        w.try_prefetch(p.ssd_base, p.vec(nb), &budget_left, vb);
       }
     }
   }
@@ -122,6 +152,8 @@ struct Prefetch {
   };
 
   // Prefetch neighbor vectors of the closest unexpanded candidates first.
+  // P2: enqueue to async worker (search thread only reads nbr lists).
+  // P1: synchronous try_prefetch.
   void prefetch_by_cand_distance(Placement& p, DramWindow& w,
                                  const std::vector<CandDist>& unexp,
                                  const std::unordered_set<uint32_t>& seen) {
@@ -143,15 +175,13 @@ struct Prefetch {
       uint32_t nbr_local[64];
       if (R > 64) R = 64;
       std::memcpy(nbr_local, nbr_ptr, R * sizeof(uint32_t));
-      // Prefer first neighbor_k edges (graph order); still gated by cand priority.
       uint32_t lim = neighbor_k < R ? neighbor_k : R;
       for (uint32_t j = 0; j < lim; ++j) {
         uint32_t nb = nbr_local[j];
         if (nb >= p.hdr->n || seen.count(nb)) continue;
         if (budget_left < w.page_bytes) return;
         if (policy == PrefetchPolicy::P2) {
-          std::lock_guard<std::mutex> g(mu);
-          if (q.size() < 1024) q.push_back(p.vec(nb));
+          enqueue(p.vec(nb), vb);
         } else {
           w.try_prefetch(p.ssd_base, p.vec(nb), &budget_left, vb);
         }

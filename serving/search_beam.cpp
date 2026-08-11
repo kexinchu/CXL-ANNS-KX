@@ -68,15 +68,40 @@ static void* map_vmem_ro(const char* dev, off_t offset, size_t len) {
   return p;
 }
 
-static void* map_dram(size_t bytes) {
+// CXL-DRAM window via devdax (true Type-3 byte-addressable memory).
+// Prefer this over anonymous+mbind(node1), which can land on local socket DRAM.
+static void* map_dram_dax(const char* dax_dev, off_t offset, size_t bytes) {
+  if (!dax_dev || !dax_dev[0]) die("dax_dev");
+  if (bytes == 0) die("dax bytes");
+  if ((offset & 4095) || (bytes & 4095)) {
+    fprintf(stderr, "dax offset/len must be 4KiB-aligned (off=%lld len=%zu)\n",
+            (long long)offset, bytes);
+    std::exit(2);
+  }
+  int fd = open(dax_dev, O_RDWR);
+  if (fd < 0) die("open dax");
+  void* p = mmap(nullptr, bytes, PROT_READ | PROT_WRITE, MAP_SHARED, fd, offset);
+  if (p == MAP_FAILED) die("mmap dax");
+  close(fd);
+  // Fault-in window pages so first promote is not conflated with DAX fault cost.
+  auto* b = static_cast<volatile char*>(p);
+  for (size_t off = 0; off < bytes; off += 2 * 1024 * 1024) b[off] = 0;
+  printf("mapped CXL-DRAM dax %s off=%lld len=%zu\n", dax_dev, (long long)offset, bytes);
+  return p;
+}
+
+// Legacy fallback: anonymous pages bound to a NUMA node (may be local DRAM).
+static void* map_dram_numa(size_t bytes, unsigned numa_node) {
   void* p = mmap(nullptr, bytes, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, -1, 0);
-  if (p == MAP_FAILED) die("mmap dram");
-  unsigned long nodemask = 1UL << 1;
+  if (p == MAP_FAILED) die("mmap dram anon");
+  unsigned long nodemask = 1UL << numa_node;
   if (mbind(p, bytes, MPOL_BIND, &nodemask, sizeof(nodemask) * 8,
             MPOL_MF_MOVE | MPOL_MF_STRICT) != 0)
     perror("mbind warn");
   auto* b = static_cast<volatile char*>(p);
   for (size_t off = 0; off < bytes; off += 2 * 1024 * 1024) b[off] = 0;
+  printf("mapped DRAM window anon+mbind node=%u len=%zu (fallback; not DAX)\n", numa_node,
+         bytes);
   return p;
 }
 
@@ -367,14 +392,20 @@ int main(int argc, char** argv) {
   const char* queries = nullptr;
   const char* gt_path = nullptr;
   const char* vmem_dev = nullptr;
+  const char* dax_dev = getenv("CXAN_DAX_DEV") ? getenv("CXAN_DAX_DEV") : "/dev/dax0.0";
   off_t vmem_off = -1;
+  off_t dax_off = getenv("CXAN_DAX_OFFSET") ? (off_t)strtoull(getenv("CXAN_DAX_OFFSET"), nullptr, 10)
+                                            : 0;
   size_t vmem_len = 0;
   std::string policy_s = "P0";
+  std::string dram_backend = getenv("CXAN_DRAM_BACKEND") ? getenv("CXAN_DRAM_BACKEND") : "dax";
+  // dax | numa
   size_t budget = 256 * 1024;
   size_t dram_bytes = getenv("CXAN_DRAM_BYTES")
                           ? strtoull(getenv("CXAN_DRAM_BYTES"), nullptr, 10)
                           : (1ull << 30);
   uint32_t beam = 32, k = 10, iters = 64;
+  unsigned dram_numa = getenv("CXAN_DRAM_NODE") ? (unsigned)atoi(getenv("CXAN_DRAM_NODE")) : 1;
   bool rerank = false;
   bool oneshot_fp = false;  // one-shot FP MIPS (no PQ / no re-rank stage)
   bool flush_window = false;
@@ -396,6 +427,10 @@ int main(int argc, char** argv) {
     else if (a == "--vmem-dev") vmem_dev = need(a.c_str());
     else if (a == "--vmem-offset") vmem_off = (off_t)strtoull(need(a.c_str()), nullptr, 10);
     else if (a == "--vmem-len") vmem_len = strtoull(need(a.c_str()), nullptr, 10);
+    else if (a == "--dax-dev") dax_dev = need(a.c_str());
+    else if (a == "--dax-offset") dax_off = (off_t)strtoull(need(a.c_str()), nullptr, 10);
+    else if (a == "--dram-backend") dram_backend = need(a.c_str());
+    else if (a == "--dram-numa") dram_numa = (unsigned)atoi(need(a.c_str()));
     else if (a == "--policy") policy_s = need(a.c_str());
     else if (a == "--budget") budget = strtoull(need(a.c_str()), nullptr, 10);
     else if (a == "--dram-bytes") dram_bytes = strtoull(need(a.c_str()), nullptr, 10);
@@ -421,13 +456,19 @@ int main(int argc, char** argv) {
     return 2;
   }
   if ((!image && !vmem_dev) || !entry || !queries) {
-    fprintf(stderr, "need (--image FILE | --vmem-dev DEV --vmem-offset OFF --vmem-len LEN) "
-                    "--entry --queries [--gt]\n"
-                    "optional: --oneshot-fp --shuffle-seed N --flush-window --max-q M\n");
+    fprintf(stderr,
+            "need (--image FILE | --vmem-dev DEV --vmem-offset OFF --vmem-len LEN) "
+            "--entry --queries [--gt]\n"
+            "dram window: --dram-backend dax|numa [--dax-dev /dev/dax0.0] [--dax-offset N]\n"
+            "optional: --oneshot-fp --shuffle-seed N --flush-window --max-q M\n");
     return 2;
   }
-  if (numa_available() < 0) {
-    fprintf(stderr, "numa required\n");
+  if (dram_backend != "dax" && dram_backend != "numa") {
+    fprintf(stderr, "bad --dram-backend %s (want dax|numa)\n", dram_backend.c_str());
+    return 2;
+  }
+  if (dram_backend == "numa" && numa_available() < 0) {
+    fprintf(stderr, "numa required for --dram-backend numa\n");
     return 2;
   }
 
@@ -456,7 +497,12 @@ int main(int argc, char** argv) {
   pl.ssd_bytes = img_len;
 
   Metrics metrics;
-  void* dram = map_dram(dram_bytes);
+  void* dram = nullptr;
+  if (dram_backend == "dax") {
+    dram = map_dram_dax(dax_dev, dax_off, dram_bytes);
+  } else {
+    dram = map_dram_numa(dram_bytes, dram_numa);
+  }
   DramWindow win;
   win.init(dram, dram_bytes, &metrics);
 
