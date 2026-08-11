@@ -16,20 +16,27 @@ RAM_GIB=28
 CACHE_GIB=4
 STRIPE_MIB=2
 
-# Resolve namespace by BDF
+# Resolve namespace by BDF (name may be nvmeXn1 or nvmeXn2 after renumber).
 NVME_NS=""
-for d in /sys/block/nvme*n1; do
+NVME_CHAR=""
+for d in /sys/block/nvme*n*; do
+  [[ -e "$d/size" ]] || continue
   pci=$(readlink -f "$d/device/device" 2>/dev/null || true)
   [[ "$(basename "$pci")" == "$BDF" ]] || continue
+  BYTES_CAND=$(($(cat "$d/size") * 512))
+  [[ "$BYTES_CAND" == "$EXPECTED_SIZE" ]] || continue
   NVME_NS="/dev/$(basename "$d")"
+  # Controller chardev (namespace name index may not match ctrl index).
+  ctrl=$(basename "$(readlink -f "$d/device")")
+  NVME_CHAR="/dev/$ctrl"
   break
 done
-[[ -n "$NVME_NS" ]] || { echo "FAIL: no nvme namespace for $BDF"; exit 1; }
+[[ -n "$NVME_NS" ]] || { echo "FAIL: no nvme namespace for $BDF size=$EXPECTED_SIZE"; exit 1; }
 
-SN=$(nvme id-ctrl "${NVME_NS%n1}" 2>/dev/null | awk '/^sn /{print $3}')
+SN=$(nvme id-ctrl "$NVME_CHAR" 2>/dev/null | awk '/^sn /{print $3}')
 BYTES=$(($(cat /sys/block/$(basename "$NVME_NS")/size) * 512))
-echo "found $NVME_NS sn=$SN bytes=$BYTES"
-[[ "$SN" == "$EXPECTED_SN" ]] || { echo "FAIL: serial mismatch"; exit 1; }
+echo "found $NVME_NS ctrl=$NVME_CHAR sn=$SN bytes=$BYTES"
+[[ "$SN" == "$EXPECTED_SN" ]] || { echo "FAIL: serial mismatch (got '$SN')"; exit 1; }
 [[ "$BYTES" == "$EXPECTED_SIZE" ]] || { echo "FAIL: size mismatch"; exit 1; }
 
 # Build for running kernel if needed

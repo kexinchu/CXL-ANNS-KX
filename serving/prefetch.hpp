@@ -24,6 +24,8 @@ struct Prefetch {
   uint32_t lookahead_k = 8;  // prefetch nbrs of top-K unexpanded cands by distance
   bool pin_entry = true;
   size_t async_q_cap = 4096;
+  uint32_t pipe_w = 4;  // P3 outstanding staging width
+  uint32_t install_top = 4;  // P3: max host pages/hop queued for DAX install
 
   struct Job {
     const uint8_t* ptr = nullptr;
@@ -55,6 +57,15 @@ struct Prefetch {
     if (budget_left < need) return;
     if (q.size() >= async_q_cap) return;
     budget_left -= need;
+    q.push_back({ptr, len});
+    cv.notify_one();
+  }
+
+  // Critical-path I/O (e.g. pending nbrs of expanded node): ignore budget, keep queue bound.
+  void enqueue_force(const uint8_t* ptr, size_t len) {
+    if (!ptr || !win) return;
+    std::lock_guard<std::mutex> g(mu);
+    if (q.size() >= async_q_cap) return;
     q.push_back({ptr, len});
     cv.notify_one();
   }
@@ -112,15 +123,13 @@ struct Prefetch {
                       uint32_t start_id) {
     budget_left = budget_per_query;
     pin_entry_hot(p, w, entry_ids, start_id);
-    if (policy == PrefetchPolicy::P0) return;
+    // P0: demand only. P3: hop pipeline owns budget (no entry try_prefetch).
+    if (policy == PrefetchPolicy::P0 || policy == PrefetchPolicy::P3) return;
     size_t vb = (size_t)p.hdr->dim * p.hdr->vec_bytes;
     for (uint32_t id : entry_ids) {
       if (budget_left < w.page_bytes) break;
-      if (policy == PrefetchPolicy::P2) {
-        enqueue(p.vec(id), vb);
-      } else {
-        w.try_prefetch(p.ssd_base, p.vec(id), &budget_left, vb);
-      }
+      // P1/P2v2: cooperative single-threaded entry warm.
+      w.try_prefetch(p.ssd_base, p.vec(id), &budget_left, vb);
     }
   }
 
@@ -137,12 +146,8 @@ struct Prefetch {
     for (uint32_t i = 0; i < lim; ++i) {
       uint32_t nb = nbr_local[i];
       if (nb >= p.hdr->n) continue;
-      if (policy == PrefetchPolicy::P2) {
-        enqueue(p.vec(nb), vb);
-      } else {
-        if (budget_left < w.page_bytes) return;
-        w.try_prefetch(p.ssd_base, p.vec(nb), &budget_left, vb);
-      }
+      if (budget_left < w.page_bytes) return;
+      w.try_prefetch(p.ssd_base, p.vec(nb), &budget_left, vb);
     }
   }
 
@@ -152,39 +157,43 @@ struct Prefetch {
   };
 
   // Prefetch neighbor vectors of the closest unexpanded candidates first.
-  // P2: enqueue to async worker (search thread only reads nbr lists).
-  // P1: synchronous try_prefetch.
+  // exclude_id: skip this node (e.g. current expand) so I/O targets future hops.
+  // P1/P2v2: synchronous try_prefetch (P2v2 uses this only for non-cur lookahead).
   void prefetch_by_cand_distance(Placement& p, DramWindow& w,
                                  const std::vector<CandDist>& unexp,
-                                 const std::unordered_set<uint32_t>& seen) {
+                                 const std::unordered_set<uint32_t>& seen,
+                                 uint32_t exclude_id = UINT32_MAX) {
     if (policy == PrefetchPolicy::P0 || unexp.empty()) return;
-    std::vector<CandDist> order = unexp;
+    std::vector<CandDist> order;
+    order.reserve(unexp.size());
+    for (const auto& c : unexp) {
+      if (c.id == exclude_id) continue;
+      order.push_back(c);
+    }
+    if (order.empty()) return;
     std::sort(order.begin(), order.end(),
               [](const CandDist& a, const CandDist& b) { return a.dist < b.dist; });
     uint32_t lim_nodes = lookahead_k < (uint32_t)order.size() ? lookahead_k
                                                               : (uint32_t)order.size();
     size_t vb = (size_t)p.hdr->dim * p.hdr->vec_bytes;
-    size_t nb_bytes = (size_t)p.hdr->R * 4;
     for (uint32_t i = 0; i < lim_nodes; ++i) {
       if (budget_left < w.page_bytes) return;
       uint32_t node = order[i].id;
-      const uint32_t* nbr_ptr = reinterpret_cast<const uint32_t*>(
-          w.lookup_or_promote(p.ssd_base, reinterpret_cast<const uint8_t*>(p.nbrs(node)),
-                              nb_bytes));
-      uint32_t R = p.hdr->R;
       uint32_t nbr_local[64];
+      uint32_t R = p.hdr->R;
       if (R > 64) R = 64;
-      std::memcpy(nbr_local, nbr_ptr, R * sizeof(uint32_t));
+      {
+        alignas(64) uint8_t nbuf[64 * 4];
+        w.copy_through(p.ssd_base, reinterpret_cast<const uint8_t*>(p.nbrs(node)),
+                       (size_t)R * 4, nbuf);
+        std::memcpy(nbr_local, nbuf, (size_t)R * 4);
+      }
       uint32_t lim = neighbor_k < R ? neighbor_k : R;
       for (uint32_t j = 0; j < lim; ++j) {
         uint32_t nb = nbr_local[j];
         if (nb >= p.hdr->n || seen.count(nb)) continue;
         if (budget_left < w.page_bytes) return;
-        if (policy == PrefetchPolicy::P2) {
-          enqueue(p.vec(nb), vb);
-        } else {
-          w.try_prefetch(p.ssd_base, p.vec(nb), &budget_left, vb);
-        }
+        w.try_prefetch(p.ssd_base, p.vec(nb), &budget_left, vb);
       }
     }
   }

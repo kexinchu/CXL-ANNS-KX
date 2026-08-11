@@ -11,20 +11,27 @@
 #include "serving/dram_window.hpp"
 #include "serving/placement.hpp"
 #include "serving/prefetch.hpp"
+#include "serving/promote_pipe.hpp"
+#include "serving/page_copy_pool.hpp"
 #include "serving/metrics.hpp"
 
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <deque>
 #include <fstream>
+#include <memory>
 #include <numeric>
 #include <queue>
 #include <random>
 #include <string>
+#include <thread>
+#include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
@@ -191,14 +198,18 @@ struct Cand {
 
 // One-shot FP ANNS (DiskANN/Vamana greedy): candidate list size L=beam,
 // expand closest unexpanded up to `iters` times. All vector reads via DramWindow.
+// P2 uses expand/score decoupling (P2v2): discover nbrs into pending, score when resident;
+// lookahead sync-prefetches non-cur future hops (no second thread on DAX).
+// lookahead prefetches future candidates only (excludes current expand).
 static std::vector<uint32_t> search_one_fp(Placement& pl, DramWindow& win, Prefetch& pref,
-                                           const EntryGraph& eg, const float* qf, uint32_t beam,
-                                           uint32_t k, uint32_t iters) {
+                                           PromotePipe* pipe, const EntryGraph& eg,
+                                           const float* qf, uint32_t beam, uint32_t k,
+                                           uint32_t iters) {
   pref.on_query_begin(pl, win, eg.nodes, eg.entry_id);
 
+  const size_t vb = (size_t)pl.hdr->dim * pl.hdr->vec_bytes;
   auto get_vec = [&](uint32_t id) {
-    return win.lookup_or_promote(pl.ssd_base, pl.vec(id),
-                                 (size_t)pl.hdr->dim * pl.hdr->vec_bytes);
+    return win.lookup_or_promote(pl.ssd_base, pl.vec(id), vb);
   };
   auto get_nbr = [&](uint32_t id) {
     const uint8_t* s = reinterpret_cast<const uint8_t*>(pl.nbrs(id));
@@ -209,8 +220,8 @@ static std::vector<uint32_t> search_one_fp(Placement& pl, DramWindow& win, Prefe
   const uint32_t L = beam ? beam : k;
   std::vector<Cand> cand;
   cand.reserve(L + pl.hdr->R + 8);
-  std::unordered_set<uint32_t> seen;     // scored at least once (never re-score)
-  std::unordered_set<uint32_t> expanded; // neighborhood already expanded
+  std::unordered_set<uint32_t> seen;
+  std::unordered_set<uint32_t> expanded;
 
   auto insert_cand = [&](uint32_t id, float d) {
     if (cand.size() >= L) {
@@ -223,15 +234,431 @@ static std::vector<uint32_t> search_one_fp(Placement& pl, DramWindow& win, Prefe
     }
   };
 
-  {
-    const uint8_t* raw = get_vec(eg.entry_id);
-    float d = vec_mips_neg(raw, qf, pl.hdr->dim, pl.hdr->vec_bytes);
+  auto score_id = [&](uint32_t id) {
+    alignas(64) uint8_t buf[4096];
+    if (vb > sizeof(buf)) {
+      fprintf(stderr, "vec too large for score buf\n");
+      std::exit(2);
+    }
+    win.copy_through(pl.ssd_base, pl.vec(id), vb, buf);
+    float d = vec_mips_neg(buf, qf, pl.hdr->dim, pl.hdr->vec_bytes);
     if (win.metrics) win.metrics->distance_comps++;
+    insert_cand(id, d);
+  };
+
+  {
     seen.insert(eg.entry_id);
-    insert_cand(eg.entry_id, d);
+    score_id(eg.entry_id);
   }
 
-  // iters==0 → run to DiskANN fixed point (expand until no unexpanded in L).
+  // ---- P3v2: persistent page pool + score∥install pipeline ----
+  // Workers: SSD→host only. Search: score as pages land; DAX install overlapped with
+  // the next hop's fetches. Install prefers pages of likely-next expands + high cover.
+  if (pref.policy == PrefetchPolicy::P3) {
+    const uint32_t W = pref.pipe_w ? pref.pipe_w : 4;
+    const uint32_t install_top = pref.install_top ? pref.install_top : 8;
+    uint32_t expands = 0;
+    const size_t pb = win.page_bytes;
+
+    PageCopyPool pool;
+    pool.start(W);
+
+    struct PendingInstall {
+      uint64_t page_off = 0;
+      std::vector<uint8_t> data;
+    };
+    std::deque<PendingInstall> pending_install;
+
+    auto drain_installs = [&](size_t max_n) {
+      size_t n = 0;
+      while (n < max_n && !pending_install.empty()) {
+        auto& pi = pending_install.front();
+        win.install_full_page(pi.page_off, pi.data.data());
+        pending_install.pop_front();
+        ++n;
+      }
+      return n;
+    };
+
+    auto hop_parallel_score = [&](std::vector<uint32_t>& ids) {
+      if (ids.empty()) {
+        drain_installs(pending_install.size());
+        return;
+      }
+
+      // Opportunistically drain prior installs before submitting this hop's fetches.
+      if (!pending_install.empty()) drain_installs(std::min(pending_install.size(), (size_t)4));
+
+      std::unordered_map<uint32_t, std::vector<uint64_t>> id_pages;
+      id_pages.reserve(ids.size() * 2);
+      std::vector<uint64_t> pages;
+      pages.reserve(ids.size() * 2);
+      std::unordered_set<uint64_t> page_set;
+      page_set.reserve(ids.size() * 4);
+
+      for (uint32_t id : ids) {
+        if (win.is_resident(pl.ssd_base, pl.vec(id), vb)) continue;
+        uint64_t off = (uint64_t)(pl.vec(id) - pl.ssd_base);
+        uint64_t end = off + vb;
+        uint64_t first = off & ~(uint64_t)(pb - 1);
+        uint64_t last = (end - 1) & ~(uint64_t)(pb - 1);
+        auto& ips = id_pages[id];
+        for (uint64_t p = first; p <= last; p += pb) {
+          ips.push_back(p);
+          if (page_set.insert(p).second) pages.push_back(p);
+        }
+      }
+
+      std::vector<uint64_t> fetch;
+      fetch.reserve(pages.size());
+      std::unordered_set<uint64_t> fetch_set;
+      for (uint64_t p : pages) {
+        if (pref.budget_left < pb) break;
+        if (win.is_resident(pl.ssd_base, pl.ssd_base + p, 1)) continue;
+        fetch.push_back(p);
+        fetch_set.insert(p);
+        pref.budget_left -= pb;
+      }
+
+      std::unordered_map<uint64_t, size_t> page_idx;
+      std::vector<std::vector<uint8_t>> host;
+      std::unique_ptr<std::atomic<uint8_t>[]> ready;
+      std::vector<uint8_t> consumed;  // observed ready by search thread
+      if (!fetch.empty()) {
+        host.resize(fetch.size());
+        ready.reset(new std::atomic<uint8_t>[fetch.size()]);
+        consumed.assign(fetch.size(), 0);
+        for (size_t i = 0; i < fetch.size(); ++i) {
+          host[i].resize(pb);
+          page_idx[fetch[i]] = i;
+          ready[i].store(0, std::memory_order_relaxed);
+          pool.submit(pl.ssd_base + fetch[i], host[i].data(), pb, &ready[i]);
+        }
+      }
+
+      std::unordered_set<uint64_t> host_ready;
+      host_ready.reserve(fetch.size() * 2);
+      std::vector<Cand> scored_local;
+      scored_local.reserve(ids.size());
+      std::unordered_set<uint32_t> done;
+      done.reserve(ids.size() * 2);
+
+      auto assemble_from_host = [&](uint32_t id, uint8_t* buf) -> bool {
+        auto it = id_pages.find(id);
+        if (it == id_pages.end()) return false;
+        for (uint64_t p : it->second) {
+          if (!fetch_set.count(p) && !win.is_resident(pl.ssd_base, pl.ssd_base + p, 1))
+            return false;
+          if (fetch_set.count(p) && !host_ready.count(p)) return false;
+        }
+        uint64_t off = (uint64_t)(pl.vec(id) - pl.ssd_base);
+        size_t copied = 0;
+        while (copied < vb) {
+          uint64_t cur = off + copied;
+          uint64_t po = cur & ~(uint64_t)(pb - 1);
+          size_t in_page = (size_t)(cur - po);
+          size_t n = std::min(vb - copied, pb - in_page);
+          auto pit = page_idx.find(po);
+          if (pit != page_idx.end() && host_ready.count(po)) {
+            std::memcpy(buf + copied, host[pit->second].data() + in_page, n);
+          } else {
+            win.copy_through(pl.ssd_base, pl.ssd_base + cur, n, buf + copied);
+          }
+          copied += n;
+        }
+        return true;
+      };
+
+      auto try_score_ready = [&]() {
+        for (uint32_t id : ids) {
+          if (done.count(id)) continue;
+          alignas(64) uint8_t buf[4096];
+          if (vb > sizeof(buf)) {
+            fprintf(stderr, "vec too large\n");
+            std::exit(2);
+          }
+          if (!assemble_from_host(id, buf)) continue;
+          float d = vec_mips_neg(buf, qf, pl.hdr->dim, pl.hdr->vec_bytes);
+          if (win.metrics) win.metrics->distance_comps++;
+          insert_cand(id, d);
+          scored_local.push_back({d, id});
+          done.insert(id);
+        }
+      };
+
+      // Score ids already fully in the window (no fetch needed).
+      for (uint32_t id : ids) {
+        if (id_pages.count(id)) continue;
+        score_id(id);
+        done.insert(id);
+        for (const auto& c : cand) {
+          if (c.id == id) {
+            scored_local.push_back(c);
+            break;
+          }
+        }
+      }
+
+      size_t ready_n = 0;
+      while (ready_n < fetch.size()) {
+        bool progress = false;
+        for (size_t i = 0; i < fetch.size(); ++i) {
+          if (consumed[i]) continue;
+          if (!ready[i].load(std::memory_order_acquire)) continue;
+          consumed[i] = 1;
+          host_ready.insert(fetch[i]);
+          ++ready_n;
+          progress = true;
+        }
+        if (progress) {
+          try_score_ready();
+        } else if (!pending_install.empty()) {
+          // Overlap prior-hop DAX install with in-flight SSD→host copies.
+          drain_installs(1);
+        } else {
+          std::this_thread::yield();
+        }
+      }
+      pool.wait_idle();
+      try_score_ready();
+
+      for (uint32_t id : ids) {
+        if (done.count(id)) continue;
+        score_id(id);
+        for (const auto& c : cand) {
+          if (c.id == id) {
+            scored_local.push_back(c);
+            break;
+          }
+        }
+      }
+
+      // Smart install: prefer pages of likely-next expands among this hop's host pages.
+      std::unordered_map<uint32_t, float> id_weight;
+      id_weight.reserve(ids.size() * 2);
+      for (const auto& c : scored_local) id_weight[c.id] = 1.f / (1.f + std::max(c.dist, 0.f));
+
+      std::vector<Cand> unexp;
+      unexp.reserve(cand.size());
+      for (const auto& c : cand) {
+        if (expanded.count(c.id)) continue;
+        unexp.push_back(c);
+      }
+      std::sort(unexp.begin(), unexp.end(),
+                [](const Cand& a, const Cand& b) { return a.dist < b.dist; });
+      const uint32_t next_n =
+          std::min<uint32_t>(install_top, (uint32_t)unexp.size());
+      for (uint32_t i = 0; i < next_n; ++i) {
+        // Only boost if this hop actually holds the id's pages in host.
+        if (!id_pages.count(unexp[i].id)) continue;
+        id_weight[unexp[i].id] += 1000.f - (float)i;
+      }
+
+      struct PageUtil {
+        uint64_t page;
+        float util;
+        size_t idx;
+      };
+      std::unordered_map<uint64_t, float> page_util;
+      page_util.reserve(page_idx.size() * 2);
+      for (uint32_t id : ids) {
+        auto it = id_pages.find(id);
+        if (it == id_pages.end()) continue;
+        float w = 1.f;
+        auto wit = id_weight.find(id);
+        if (wit != id_weight.end()) w = wit->second;
+        for (uint64_t p : it->second) {
+          if (!page_idx.count(p)) continue;
+          page_util[p] += w;
+        }
+      }
+
+      std::vector<PageUtil> ranked;
+      ranked.reserve(page_util.size());
+      for (const auto& kv : page_util) {
+        auto pit = page_idx.find(kv.first);
+        if (pit == page_idx.end()) continue;
+        if (host[pit->second].empty()) continue;
+        ranked.push_back({kv.first, kv.second, pit->second});
+      }
+      std::sort(ranked.begin(), ranked.end(), [](const PageUtil& a, const PageUtil& b) {
+        if (a.util != b.util) return a.util > b.util;
+        return a.page < b.page;
+      });
+
+      // Page cap ≈ old top-T id install volume; utility only reorders which pages.
+      const size_t max_pages = (size_t)install_top;
+      size_t queued_n = 0;
+      for (const auto& pu : ranked) {
+        if (queued_n >= max_pages) break;
+        if (host[pu.idx].empty()) continue;
+        PendingInstall pi;
+        pi.page_off = pu.page;
+        pi.data = std::move(host[pu.idx]);
+        pending_install.push_back(std::move(pi));
+        ++queued_n;
+      }
+    };
+
+    while (true) {
+      int best_i = -1;
+      float best_d = 0;
+      for (size_t i = 0; i < cand.size(); ++i) {
+        if (expanded.count(cand[i].id)) continue;
+        if (best_i < 0 || cand[i].dist < best_d) {
+          best_i = (int)i;
+          best_d = cand[i].dist;
+        }
+      }
+      if (best_i < 0) break;
+      if (iters != 0 && expands >= iters) break;
+
+      uint32_t cur = cand[(size_t)best_i].id;
+      expanded.insert(cur);
+      expands++;
+
+      uint32_t nbrs_local[64];
+      uint32_t R = pl.hdr->R;
+      if (R > 64) R = 64;
+      alignas(64) uint8_t nbuf[64 * 4];
+      win.copy_through(pl.ssd_base, reinterpret_cast<const uint8_t*>(pl.nbrs(cur)),
+                       (size_t)R * 4, nbuf);
+      std::memcpy(nbrs_local, nbuf, (size_t)R * 4);
+
+      std::vector<uint32_t> to_score;
+      to_score.reserve(R);
+      for (uint32_t j = 0; j < R; ++j) {
+        uint32_t nb = nbrs_local[j];
+        if (nb >= pl.hdr->n || seen.count(nb)) continue;
+        seen.insert(nb);
+        to_score.push_back(nb);
+      }
+      hop_parallel_score(to_score);
+    }
+
+    drain_installs(pending_install.size());
+    pool.stop_join();
+
+    std::sort(cand.begin(), cand.end(),
+              [](const Cand& a, const Cand& b) { return a.dist < b.dist; });
+    std::vector<uint32_t> out;
+    for (size_t i = 0; i < cand.size() && out.size() < k; ++i) out.push_back(cand[i].id);
+    return out;
+  }
+
+  // ---- P2v2: expand discovers edges; score when resident; lookahead ≠ cur ----
+  if (pref.policy == PrefetchPolicy::P2) {
+    std::deque<uint32_t> pending;
+    std::unordered_set<uint32_t> pending_set;
+    const size_t pending_cap = std::max<size_t>(256, (size_t)L * 2);
+    uint32_t expands = 0;
+
+    auto drain_ready = [&]() {
+      size_t n = pending.size();
+      for (size_t i = 0; i < n; ++i) {
+        uint32_t id = pending.front();
+        pending.pop_front();
+        if (win.is_resident(pl.ssd_base, pl.vec(id), vb)) {
+          pending_set.erase(id);
+          score_id(id);
+        } else {
+          pending.push_back(id);
+        }
+      }
+    };
+
+    auto force_one_pending = [&]() {
+      if (pending.empty()) return;
+      uint32_t id = pending.front();
+      pending.pop_front();
+      pending_set.erase(id);
+      score_id(id);
+    };
+
+    while (true) {
+      drain_ready();
+
+      int best_i = -1;
+      float best_d = 0;
+      for (size_t i = 0; i < cand.size(); ++i) {
+        if (expanded.count(cand[i].id)) continue;
+        if (best_i < 0 || cand[i].dist < best_d) {
+          best_i = (int)i;
+          best_d = cand[i].dist;
+        }
+      }
+
+      if (best_i < 0) {
+        // All current cand expanded; demand-score one pending so new frontier appears.
+        if (pending.empty()) break;
+        force_one_pending();
+        continue;
+      }
+
+      if (iters != 0 && expands >= iters) {
+        while (!pending.empty()) force_one_pending();
+        break;
+      }
+
+      uint32_t cur = cand[(size_t)best_i].id;
+      expanded.insert(cur);
+      expands++;
+
+      // Discover cur's nbrs into pending (do not score yet).
+      {
+        uint32_t nbrs_local[64];
+        uint32_t R = pl.hdr->R;
+        if (R > 64) R = 64;
+        alignas(64) uint8_t nbuf[64 * 4];
+        win.copy_through(pl.ssd_base, reinterpret_cast<const uint8_t*>(pl.nbrs(cur)),
+                         (size_t)R * 4, nbuf);
+        std::memcpy(nbrs_local, nbuf, (size_t)R * 4);
+        for (uint32_t j = 0; j < R; ++j) {
+          uint32_t nb = nbrs_local[j];
+          if (nb >= pl.hdr->n || seen.count(nb)) continue;
+          seen.insert(nb);
+          if (!pending_set.count(nb)) {
+            pending_set.insert(nb);
+            pending.push_back(nb);
+          }
+        }
+      }
+
+      // Lead time: sync-promote nbrs of *other* unexpanded candidates (exclude cur).
+      {
+        std::vector<Prefetch::CandDist> unexp;
+        unexp.reserve(cand.size());
+        for (auto& c : cand) {
+          if (!expanded.count(c.id)) unexp.push_back({c.dist, c.id});
+        }
+        pref.prefetch_by_cand_distance(pl, win, unexp, seen, cur);
+      }
+
+      // Score whatever became resident (often from prior hop lookahead).
+      drain_ready();
+      // Bound pending: demand-score oldest so search progresses.
+      while (pending.size() > pending_cap) force_one_pending();
+      // If frontier is stuck (no unexpanded left in cand), pull at least one pending.
+      {
+        bool any_unexp = false;
+        for (auto& c : cand) {
+          if (!expanded.count(c.id)) {
+            any_unexp = true;
+            break;
+          }
+        }
+        if (!any_unexp && !pending.empty()) force_one_pending();
+      }
+    }
+
+    std::sort(cand.begin(), cand.end(),
+              [](const Cand& a, const Cand& b) { return a.dist < b.dist; });
+    std::vector<uint32_t> out;
+    for (size_t i = 0; i < cand.size() && out.size() < k; ++i) out.push_back(cand[i].id);
+    return out;
+  }
+
+  // ---- P0 / P1: classic expand-then-score (P1 may sync-prefetch including cur) ----
   for (uint32_t it = 0; iters == 0 || it < iters; ++it) {
     int best_i = -1;
     float best_d = 0;
@@ -246,7 +673,6 @@ static std::vector<uint32_t> search_one_fp(Placement& pl, DramWindow& win, Prefe
     uint32_t cur = cand[(size_t)best_i].id;
     expanded.insert(cur);
 
-    // Distance-priority: prefetch nbr vectors of closest remaining candidates.
     {
       std::vector<Prefetch::CandDist> unexp;
       unexp.reserve(cand.size());
@@ -266,10 +692,7 @@ static std::vector<uint32_t> search_one_fp(Placement& pl, DramWindow& win, Prefe
       uint32_t nb = nbrs_local[j];
       if (nb >= pl.hdr->n || seen.count(nb)) continue;
       seen.insert(nb);
-      const uint8_t* raw = get_vec(nb);
-      float d = vec_mips_neg(raw, qf, pl.hdr->dim, pl.hdr->vec_bytes);
-      if (win.metrics) win.metrics->distance_comps++;
-      insert_cand(nb, d);
+      score_id(nb);
     }
   }
 
@@ -281,10 +704,10 @@ static std::vector<uint32_t> search_one_fp(Placement& pl, DramWindow& win, Prefe
 }
 
 static std::vector<uint32_t> search_one(Placement& pl, DramWindow& win, Prefetch& pref,
-                                        const EntryGraph& eg, const float* qf,
+                                        PromotePipe* pipe, const EntryGraph& eg, const float* qf,
                                         const uint8_t* qpq, uint32_t beam, uint32_t k,
                                         uint32_t iters, bool rerank, bool oneshot_fp) {
-  if (oneshot_fp) return search_one_fp(pl, win, pref, eg, qf, beam, k, iters);
+  if (oneshot_fp) return search_one_fp(pl, win, pref, pipe, eg, qf, beam, k, iters);
 
   pref.on_query_begin(pl, win, eg.nodes, eg.entry_id);
   std::vector<Cand> beam_v;
@@ -404,6 +827,8 @@ int main(int argc, char** argv) {
   size_t dram_bytes = getenv("CXAN_DRAM_BYTES")
                           ? strtoull(getenv("CXAN_DRAM_BYTES"), nullptr, 10)
                           : (1ull << 30);
+  uint32_t pipe_w = 4;
+  uint32_t install_top = 4;
   uint32_t beam = 32, k = 10, iters = 64;
   unsigned dram_numa = getenv("CXAN_DRAM_NODE") ? (unsigned)atoi(getenv("CXAN_DRAM_NODE")) : 1;
   bool rerank = false;
@@ -433,6 +858,8 @@ int main(int argc, char** argv) {
     else if (a == "--dram-numa") dram_numa = (unsigned)atoi(need(a.c_str()));
     else if (a == "--policy") policy_s = need(a.c_str());
     else if (a == "--budget") budget = strtoull(need(a.c_str()), nullptr, 10);
+    else if (a == "--pipe-w") pipe_w = (uint32_t)atoi(need(a.c_str()));
+    else if (a == "--install-top") install_top = (uint32_t)atoi(need(a.c_str()));
     else if (a == "--dram-bytes") dram_bytes = strtoull(need(a.c_str()), nullptr, 10);
     else if (a == "--beam") beam = (uint32_t)atoi(need(a.c_str()));
     else if (a == "--k") k = (uint32_t)atoi(need(a.c_str()));
@@ -510,7 +937,15 @@ int main(int argc, char** argv) {
   pref.policy = parse_policy(policy_s);
   pref.budget_per_query = budget;
   pref.pin_entry = pin_entry;
-  if (pref.policy == PrefetchPolicy::P2) pref.start_async(&pl, &win);
+  pref.pipe_w = pipe_w ? pipe_w : 4;
+  pref.install_top = install_top ? install_top : 8;
+  // P2v2 is cooperative single-threaded (DAX is not safe for concurrent promote).
+  if (false && pref.policy == PrefetchPolicy::P2) pref.start_async(&pl, &win);
+
+  if (pref.policy == PrefetchPolicy::P3) {
+    printf("P3v2 smart-install pool W=%u budget=%zu install_top=%u\n",
+           pref.pipe_w, budget, pref.install_top);
+  }
 
   EntryGraph eg = load_entry(entry);
   {
@@ -615,7 +1050,8 @@ int main(int argc, char** argv) {
       }
     }
     auto tq0 = std::chrono::steady_clock::now();
-    auto ids = search_one(pl, win, pref, eg, qf, qpq.data(), beam, k, iters, rerank, oneshot_fp);
+    auto ids = search_one(pl, win, pref, nullptr, eg, qf, qpq.data(), beam, k, iters, rerank,
+                          oneshot_fp);
     auto tq1 = std::chrono::steady_clock::now();
     lat_ms.push_back(std::chrono::duration<double, std::milli>(tq1 - tq0).count());
     if (gt_path) {
