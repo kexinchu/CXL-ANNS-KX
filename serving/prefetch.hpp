@@ -26,6 +26,7 @@ struct Prefetch {
   size_t async_q_cap = 4096;
   uint32_t pipe_w = 4;  // P3 outstanding staging width
   uint32_t install_top = 4;  // P3: max host pages/hop queued for DAX install
+  uint32_t fetch_top = 0;    // P3: max SSD→host pages/hop (0 = budget only)
 
   struct Job {
     const uint8_t* ptr = nullptr;

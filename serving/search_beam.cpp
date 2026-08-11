@@ -256,7 +256,8 @@ static std::vector<uint32_t> search_one_fp(Placement& pl, DramWindow& win, Prefe
   // the next hop's fetches. Install prefers pages of likely-next expands + high cover.
   if (pref.policy == PrefetchPolicy::P3) {
     const uint32_t W = pref.pipe_w ? pref.pipe_w : 4;
-    const uint32_t install_top = pref.install_top ? pref.install_top : 8;
+    const uint32_t install_top = pref.install_top ? pref.install_top : 4;
+    const uint32_t fetch_top = pref.fetch_top;  // 0 = no per-hop page cap
     uint32_t expands = 0;
     const size_t pb = win.page_bytes;
 
@@ -310,11 +311,30 @@ static std::vector<uint32_t> search_one_fp(Placement& pl, DramWindow& win, Prefe
         }
       }
 
+      // Rank miss pages by cover; optionally cap with fetch_top (rest → demand score).
+      std::unordered_map<uint64_t, uint32_t> cover;
+      cover.reserve(page_set.size() * 2);
+      for (uint32_t id : ids) {
+        auto it = id_pages.find(id);
+        if (it == id_pages.end()) continue;
+        for (uint64_t p : it->second) cover[p]++;
+      }
+      std::vector<std::pair<uint32_t, uint64_t>> ranked_fetch;
+      ranked_fetch.reserve(cover.size());
+      for (const auto& kv : cover) ranked_fetch.push_back({kv.second, kv.first});
+      std::sort(ranked_fetch.begin(), ranked_fetch.end(),
+                [](const auto& a, const auto& b) {
+                  if (a.first != b.first) return a.first > b.first;
+                  return a.second < b.second;
+                });
+
       std::vector<uint64_t> fetch;
-      fetch.reserve(pages.size());
+      fetch.reserve(ranked_fetch.size());
       std::unordered_set<uint64_t> fetch_set;
-      for (uint64_t p : pages) {
+      for (const auto& rf : ranked_fetch) {
         if (pref.budget_left < pb) break;
+        if (fetch_top && fetch.size() >= (size_t)fetch_top) break;
+        uint64_t p = rf.second;
         if (win.is_resident(pl.ssd_base, pl.ssd_base + p, 1)) continue;
         fetch.push_back(p);
         fetch_set.insert(p);
@@ -835,6 +855,7 @@ int main(int argc, char** argv) {
                           : (1ull << 30);
   uint32_t pipe_w = 4;
   uint32_t install_top = 4;
+  uint32_t fetch_top = 0;
   uint32_t beam = 32, k = 10, iters = 64;
   unsigned dram_numa = getenv("CXAN_DRAM_NODE") ? (unsigned)atoi(getenv("CXAN_DRAM_NODE")) : 1;
   bool rerank = false;
@@ -866,6 +887,7 @@ int main(int argc, char** argv) {
     else if (a == "--budget") budget = strtoull(need(a.c_str()), nullptr, 10);
     else if (a == "--pipe-w") pipe_w = (uint32_t)atoi(need(a.c_str()));
     else if (a == "--install-top") install_top = (uint32_t)atoi(need(a.c_str()));
+    else if (a == "--fetch-top") fetch_top = (uint32_t)atoi(need(a.c_str()));
     else if (a == "--dram-bytes") dram_bytes = strtoull(need(a.c_str()), nullptr, 10);
     else if (a == "--beam") beam = (uint32_t)atoi(need(a.c_str()));
     else if (a == "--k") k = (uint32_t)atoi(need(a.c_str()));
@@ -944,13 +966,14 @@ int main(int argc, char** argv) {
   pref.budget_per_query = budget;
   pref.pin_entry = pin_entry;
   pref.pipe_w = pipe_w ? pipe_w : 4;
-  pref.install_top = install_top ? install_top : 8;
+  pref.install_top = install_top ? install_top : 4;
+  pref.fetch_top = fetch_top;
   // P2v2 is cooperative single-threaded (DAX is not safe for concurrent promote).
   if (false && pref.policy == PrefetchPolicy::P2) pref.start_async(&pl, &win);
 
   if (pref.policy == PrefetchPolicy::P3) {
-    printf("P3v2 smart-install+softpin W=%u budget=%zu install_top=%u\n",
-           pref.pipe_w, budget, pref.install_top);
+    printf("P3v2 softpin W=%u budget=%zu install_top=%u fetch_top=%u\n",
+           pref.pipe_w, budget, pref.install_top, pref.fetch_top);
   }
 
   EntryGraph eg = load_entry(entry);
