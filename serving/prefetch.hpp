@@ -27,6 +27,7 @@ struct Prefetch {
   uint32_t pipe_w = 4;  // P3 outstanding staging width
   uint32_t install_top = 4;  // P3: max host pages/hop queued for DAX install
   uint32_t fetch_top = 0;    // P3: max SSD→host pages/hop (0 = budget only)
+  bool page_group_b = false; // B: install/soft-pin adjacent pages of a 2-page group
 
   struct Job {
     const uint8_t* ptr = nullptr;

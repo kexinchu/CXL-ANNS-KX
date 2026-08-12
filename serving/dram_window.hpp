@@ -17,6 +17,8 @@ struct DramWindow {
   uint8_t* arena = nullptr;
   size_t capacity = 0;
   size_t page_bytes = kPage;
+  bool soft_pin_neighbors = false;  // B: soft-pin ±1 page on install
+
   size_t n_frames = 0;
   Metrics* metrics = nullptr;
   std::mutex mu;
@@ -345,6 +347,15 @@ struct DramWindow {
     }
   }
 
+  // Refresh/add soft-pin on an already-resident page (no data copy).
+  void touch_soft_pin(uint64_t page_off, uint16_t soft_ttl) {
+    if (!soft_ttl) return;
+    std::lock_guard<std::mutex> g(mu);
+    auto it = map.find(page_off);
+    if (it == map.end()) return;
+    set_soft_ttl_unlocked(it->second, soft_ttl);
+  }
+
   // Install one full SSD page already fetched into host (CXL-SSD→host done by caller).
   // Search thread only: host → CXL-DRAM window.
   // soft_ttl>0: resist eviction for that many expands (soft-pin; respects soft_pin_bytes_cap).
@@ -372,6 +383,15 @@ struct DramWindow {
     clear_soft_ttl_unlocked(frame);
     map[page_off] = frame;
     set_soft_ttl_unlocked(frame, soft_ttl);
+    // B: neighboring page_offs often hold packed siblings of a 2-page fetch.
+    if (soft_ttl && soft_pin_neighbors) {
+      if (page_off >= page_bytes) {
+        auto jt = map.find(page_off - page_bytes);
+        if (jt != map.end()) set_soft_ttl_unlocked(jt->second, soft_ttl);
+      }
+      auto jt2 = map.find(page_off + page_bytes);
+      if (jt2 != map.end()) set_soft_ttl_unlocked(jt2->second, soft_ttl);
+    }
     auto t1 = std::chrono::steady_clock::now();
     if (metrics) {
       metrics->ssd_misses++;

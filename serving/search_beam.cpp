@@ -509,19 +509,43 @@ static std::vector<uint32_t> search_one_fp(Placement& pl, DramWindow& win, Prefe
 
       // Page cap ≈ old top-T id install volume; utility only reorders which pages.
       const size_t max_pages = (size_t)install_top;
+      std::unordered_set<uint64_t> queued_pages;
+      auto queue_host_page = [&](uint64_t p, uint16_t ttl) {
+        auto pit = page_idx.find(p);
+        if (pit == page_idx.end()) return;
+        if (host[pit->second].empty()) return;
+        if (!queued_pages.insert(p).second) return;
+        PendingInstall pi;
+        pi.page_off = p;
+        pi.data = std::move(host[pit->second]);
+        pi.soft_ttl = ttl;
+        pending_install.push_back(std::move(pi));
+      };
       size_t queued_n = 0;
       for (const auto& pu : ranked) {
         if (queued_n >= max_pages) break;
-        if (host[pu.idx].empty()) continue;
-        PendingInstall pi;
-        pi.page_off = pu.page;
-        pi.data = std::move(host[pu.idx]);
-        // Likely-next-expand pages get longer soft-pin TTL.
-        if (pu.util >= 500.f) pi.soft_ttl = 64;
-        else if (pu.util >= 1.f) pi.soft_ttl = 32;
-        else pi.soft_ttl = 16;
-        pending_install.push_back(std::move(pi));
+        uint16_t ttl = 16;
+        if (pu.util >= 500.f) ttl = 64;
+        else if (pu.util >= 1.f) ttl = 32;
+        queue_host_page(pu.page, ttl);
+        // B: install the 2-page group together (siblings already paid for on host).
+        if (pref.page_group_b) {
+          if (pu.page >= pb) queue_host_page(pu.page - pb, ttl);
+          queue_host_page(pu.page + pb, ttl);
+        }
         ++queued_n;
+      }
+
+      // B: soft-pin page-group mates already in the window (packed co-location).
+      if (pref.page_group_b) {
+        for (uint32_t id : ids) {
+          uint64_t off = (uint64_t)(pl.vec(id) - pl.ssd_base);
+          uint64_t first = off & ~(uint64_t)(pb - 1);
+          uint64_t last = (off + vb - 1) & ~(uint64_t)(pb - 1);
+          for (uint64_t p = first; p <= last; p += pb) win.touch_soft_pin(p, 32);
+          if (first >= pb) win.touch_soft_pin(first - pb, 16);
+          win.touch_soft_pin(last + pb, 16);
+        }
       }
     };
 
@@ -840,6 +864,7 @@ int main(int argc, char** argv) {
   const char* entry = nullptr;
   const char* queries = nullptr;
   const char* gt_path = nullptr;
+  const char* id_map_path = nullptr;
   const char* vmem_dev = nullptr;
   const char* dax_dev = getenv("CXAN_DAX_DEV") ? getenv("CXAN_DAX_DEV") : "/dev/dax0.0";
   off_t vmem_off = -1;
@@ -865,6 +890,7 @@ int main(int argc, char** argv) {
   int shuffle_seed = -1;
   size_t host_cap = 32ull << 20;  // host-side cache budget
   bool pin_entry = true;
+  bool page_group_b = false;
 
   for (int i = 1; i < argc; ++i) {
     std::string a = argv[i];
@@ -876,6 +902,7 @@ int main(int argc, char** argv) {
     else if (a == "--entry") entry = need(a.c_str());
     else if (a == "--queries") queries = need(a.c_str());
     else if (a == "--gt") gt_path = need(a.c_str());
+    else if (a == "--id-map") id_map_path = need(a.c_str());
     else if (a == "--vmem-dev") vmem_dev = need(a.c_str());
     else if (a == "--vmem-offset") vmem_off = (off_t)strtoull(need(a.c_str()), nullptr, 10);
     else if (a == "--vmem-len") vmem_len = strtoull(need(a.c_str()), nullptr, 10);
@@ -900,6 +927,8 @@ int main(int argc, char** argv) {
     else if (a == "--flush-window") flush_window = true;
     else if (a == "--pin-entry") pin_entry = true;
     else if (a == "--no-pin-entry") pin_entry = false;
+    else if (a == "--page-group") page_group_b = true;
+    else if (a == "--no-page-group") page_group_b = false;
     else {
       fprintf(stderr, "unknown %s\n", a.c_str());
       return 2;
@@ -947,9 +976,11 @@ int main(int argc, char** argv) {
   }
 
   Placement pl;
-  pl.hdr = hdr;
+  pl.set_header(hdr);
   pl.ssd_base = static_cast<const uint8_t*>(img);
   pl.ssd_bytes = img_len;
+  printf("vec_stride=%zu (packed=%zu)\n", pl.vec_stride,
+         (size_t)hdr->dim * hdr->vec_bytes);
 
   Metrics metrics;
   void* dram = nullptr;
@@ -960,6 +991,7 @@ int main(int argc, char** argv) {
   }
   DramWindow win;
   win.init(dram, dram_bytes, &metrics);
+  win.soft_pin_neighbors = page_group_b;
 
   Prefetch pref;
   pref.policy = parse_policy(policy_s);
@@ -968,12 +1000,13 @@ int main(int argc, char** argv) {
   pref.pipe_w = pipe_w ? pipe_w : 4;
   pref.install_top = install_top ? install_top : 4;
   pref.fetch_top = fetch_top;
+  pref.page_group_b = page_group_b;
   // P2v2 is cooperative single-threaded (DAX is not safe for concurrent promote).
   if (false && pref.policy == PrefetchPolicy::P2) pref.start_async(&pl, &win);
 
   if (pref.policy == PrefetchPolicy::P3) {
-    printf("P3v2 softpin W=%u budget=%zu install_top=%u fetch_top=%u\n",
-           pref.pipe_w, budget, pref.install_top, pref.fetch_top);
+    printf("P3v2 softpin W=%u budget=%zu install_top=%u fetch_top=%u page_group_b=%d\n",
+           pref.pipe_w, budget, pref.install_top, pref.fetch_top, (int)page_group_b);
   }
 
   EntryGraph eg = load_entry(entry);
@@ -1053,6 +1086,23 @@ int main(int argc, char** argv) {
     }
   }
 
+  std::vector<uint32_t> id_map;
+  if (id_map_path) {
+    int mfd = open(id_map_path, O_RDONLY);
+    if (mfd < 0) die("open id-map");
+    struct stat st {};
+    if (fstat(mfd, &st) != 0) die("stat id-map");
+    if ((size_t)st.st_size != (size_t)hdr->n * 4) {
+      fprintf(stderr, "id-map size %lld != n*4=%zu\n", (long long)st.st_size,
+              (size_t)hdr->n * 4);
+      return 2;
+    }
+    id_map.resize(hdr->n);
+    if (read(mfd, id_map.data(), st.st_size) != st.st_size) die("read id-map");
+    close(mfd);
+    printf("loaded id-map new→old n=%u from %s\n", hdr->n, id_map_path);
+  }
+
   printf("query_select nq=%u/%u shuffle_seed=%d flush_window=%d oneshot_fp=%d "
          "pin_entry=%d host_used=%zu host_cap=%zu dram_bytes=%zu pin_cap=%zu\n",
          nq, nq_file, shuffle_seed, (int)flush_window, (int)oneshot_fp, (int)pin_entry,
@@ -1084,6 +1134,11 @@ int main(int argc, char** argv) {
     auto tq1 = std::chrono::steady_clock::now();
     lat_ms.push_back(std::chrono::duration<double, std::milli>(tq1 - tq0).count());
     if (gt_path) {
+      if (!id_map.empty()) {
+        for (uint32_t& id : ids) {
+          if (id < id_map.size()) id = id_map[id];
+        }
+      }
       auto g = load_gt_row(gt_all.data(), gt_k, qi, k);
       recall_sum += recall_at_k(ids, g);
       recall_n++;

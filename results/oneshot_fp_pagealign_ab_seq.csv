@@ -1,0 +1,7 @@
+tag,pass,qps,mean_ms,recall,hit_pct,dram_hits,ssd_misses,dist,vec_stride,note
+packed_B,coldish,1.61,621.77,0.9290,22.41,43903,151982,643533,3072,first after thrash
+packed_B,warm2,11.73,,0.9290,22.41,43903,151982,643533,3072,
+packed_B,warm3,12.18,,0.9290,22.41,43903,151982,643533,3072,
+pagealign_AB,coldish,2.12,,0.9290,17.08,31105,151043,643533,4096,first after switch
+pagealign_AB,warm2,13.45,,0.9290,17.08,31105,151043,643533,4096,
+pagealign_AB,warm3,13.31,,0.9290,17.08,31105,151043,643533,4096,

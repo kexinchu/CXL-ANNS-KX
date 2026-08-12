@@ -1,0 +1,10 @@
+tag,pass,qps,mean_ms,recall,hit_pct,dram_hits,ssd_misses,prefetch_pages,dist,page_group
+packed_noB,warm1,1.62,616.530,0.9290,22.41,43903,151982,120107,643533,--no-page-group
+packed_noB,warm2,12.29,81.346,0.9290,22.41,43903,151982,120107,643533,--no-page-group
+packed_noB,warm3,12.15,82.272,0.9290,22.41,43903,151982,120107,643533,--no-page-group
+pagebin_A,warm1,1.71,584.868,0.9290,29.00,58603,143468,119934,643533,--no-page-group
+pagebin_A,warm2,13.15,76.069,0.9290,29.00,58603,143468,119934,643533,--no-page-group
+pagebin_A,warm3,13.37,74.811,0.9290,29.00,58603,143468,119934,643533,--no-page-group
+pagebin_AB,warm1,11.22,89.158,0.9290,27.00,63746,172345,148811,643533,--page-group
+pagebin_AB,warm2,11.10,90.048,0.9290,27.00,63753,172345,148811,643533,--page-group
+pagebin_AB,warm3,11.15,89.660,0.9290,27.00,63732,172329,148795,643533,--page-group
