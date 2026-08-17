@@ -1,0 +1,5 @@
+tag,pass,qps,mean_ms,recall,hit_pct,dram_hits,ssd_misses,dist,vec_stride
+packed_B,warm1,1.56,643.062,0.9290,22.41,43903,151982,643533,3072
+pagealign_AB,warm1,2.10,475.518,0.9290,17.08,31105,151043,643533,4096
+packed_B,warm2,1.60,625.387,0.9290,22.41,43903,151982,643533,3072
+pagealign_AB,warm2,2.16,462.907,0.9290,17.08,31105,151043,643533,4096

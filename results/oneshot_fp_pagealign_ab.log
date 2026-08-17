@@ -1,0 +1,27 @@
+=== 2026-08-11T23:36:12+00:00 tag=packed_baseline offset=214748364800 len=80800071680 ===
+mapped vmem /dev/vmem0 off=214748364800 len=80800071680
+vec_stride=3072 (packed=3072)
+mapped CXL-DRAM dax /dev/dax0.0 off=0 len=1073741824
+P3v2 softpin W=4 budget=67108864 install_top=4 fetch_top=0
+query_select nq=100/10000 shuffle_seed=42 flush_window=0 oneshot_fp=1 pin_entry=1 host_used=1392556 host_cap=33554432 dram_bytes=1073741824 pin_cap=67108864
+policy=P3 budget=67108864 dram_bytes=1073741824 nq=100 beam=300 k=10 iters=0 oneshot_fp=1 pin_bytes=31297536/67108864
+wall_s=50.935 throughput_QPS=1.96
+latency_ms mean=509.352 p50=524.724 p90=618.991 p99=670.389
+recall@10=0.9290
+cxl_dram_hit_pct=22.41
+metrics queries=100 dram_hits=43903 ssd_misses=151982 hit_pct=22.41 promote_bytes=622518272 avg_promote_ns=35204.6 prefetch_pages=120107 evicts=0 dist=643533
+CSV,P3,67108864,1073741824,100,300,0,1.96,509.352,524.724,618.991,670.389,0.9290,22.41,43903,151982
+=== 2026-08-11T23:37:03+00:00 tag=pagealign_AB offset=322122547200 len=106400071680 ===
+mapped vmem /dev/vmem0 off=322122547200 len=106400071680
+vec_stride=4096 (packed=3072)
+mapped CXL-DRAM dax /dev/dax0.0 off=0 len=1073741824
+P3v2 softpin W=4 budget=67108864 install_top=4 fetch_top=0
+query_select nq=100/10000 shuffle_seed=42 flush_window=0 oneshot_fp=1 pin_entry=1 host_used=1392556 host_cap=33554432 dram_bytes=1073741824 pin_cap=67108864
+policy=P3 budget=67108864 dram_bytes=1073741824 nq=100 beam=300 k=10 iters=0 oneshot_fp=1 pin_bytes=30814208/67108864
+wall_s=64.835 throughput_QPS=1.54
+latency_ms mean=648.345 p50=688.547 p90=816.260 p99=886.966
+recall@10=0.9290
+cxl_dram_hit_pct=17.08
+metrics queries=100 dram_hits=31105 ssd_misses=151043 hit_pct=17.08 promote_bytes=618672128 avg_promote_ns=39889.8 prefetch_pages=119286 evicts=0 dist=643533
+CSV,P3,67108864,1073741824,100,300,0,1.54,648.345,688.547,816.260,886.966,0.9290,17.08,31105,151043
+DONE 2026-08-11T23:38:08+00:00

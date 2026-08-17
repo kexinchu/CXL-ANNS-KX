@@ -1,0 +1,84 @@
+==== PACKED baseline x3 ====
+=== 2026-08-12T02:36:07+00:00 tag=packed_B pass=warm1 offset=214748364800 ===
+mapped vmem /dev/vmem0 off=214748364800 len=80800071680
+vec_stride=3072 (packed=3072)
+mapped CXL-DRAM dax /dev/dax0.0 off=0 len=1073741824
+P3v2 softpin W=4 budget=67108864 install_top=4 fetch_top=0
+query_select nq=100/10000 shuffle_seed=42 flush_window=0 oneshot_fp=1 pin_entry=1 host_used=1392556 host_cap=33554432 dram_bytes=1073741824 pin_cap=67108864
+policy=P3 budget=67108864 dram_bytes=1073741824 nq=100 beam=300 k=10 iters=0 oneshot_fp=1 pin_bytes=31297536/67108864
+wall_s=53.126 throughput_QPS=1.88
+latency_ms mean=531.260 p50=548.263 p90=650.762 p99=701.246
+recall@10=0.9290
+cxl_dram_hit_pct=21.57
+metrics queries=100 dram_hits=47590 ssd_misses=173067 hit_pct=21.57 promote_bytes=708882432 avg_promote_ns=39844.5 prefetch_pages=141192 evicts=0 dist=643533
+CSV,P3,67108864,1073741824,100,300,0,1.88,531.260,548.263,650.762,701.246,0.9290,21.57,47590,173067
+=== 2026-08-12T02:37:01+00:00 tag=packed_B pass=warm2 offset=214748364800 ===
+mapped vmem /dev/vmem0 off=214748364800 len=80800071680
+vec_stride=3072 (packed=3072)
+mapped CXL-DRAM dax /dev/dax0.0 off=0 len=1073741824
+P3v2 softpin W=4 budget=67108864 install_top=4 fetch_top=0
+query_select nq=100/10000 shuffle_seed=42 flush_window=0 oneshot_fp=1 pin_entry=1 host_used=1392556 host_cap=33554432 dram_bytes=1073741824 pin_cap=67108864
+policy=P3 budget=67108864 dram_bytes=1073741824 nq=100 beam=300 k=10 iters=0 oneshot_fp=1 pin_bytes=31297536/67108864
+wall_s=9.111 throughput_QPS=10.98
+latency_ms mean=91.105 p50=88.015 p90=125.573 p99=147.627
+recall@10=0.9290
+cxl_dram_hit_pct=21.26
+metrics queries=100 dram_hits=46706 ssd_misses=172955 hit_pct=21.26 promote_bytes=708423680 avg_promote_ns=28836.0 prefetch_pages=141080 evicts=0 dist=643533
+CSV,P3,67108864,1073741824,100,300,0,10.98,91.105,88.015,125.573,147.627,0.9290,21.26,46706,172955
+=== 2026-08-12T02:37:10+00:00 tag=packed_B pass=warm3 offset=214748364800 ===
+mapped vmem /dev/vmem0 off=214748364800 len=80800071680
+vec_stride=3072 (packed=3072)
+mapped CXL-DRAM dax /dev/dax0.0 off=0 len=1073741824
+P3v2 softpin W=4 budget=67108864 install_top=4 fetch_top=0
+query_select nq=100/10000 shuffle_seed=42 flush_window=0 oneshot_fp=1 pin_entry=1 host_used=1392556 host_cap=33554432 dram_bytes=1073741824 pin_cap=67108864
+policy=P3 budget=67108864 dram_bytes=1073741824 nq=100 beam=300 k=10 iters=0 oneshot_fp=1 pin_bytes=31297536/67108864
+wall_s=9.043 throughput_QPS=11.06
+latency_ms mean=90.424 p50=87.693 p90=128.441 p99=142.902
+recall@10=0.9290
+cxl_dram_hit_pct=21.32
+metrics queries=100 dram_hits=46881 ssd_misses=172983 hit_pct=21.32 promote_bytes=708538368 avg_promote_ns=28018.9 prefetch_pages=141108 evicts=0 dist=643533
+CSV,P3,67108864,1073741824,100,300,0,11.06,90.424,87.693,128.441,142.902,0.9290,21.32,46881,172983
+==== PAGEBIN A+B x3 ====
+=== 2026-08-12T02:37:20+00:00 tag=pagebin_AB pass=warm1 offset=322122547200 ===
+mapped vmem /dev/vmem0 off=322122547200 len=80800071680
+vec_stride=3072 (packed=3072)
+mapped CXL-DRAM dax /dev/dax0.0 off=0 len=1073741824
+P3v2 softpin W=4 budget=67108864 install_top=4 fetch_top=0
+loaded id-map new→old n=25000000 from /mnt/disk0/chukexin_motivation/serving_25m/new_to_old_pagebin.bin
+query_select nq=100/10000 shuffle_seed=42 flush_window=0 oneshot_fp=1 pin_entry=1 host_used=1392556 host_cap=33554432 dram_bytes=1073741824 pin_cap=67108864
+policy=P3 budget=67108864 dram_bytes=1073741824 nq=100 beam=300 k=10 iters=0 oneshot_fp=1 pin_bytes=1835008/67108864
+wall_s=84.060 throughput_QPS=1.19
+latency_ms mean=840.599 p50=903.846 p90=1085.452 p99=1146.556
+recall@10=0.9290
+cxl_dram_hit_pct=27.12
+metrics queries=100 dram_hits=64149 ssd_misses=172399 hit_pct=27.12 promote_bytes=706146304 avg_promote_ns=40638.0 prefetch_pages=148865 evicts=0 dist=643533
+CSV,P3,67108864,1073741824,100,300,0,1.19,840.599,903.846,1085.452,1146.556,0.9290,27.12,64149,172399
+=== 2026-08-12T02:38:44+00:00 tag=pagebin_AB pass=warm2 offset=322122547200 ===
+mapped vmem /dev/vmem0 off=322122547200 len=80800071680
+vec_stride=3072 (packed=3072)
+mapped CXL-DRAM dax /dev/dax0.0 off=0 len=1073741824
+P3v2 softpin W=4 budget=67108864 install_top=4 fetch_top=0
+loaded id-map new→old n=25000000 from /mnt/disk0/chukexin_motivation/serving_25m/new_to_old_pagebin.bin
+query_select nq=100/10000 shuffle_seed=42 flush_window=0 oneshot_fp=1 pin_entry=1 host_used=1392556 host_cap=33554432 dram_bytes=1073741824 pin_cap=67108864
+policy=P3 budget=67108864 dram_bytes=1073741824 nq=100 beam=300 k=10 iters=0 oneshot_fp=1 pin_bytes=1835008/67108864
+wall_s=8.616 throughput_QPS=11.61
+latency_ms mean=86.155 p50=89.380 p90=120.713 p99=138.946
+recall@10=0.9290
+cxl_dram_hit_pct=26.98
+metrics queries=100 dram_hits=63684 ssd_misses=172326 hit_pct=26.98 promote_bytes=705847296 avg_promote_ns=27182.4 prefetch_pages=148792 evicts=0 dist=643533
+CSV,P3,67108864,1073741824,100,300,0,11.61,86.155,89.380,120.713,138.946,0.9290,26.98,63684,172326
+=== 2026-08-12T02:38:53+00:00 tag=pagebin_AB pass=warm3 offset=322122547200 ===
+mapped vmem /dev/vmem0 off=322122547200 len=80800071680
+vec_stride=3072 (packed=3072)
+mapped CXL-DRAM dax /dev/dax0.0 off=0 len=1073741824
+P3v2 softpin W=4 budget=67108864 install_top=4 fetch_top=0
+loaded id-map new→old n=25000000 from /mnt/disk0/chukexin_motivation/serving_25m/new_to_old_pagebin.bin
+query_select nq=100/10000 shuffle_seed=42 flush_window=0 oneshot_fp=1 pin_entry=1 host_used=1392556 host_cap=33554432 dram_bytes=1073741824 pin_cap=67108864
+policy=P3 budget=67108864 dram_bytes=1073741824 nq=100 beam=300 k=10 iters=0 oneshot_fp=1 pin_bytes=1835008/67108864
+wall_s=8.566 throughput_QPS=11.67
+latency_ms mean=85.660 p50=85.802 p90=118.655 p99=141.616
+recall@10=0.9290
+cxl_dram_hit_pct=26.97
+metrics queries=100 dram_hits=63644 ssd_misses=172315 hit_pct=26.97 promote_bytes=705802240 avg_promote_ns=27395.7 prefetch_pages=148781 evicts=0 dist=643533
+CSV,P3,67108864,1073741824,100,300,0,11.67,85.660,85.802,118.655,141.616,0.9290,26.97,63644,172315
+DONE 2026-08-12T02:39:02+00:00

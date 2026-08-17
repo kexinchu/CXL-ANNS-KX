@@ -1,0 +1,124 @@
+=== 2026-08-12T03:48:48+00:00 packed_noB warm1 --no-page-group ===
+mapped vmem /dev/vmem0 off=214748364800 len=80800071680
+vec_stride=3072 (packed=3072)
+mapped CXL-DRAM dax /dev/dax0.0 off=0 len=1073741824
+P3v2 softpin W=4 budget=67108864 install_top=4 fetch_top=0 page_group_b=0
+query_select nq=100/10000 shuffle_seed=42 flush_window=0 oneshot_fp=1 pin_entry=1 host_used=1392556 host_cap=33554432 dram_bytes=1073741824 pin_cap=67108864
+policy=P3 budget=67108864 dram_bytes=1073741824 nq=100 beam=300 k=10 iters=0 oneshot_fp=1 pin_bytes=31297536/67108864
+wall_s=61.653 throughput_QPS=1.62
+latency_ms mean=616.530 p50=637.182 p90=763.950 p99=827.188
+recall@10=0.9290
+cxl_dram_hit_pct=22.41
+metrics queries=100 dram_hits=43903 ssd_misses=151982 hit_pct=22.41 promote_bytes=622518272 avg_promote_ns=38315.9 prefetch_pages=120107 evicts=0 dist=643533
+CSV,P3,67108864,1073741824,100,300,0,1.62,616.530,637.182,763.950,827.188,0.9290,22.41,43903,151982
+=== 2026-08-12T03:49:50+00:00 packed_noB warm2 --no-page-group ===
+mapped vmem /dev/vmem0 off=214748364800 len=80800071680
+vec_stride=3072 (packed=3072)
+mapped CXL-DRAM dax /dev/dax0.0 off=0 len=1073741824
+P3v2 softpin W=4 budget=67108864 install_top=4 fetch_top=0 page_group_b=0
+query_select nq=100/10000 shuffle_seed=42 flush_window=0 oneshot_fp=1 pin_entry=1 host_used=1392556 host_cap=33554432 dram_bytes=1073741824 pin_cap=67108864
+policy=P3 budget=67108864 dram_bytes=1073741824 nq=100 beam=300 k=10 iters=0 oneshot_fp=1 pin_bytes=31297536/67108864
+wall_s=8.135 throughput_QPS=12.29
+latency_ms mean=81.346 p50=79.975 p90=113.951 p99=132.558
+recall@10=0.9290
+cxl_dram_hit_pct=22.41
+metrics queries=100 dram_hits=43903 ssd_misses=151982 hit_pct=22.41 promote_bytes=622518272 avg_promote_ns=25134.4 prefetch_pages=120107 evicts=0 dist=643533
+CSV,P3,67108864,1073741824,100,300,0,12.29,81.346,79.975,113.951,132.558,0.9290,22.41,43903,151982
+=== 2026-08-12T03:49:59+00:00 packed_noB warm3 --no-page-group ===
+mapped vmem /dev/vmem0 off=214748364800 len=80800071680
+vec_stride=3072 (packed=3072)
+mapped CXL-DRAM dax /dev/dax0.0 off=0 len=1073741824
+P3v2 softpin W=4 budget=67108864 install_top=4 fetch_top=0 page_group_b=0
+query_select nq=100/10000 shuffle_seed=42 flush_window=0 oneshot_fp=1 pin_entry=1 host_used=1392556 host_cap=33554432 dram_bytes=1073741824 pin_cap=67108864
+policy=P3 budget=67108864 dram_bytes=1073741824 nq=100 beam=300 k=10 iters=0 oneshot_fp=1 pin_bytes=31297536/67108864
+wall_s=8.227 throughput_QPS=12.15
+latency_ms mean=82.272 p50=81.241 p90=113.438 p99=135.712
+recall@10=0.9290
+cxl_dram_hit_pct=22.41
+metrics queries=100 dram_hits=43903 ssd_misses=151982 hit_pct=22.41 promote_bytes=622518272 avg_promote_ns=25848.9 prefetch_pages=120107 evicts=0 dist=643533
+CSV,P3,67108864,1073741824,100,300,0,12.15,82.272,81.241,113.438,135.712,0.9290,22.41,43903,151982
+=== 2026-08-12T03:50:07+00:00 pagebin_A warm1 --no-page-group ===
+mapped vmem /dev/vmem0 off=322122547200 len=80800071680
+vec_stride=3072 (packed=3072)
+mapped CXL-DRAM dax /dev/dax0.0 off=0 len=1073741824
+P3v2 softpin W=4 budget=67108864 install_top=4 fetch_top=0 page_group_b=0
+loaded id-map new→old n=25000000 from /mnt/disk0/chukexin_motivation/serving_25m/new_to_old_pagebin.bin
+query_select nq=100/10000 shuffle_seed=42 flush_window=0 oneshot_fp=1 pin_entry=1 host_used=1392556 host_cap=33554432 dram_bytes=1073741824 pin_cap=67108864
+policy=P3 budget=67108864 dram_bytes=1073741824 nq=100 beam=300 k=10 iters=0 oneshot_fp=1 pin_bytes=1835008/67108864
+wall_s=58.487 throughput_QPS=1.71
+latency_ms mean=584.868 p50=615.170 p90=721.949 p99=767.690
+recall@10=0.9290
+cxl_dram_hit_pct=29.00
+metrics queries=100 dram_hits=58603 ssd_misses=143468 hit_pct=29.00 promote_bytes=587644928 avg_promote_ns=33608.3 prefetch_pages=119934 evicts=0 dist=643533
+CSV,P3,67108864,1073741824,100,300,0,1.71,584.868,615.170,721.949,767.690,0.9290,29.00,58603,143468
+=== 2026-08-12T03:51:06+00:00 pagebin_A warm2 --no-page-group ===
+mapped vmem /dev/vmem0 off=322122547200 len=80800071680
+vec_stride=3072 (packed=3072)
+mapped CXL-DRAM dax /dev/dax0.0 off=0 len=1073741824
+P3v2 softpin W=4 budget=67108864 install_top=4 fetch_top=0 page_group_b=0
+loaded id-map new→old n=25000000 from /mnt/disk0/chukexin_motivation/serving_25m/new_to_old_pagebin.bin
+query_select nq=100/10000 shuffle_seed=42 flush_window=0 oneshot_fp=1 pin_entry=1 host_used=1392556 host_cap=33554432 dram_bytes=1073741824 pin_cap=67108864
+policy=P3 budget=67108864 dram_bytes=1073741824 nq=100 beam=300 k=10 iters=0 oneshot_fp=1 pin_bytes=1835008/67108864
+wall_s=7.607 throughput_QPS=13.15
+latency_ms mean=76.069 p50=75.301 p90=100.050 p99=112.530
+recall@10=0.9290
+cxl_dram_hit_pct=29.00
+metrics queries=100 dram_hits=58603 ssd_misses=143468 hit_pct=29.00 promote_bytes=587644928 avg_promote_ns=24229.2 prefetch_pages=119934 evicts=0 dist=643533
+CSV,P3,67108864,1073741824,100,300,0,13.15,76.069,75.301,100.050,112.530,0.9290,29.00,58603,143468
+=== 2026-08-12T03:51:14+00:00 pagebin_A warm3 --no-page-group ===
+mapped vmem /dev/vmem0 off=322122547200 len=80800071680
+vec_stride=3072 (packed=3072)
+mapped CXL-DRAM dax /dev/dax0.0 off=0 len=1073741824
+P3v2 softpin W=4 budget=67108864 install_top=4 fetch_top=0 page_group_b=0
+loaded id-map new→old n=25000000 from /mnt/disk0/chukexin_motivation/serving_25m/new_to_old_pagebin.bin
+query_select nq=100/10000 shuffle_seed=42 flush_window=0 oneshot_fp=1 pin_entry=1 host_used=1392556 host_cap=33554432 dram_bytes=1073741824 pin_cap=67108864
+policy=P3 budget=67108864 dram_bytes=1073741824 nq=100 beam=300 k=10 iters=0 oneshot_fp=1 pin_bytes=1835008/67108864
+wall_s=7.481 throughput_QPS=13.37
+latency_ms mean=74.811 p50=74.241 p90=101.481 p99=113.946
+recall@10=0.9290
+cxl_dram_hit_pct=29.00
+metrics queries=100 dram_hits=58603 ssd_misses=143468 hit_pct=29.00 promote_bytes=587644928 avg_promote_ns=23545.7 prefetch_pages=119934 evicts=0 dist=643533
+CSV,P3,67108864,1073741824,100,300,0,13.37,74.811,74.241,101.481,113.946,0.9290,29.00,58603,143468
+=== 2026-08-12T03:51:22+00:00 pagebin_AB warm1 --page-group ===
+mapped vmem /dev/vmem0 off=322122547200 len=80800071680
+vec_stride=3072 (packed=3072)
+mapped CXL-DRAM dax /dev/dax0.0 off=0 len=1073741824
+P3v2 softpin W=4 budget=67108864 install_top=4 fetch_top=0 page_group_b=1
+loaded id-map new→old n=25000000 from /mnt/disk0/chukexin_motivation/serving_25m/new_to_old_pagebin.bin
+query_select nq=100/10000 shuffle_seed=42 flush_window=0 oneshot_fp=1 pin_entry=1 host_used=1392556 host_cap=33554432 dram_bytes=1073741824 pin_cap=67108864
+policy=P3 budget=67108864 dram_bytes=1073741824 nq=100 beam=300 k=10 iters=0 oneshot_fp=1 pin_bytes=1835008/67108864
+wall_s=8.916 throughput_QPS=11.22
+latency_ms mean=89.158 p50=83.367 p90=131.861 p99=154.270
+recall@10=0.9290
+cxl_dram_hit_pct=27.00
+metrics queries=100 dram_hits=63746 ssd_misses=172345 hit_pct=27.00 promote_bytes=705925120 avg_promote_ns=27974.6 prefetch_pages=148811 evicts=0 dist=643533
+CSV,P3,67108864,1073741824,100,300,0,11.22,89.158,83.367,131.861,154.270,0.9290,27.00,63746,172345
+=== 2026-08-12T03:51:31+00:00 pagebin_AB warm2 --page-group ===
+mapped vmem /dev/vmem0 off=322122547200 len=80800071680
+vec_stride=3072 (packed=3072)
+mapped CXL-DRAM dax /dev/dax0.0 off=0 len=1073741824
+P3v2 softpin W=4 budget=67108864 install_top=4 fetch_top=0 page_group_b=1
+loaded id-map new→old n=25000000 from /mnt/disk0/chukexin_motivation/serving_25m/new_to_old_pagebin.bin
+query_select nq=100/10000 shuffle_seed=42 flush_window=0 oneshot_fp=1 pin_entry=1 host_used=1392556 host_cap=33554432 dram_bytes=1073741824 pin_cap=67108864
+policy=P3 budget=67108864 dram_bytes=1073741824 nq=100 beam=300 k=10 iters=0 oneshot_fp=1 pin_bytes=1835008/67108864
+wall_s=9.005 throughput_QPS=11.10
+latency_ms mean=90.048 p50=85.141 p90=132.250 p99=149.895
+recall@10=0.9290
+cxl_dram_hit_pct=27.00
+metrics queries=100 dram_hits=63753 ssd_misses=172345 hit_pct=27.00 promote_bytes=705925120 avg_promote_ns=28496.3 prefetch_pages=148811 evicts=0 dist=643533
+CSV,P3,67108864,1073741824,100,300,0,11.10,90.048,85.141,132.250,149.895,0.9290,27.00,63753,172345
+=== 2026-08-12T03:51:41+00:00 pagebin_AB warm3 --page-group ===
+mapped vmem /dev/vmem0 off=322122547200 len=80800071680
+vec_stride=3072 (packed=3072)
+mapped CXL-DRAM dax /dev/dax0.0 off=0 len=1073741824
+P3v2 softpin W=4 budget=67108864 install_top=4 fetch_top=0 page_group_b=1
+loaded id-map new→old n=25000000 from /mnt/disk0/chukexin_motivation/serving_25m/new_to_old_pagebin.bin
+query_select nq=100/10000 shuffle_seed=42 flush_window=0 oneshot_fp=1 pin_entry=1 host_used=1392556 host_cap=33554432 dram_bytes=1073741824 pin_cap=67108864
+policy=P3 budget=67108864 dram_bytes=1073741824 nq=100 beam=300 k=10 iters=0 oneshot_fp=1 pin_bytes=1835008/67108864
+wall_s=8.966 throughput_QPS=11.15
+latency_ms mean=89.660 p50=86.139 p90=131.556 p99=142.911
+recall@10=0.9290
+cxl_dram_hit_pct=27.00
+metrics queries=100 dram_hits=63732 ssd_misses=172329 hit_pct=27.00 promote_bytes=705859584 avg_promote_ns=27755.2 prefetch_pages=148795 evicts=0 dist=643533
+CSV,P3,67108864,1073741824,100,300,0,11.15,89.660,86.139,131.556,142.911,0.9290,27.00,63732,172329
+DONE

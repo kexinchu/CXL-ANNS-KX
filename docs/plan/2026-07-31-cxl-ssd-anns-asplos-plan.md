@@ -1,26 +1,123 @@
-# CXL–SSD ANNS 研究计划（ASPLOS 叙事）
+# CXL–SSD ANNS 研究计划
+---
 
-**推荐标题方向：** *Stall-Aware Residency for Graph ANNS on Unified CXL–SSD Memory*
+## 0. 论文故事线（旧）
+
+**核心重点：** 大规模 ANNS 服务中，语料容量和查询吞吐是两个独立扩展维度：DiskANN 已经很好地解决了单机用 SSD 承载大库的问题，但当查询量增长、需要更多 serving hosts 时，常见做法是复制整个 DiskANN serving unit，也就是每个 host 都持有一份本地 SSD index、PQ/cache 和运行时状态。这样虽然同时复制了计算和 SSD I/O 带宽，却也把一个主要 read-only 的 cold corpus 按 replica 数线性复制，带来显著的存储 provision、cache warm-up、索引发布和运维成本。
+- CXL–SSD one-copy cold storage 的必要性正在于解耦这两个维度：让多个 query hosts 共享一份冷向量库，只在快层复制或缓存真正的热点数据。
+- 但由于 graph ANNS 本身对随机 SSD I/O 极其敏感，简单共享一个 CXL–SSD 反而会形成中心化 I/O 瓶颈。
+
+
+- **DiskANN 并非 CPU-bound：** LAION-25M CPU+SSD+PQ sweep 中，T=4–8 时 NVMe active util 已接近 95–100%，而 job CPU 只用约 1.4–2.6 cores；T=172 时 QPS≈21k、mean IOs/q≈78.2，但 CPU 也只到约 13 cores。结论：DiskANN 的强项是把 block SSD random I/O 并发隐藏起来，而不是 CPU 算力被打满。
+- **CXL-DRAM 路线成本不同：** CXL-ANNS / Cosmos 的出发点是把 billion-scale ANNS 放进 CXL DRAM / compute-capable memory，避免 SSD stall，但冷数据也付 DRAM-class capacity cost。本文选择 flash-backed CXL–SSD，是研究 DRAM 之外的 flash-priced memory-semantic tier。
+- **Naive CXL–SSD 会出问题：** 现有 motivation 已显示 cold miss 与 warm hit 差两个数量级，PTE / soft-cache / NAND miss 存在多级台阶；页式 admission、盲图预取、过大 search width 会放大 SSD reads 和 stall。PipeANN bubble 实验还说明 graph search 的 pointer-chasing 会留下 I/O pipeline bubbles，跨 query / read-level scheduling 在高 miss-latency 场景下更关键。
+
+**回答问题：**
+
+1. **DiskANN 到底是计算瓶颈 还是 I/O 瓶颈？**  
+   - 在 CPU+SSD+PQ 的正常 DiskANN 路径上，瓶颈主要是 **随机 SSD I/O、IOPS 和 I/O overlap 能力**，不是 CPU distance compute。
+
+```
+LAION-25M, 25,000,000 vectors, 512-dim
+DiskANN CPU + local NVMe SSD
+PQ navigation enabled
+R=32, L=64, W=4, K=10
+query set = 50,000
+
+
+最重要的证据是：T=172，NVMe读带宽已经接近用完，也只用了约 29.62 个核 (Intel(R) Xeon(R) 6787P 172 core)。用了不到20%
+（fio实测当前 NVMe 顺序读上限约 7.47 GB/s）
+```
+
+| Threads | QPS | mean latency us | avg read GB/s | peak read GB/s | NVMe BW util avg/peak | NVMe busy% | job CPU% |
+|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| 2 | 432.73 | 4559.78 | 0.13 | 0.17 | 1.9% / 2.4% | 80.9% | 81% |
+| 4 | 810.91 | 4869.92 | 0.24 | 0.31 | 3.4% / 4.4% | 95.4% | 144% |
+| 8 | 1568.87 | 5034.74 | 0.44 | 0.54 | 6.3% / 7.7% | 94.0% | 262% |
+| 16 | 3215.21 | 4913.80 | 0.83 | 1.12 | 11.8% / 16.0% | 87.5% | 444% |
+| 32 | 5759.94 | 5491.77 | 1.36 | 2.11 | 19.4% / 30.1% | 80.5% | 766% |
+| 64 | 13410.76 | 4711.67 | 4.12 | 4.37 | 58.8% / 62.3% | 98.4% | 1669% |
+| 86 | 16166.80 | 5253.30 | 4.89 | 5.21 | 69.8% / 74.3% | 96.8% | 2078% |
+| 128 | 19648.21 | 6413.00 | 6.02 | 6.19 | 85.9% / 88.3% | 98.2% | 2747% |
+| 172 | 21323.82 | 7962.95 | 6.52 | 6.69 | 93.0% / 95.4% | 98.2% | 2974% |
+| 256 | 21848.26 | 11627.85 | 6.52 | 6.85 | 93.0% / 97.7% | 95.7% | 2962% |
+| 344 | 21808.22 | 15680.00 | 6.52 | 6.85 | 93.0% / 97.7% | 96.0% | 3082% |
+
+
+2. **带宽瓶颈下，CXL–SSD 结构里哪些带宽是 shared，哪些是各自独立？**  
+   - 多 host 经 CXL switch / fabric 访问同一个 CXL–SSD，每个 host 到 switch 的 CXL link 可以是各自独立的 host-side 带宽；
+   - 但一旦请求汇聚到同一个 endpoint，**device-side bandwidth 是共享的**，包括 CXL–SSD endpoint port、controller、设备 DRAM cache、miss queue、FTL、NAND channels 和内部 flash bandwidth。
+   - 只有在硬件上提供多端口 CXL–SSD、多个 CXL–SSD 设备、否则，one-copy 只减少 cold-data copy，不会自动复制 SSD I/O 带宽；
+   - 同时带宽才是瓶颈
+
+   ```text
+   +----------------------+   CXL link: 64 GB/s
+   | Host 1               |=====================\
+   | query CPU            |                      \
+   | local hot tier/cache |                       \
+   +----------------------+                        \
+                                                    \
+   +----------------------+   CXL link: 64 GB/s     \     +----------------------+
+   | Host 2               |==========================+====>| CXL switch / fabric  |
+   | query CPU            |                          /     +----------+-----------+
+   | local hot tier/cache |                         /                 |
+   +----------------------+                        /                  |
+                                                   /                  |
+   +----------------------+   CXL link: 64 GB/s   /                   |CXL link: 64 GB/s
+   | Host N               |=====================/                     |
+   | query CPU            |                                           |
+   | local hot tier/cache |                                           |
+   +----------------------+                                           |
+                                                                      |
+                                      +-------------------------------+----------------+
+                                       |                                              |
+                                       v                                              v
+                              +----------------------+      160 GB/s      +----------------------+
+                              | CXL-DRAM             |<==================>| CXL-SSD              |
+                              | shared hot tier      |   device-side     | one-copy cold corpus |
+                              | metadata / hot nodes |   DRAM-SSD path   | DRAM cache + NAND    |
+                              +----------------------+                   +----------------------+
+   ```
 
 ---
 
-## 0. 论文故事线（总览）
+## 0. 论文故事线（新）
+- **核心重点：** 本文的主线降级为 **flash-backed CXL memory tier 上的 graph ANNS 如何可用**。
+- 现有 ANNS 系统已覆盖：DiskANN 是优秀的 **block-SSD ANNS**，通过 PQ navigation、sector layout、AIO beam 和 node cache 在单机 SSD 上取得很高性能；CXL-ANNS / Cosmos 则是 **full-in-memory CXL-DRAM ANNS**，把图和向量放进高价值 CXL DRAM / 设备内存来避免 SSD stall。
+- 据我们所知，本文是第一个系统研究 **graph ANNS on flash-backed CXL–SSD memory semantics** 的工作：在真实单 CXL–SSD / DAX-like 设备上刻画 graph ANNS 的 residency 和 stall pathology，并设计 ANNS-aware runtime。相对 DiskANN，本工作不是替代其 block-SSD path，而是回答 CXL–SSD 这种新 memory-semantic flash tier 上缺失的管理问题；相对 CXL-ANNS / Cosmos，本工作不假设全库进入 CXL-DRAM，而是承认 flash 仍是冷语料的必要介质。系统贡献是通过语义驻留、共享/局部热集、有界升迁、layout/reorder 和 stall-aware scheduling，把 naive CXL–SSD 与 DiskANN 之间的性能差距尽量缩小。
 
-```
-机会：为何把 CXL–SSD 引入 ANNS？
-      → 相对 replicated SSD 副本降低数据冗余；相对 full-in-memory CXL-DRAM 把冷库压到闪存价
-问题：引入之后多出了什么新问题？（本文要解决的）
-      → 统一 VA 下的 residency/stall 失控（双台阶、页错配、盲目升迁、efSearch↔miss）
-Findings → Challenges → Design → Evaluation
-```
+---
 
-**审稿人 30 秒版（必须能背）：**
+## 初步结果
 
-| # | 问题 | 一句话回答 |
-|---|------|------------|
-| 1 | 为何引入 CXL–SSD？ | 常见 replicated DiskANN 扩吞吐要付整库复制/分片税；CXL-ANNS/Cosmos 类全库进 CXL-DRAM 又让冷数据付 DRAM 价；CXL–SSD 在「共享一份库」与「闪存价容量」之间给出折中部署点（机会）。 |
-| 2 | 引入后有何问题？ | 冷读 ~80 µs（~100×）；按页缓存 QPS÷3.6；图乱预取 QPS÷5；加大 efSearch 命中率↓——**三种「默认用法」都会把 stall 放大**。 |
-| 3 | 本文解什么？ | 在 SSD-backed CXL 地址空间上做 graph-ANNS 的语义 residency / 有界升迁 / stall-aware search（系统贡献）。 |
+- prefetch
+
+|Policy|QPS|Recall|CXL-DRAM hit%|
+|--|--|--|--|--|
+|无prefetch|1.33|0.929|10.47|
+|pipeline + pool|12.65|0.929|22.31|
+|prefetch + page|13.4|0.929|29.0|
+
+   - Text2Image-10M
+
+   |Policy|QPS|CXL-DRAM hit%|
+   |--|--|--|
+   |无prefetch|2.3|11.3|
+   |pipeline + pool|13.5|16.8|
+   |prefetch + page|17.4|42.1|
+
+
+- 考虑 continues batching
+   - 之前的 DiskANN 测试发现，虽然I/O是瓶颈，但是带宽使用存在明显的波峰波谷（fio实测当前 NVMe 顺序读上限约 7.47 GB/s）：
+
+   | Test | QPS  | mean IOs/q | avg read GB/s | peak read GB/s | NVMe busy% | job CPU% | 
+   |---|---:|---:|---:|---:|---:|---:|
+   | DiskANN original, `T=172,L=64,W=4`, 200k queries | 19594.31 | 78.20 | 4.71 | 6.69 | 82.9% | 2432% |
+   | DiskANN high-I/O pressure, `T=172,L=256,W=64`, 200k queries | 4114.96 | 408.43 | 6.55 | 6.85 | 97.4% | 3437% |
+
+<img src="./bubble.png.jpg" wdith=600>
+
+   - 如何能够持续利用 带宽，保持带宽接近满负载使用？
 
 ---
 
@@ -254,11 +351,14 @@ CXL–SSD（Type-3 memory-semantic SSD：NAND 容量层 + 设备/主机 DRAM 热
 ### 1.3.1 机会 / 问题 / 贡献（防混写）
 
 ```
-机会：CXL–SSD = one-copy + 闪存价容量 + load/store 热路径（解耦算力扩展与整库复制）
+机会：CXL–SSD = flash-backed one-copy cold corpus + memory semantics
+      （解耦 query-host 扩展与 cold-index 复制；不同于 DiskANN replica，也不同于 full CXL-DRAM）
         ↓
-问题：同一 VA 上冷读极贵 + 页缓存/乱预取/乱加大 beam 会再糟数倍
+问题：one-copy 省容量但集中 shared SSD pressure；graph ANNS 的 random misses / 页错配 /
+      低精度升迁 / search width 会把共享冷层打成中心瓶颈
         ↓
-贡献：语义驻留（record/hub/cache）+ 有界升迁 + stall-aware 搜索，打在 iso-recall 上
+贡献：语义驻留（record/hub/shared hot set）+ 有界升迁 + stall-aware 搜索，
+      在不复制 cold corpus 的前提下接近 DiskANN serving 性能
 ```
 
 ### 1.3.2 Motivation 实验设计

@@ -1,0 +1,67 @@
+% Pipeline-bubble schematic: in-flight device I/O over time for three schedulers.
+% Blue area = device kept busy (in-flight reads); red hatch = bubble (idle device
+% queue capacity up to the target depth D). Schematic; measured numbers in caption.
+\begin{figure}[t]
+  \centering
+  \resizebox{0.92\columnwidth}{!}{%
+  \begin{tikzpicture}[x=0.92cm, y=0.17cm]
+    \def\Tmax{7}   % time span
+    \def\D{8}      % target device queue depth
+
+    % ---- helper macro: one panel at a given yshift ----
+    % #1 yshift(cm), #2 title, #3 plot coordinates
+    \newcommand{\panel}[3]{%
+      \begin{scope}[yshift=#1]
+        % bubble backdrop (idle capacity up to D)
+        \fill[pattern=north east lines, pattern color=red!55] (0,0) rectangle (\Tmax,\D);
+        % busy area (device in-flight); opaque, covers the hatch where busy
+        \fill[blue!35] plot coordinates {#3} -- cycle;
+        \draw[blue!70!black, very thick] plot coordinates {#3};
+        % target depth D
+        \draw[densely dashed] (0,\D) -- (\Tmax,\D);
+        \node[anchor=west, font=\scriptsize] at (\Tmax+0.1,\D) {$D$};
+        % axis
+        \draw[->] (0,0) -- (\Tmax+0.15,0);
+        \draw[->] (0,0) -- (0,\D+1.5);
+        \node[anchor=south west, font=\footnotesize\bfseries] at (0,\D+0.6) {#2};
+      \end{scope}}
+
+    % (c) continuous fetch-level batching -- device kept full (top)
+    \panel{6.0cm}{(c) Continuous fetch batching (proposed)}{%
+      (0,0) (0.3,8) (1,8) (2,7) (2.3,8) (3,8) (4,8) (4.3,7) (5,8) (6,8) (7,8) (7,0)}
+
+    % (b) static batch (coro) -- sawtooth + tail drain (middle)
+    \panel{3.0cm}{(b) Static batch (per-query, group barrier)}{%
+      (0,0) (0.3,6) (0.9,6) (1.0,2) (1.3,6) (1.9,6) (2.0,2) (2.3,6) (2.9,6) (3.0,2)
+      (3.3,6) (3.9,6) (4.0,2) (4.3,6) (4.9,6) (5.0,3) (5.5,5) (6.0,4) (6.5,2) (7,0)}
+
+    % (a) single-query pipeline (PipeANN pipe_search) -- starvation + drain (bottom)
+    \panel{0cm}{(a) Single-query pipeline (pipe\_search)}{%
+      (0,0) (0.3,2) (1,3) (1.6,3) (2.0,1) (2.6,1) (3.2,3) (4,3) (4.6,2) (5.2,3)
+      (5.8,3) (6.2,2) (6.6,1) (7,0)}
+    % annotate bubble sources on panel (a)
+    \node[font=\scriptsize, anchor=north] at (2.3,0.7) {starvation (S1)};
+    \node[font=\scriptsize, anchor=north] at (6.6,2.0) {drain (S4)};
+
+    % shared legend
+    \begin{scope}[yshift=-1.9cm]
+      \fill[blue!35] (0,0) rectangle (0.5,0.9); \node[anchor=west,font=\scriptsize] at (0.55,0.45) {device busy};
+      \fill[pattern=north east lines, pattern color=red!55] (2.7,0) rectangle (3.2,0.9);
+      \node[anchor=west,font=\scriptsize] at (3.25,0.45) {bubble (idle queue)};
+    \end{scope}
+  \end{tikzpicture}}
+  \caption{Pipeline bubbles under three schedulers (schematic). The $y$-axis is
+  in-flight device reads; $D$ is the target queue depth needed to saturate flash
+  internal parallelism. (a) A single query is pointer-chasing, so it cannot fill
+  the pipe (measured device queue depth aqu-sz $\approx 9.8$, utilization
+  $0.53$--$0.92$, $14$--$42\%$ of loop iterations starved). (b) Interleaving a
+  static batch of independent queries raises occupancy (aqu-sz $\approx 13.8$,
+  $+44\%$ QPS) but a per-hop/group barrier drains the tail. (c) Continuous
+  fetch-level batching keeps the device near $D$ (aqu-sz $\approx 14.4$ single
+  core; $319$ at 16 threads) at identical recall ($86.5\%$). Single-core numbers:
+  984{,}133$\times$1024-d embeddings, PipeANN disk index, Dell PM1733a NVMe.}
+  \Description{Three stacked timelines of in-flight device I/O versus time for a
+  single-query pipeline, a static query batch, and continuous fetch-level
+  batching, with idle queue capacity shaded as bubbles.}
+  \label{fig:pipeline-bubbles}
+\end{figure}

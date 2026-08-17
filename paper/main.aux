@@ -1,0 +1,47 @@
+\relax 
+\providecommand\hyper@newdestlabel[2]{}
+\providecommand\HyField@AuxAddToFields[1]{}
+\providecommand\HyField@AuxAddToCoFields[2]{}
+\@writefile{toc}{\contentsline {section}{Abstract}{1}{section*.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {1}Introduction}{1}{section.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {2}Background}{2}{section.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.1}Graph ANNS Serving}{2}{subsection.2.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.2}CXL Memory and Flash-Backed CXL--SSD}{2}{subsection.2.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.3}Neighboring Baselines}{2}{subsection.2.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {3}Motivation}{2}{section.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.1}Challenge 1: The Flash Miss Cliff}{2}{subsection.3.1}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {1}{\ignorespaces Placeholder experiment for the CXL--SSD flash miss cliff.}}{3}{figure.caption.3}\protected@file@percent }
+\providecommand*\caption@xref[2]{\@setref\relax\@undefined{#1}}
+\newlabel{fig:motivation-miss-cliff}{{1}{3}{Placeholder experiment for the CXL--SSD flash miss cliff}{figure.caption.3}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {2}{\ignorespaces Placeholder experiment for cross-host contention in the CXL--SSD device cache.}}{3}{figure.caption.4}\protected@file@percent }
+\newlabel{fig:motivation-cache-contention}{{2}{3}{Placeholder experiment for cross-host contention in the CXL--SSD device cache}{figure.caption.4}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.2}Challenge 2: One Shared Cache for Many Hosts}{3}{subsection.3.2}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {3}{\ignorespaces Placeholder experiment for translating ANNS search semantics into page residency decisions.}}{3}{figure.caption.5}\protected@file@percent }
+\newlabel{fig:motivation-page-roles}{{3}{3}{Placeholder experiment for translating ANNS search semantics into page residency decisions}{figure.caption.5}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.3}Challenge 3: ANNS Semantics Must Reach the Cache}{3}{subsection.3.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.4}Challenge 4: Pipeline Bubbles Waste Flash Parallelism}{3}{subsection.3.4}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {4}{\ignorespaces Pipeline bubbles under three schedulers (schematic). The $y$-axis is in-flight device reads; $D$ is the target queue depth needed to saturate flash internal parallelism. (a) A single query is pointer-chasing, so it cannot fill the pipe (measured device queue depth aqu-sz $\approx 9.8$, utilization $0.53$--$0.92$, $14$--$42\%$ of loop iterations starved). (b) Interleaving a static batch of independent queries raises occupancy (aqu-sz $\approx 13.8$, $+44\%$ QPS) but a per-hop/group barrier drains the tail. (c) Continuous fetch-level batching keeps the device near $D$ (aqu-sz $\approx 14.4$ single core; $319$ at 16 threads) at identical recall ($86.5\%$). Single-core numbers: 984{,}133$\times $1024-d embeddings, PipeANN disk index, Dell PM1733a NVMe.}}{4}{figure.caption.6}\protected@file@percent }
+\newlabel{fig:pipeline-bubbles}{{4}{4}{Pipeline bubbles under three schedulers (schematic). The $y$-axis is in-flight device reads; $D$ is the target queue depth needed to saturate flash internal parallelism. (a) A single query is pointer-chasing, so it cannot fill the pipe (measured device queue depth aqu-sz $\approx 9.8$, utilization $0.53$--$0.92$, $14$--$42\%$ of loop iterations starved). (b) Interleaving a static batch of independent queries raises occupancy (aqu-sz $\approx 13.8$, $+44\%$ QPS) but a per-hop/group barrier drains the tail. (c) Continuous fetch-level batching keeps the device near $D$ (aqu-sz $\approx 14.4$ single core; $319$ at 16 threads) at identical recall ($86.5\%$). Single-core numbers: 984{,}133$\times $1024-d embeddings, PipeANN disk index, Dell PM1733a NVMe}{figure.caption.6}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {4}Design}{4}{section.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.1}Overview}{4}{subsection.4.1}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {5}{\ignorespaces Placeholder architecture of one-copy graph ANNS serving on flash-backed CXL--SSD memory.}}{4}{figure.caption.7}\protected@file@percent }
+\newlabel{fig:design-overview}{{5}{4}{Placeholder architecture of one-copy graph ANNS serving on flash-backed CXL--SSD memory}{figure.caption.7}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.2}D0: One Shared Memory Image}{4}{subsection.4.2}\protected@file@percent }
+\bibstyle{ACM-Reference-Format}
+\bibdata{references}
+\newlabel{tocindent-1}{0pt}
+\newlabel{tocindent0}{0pt}
+\newlabel{tocindent1}{5.00002pt}
+\newlabel{tocindent2}{12.77782pt}
+\newlabel{tocindent3}{0pt}
+\newlabel{tocindent4}{0pt}
+\newlabel{tocindent5}{0pt}
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.3}D1: Page-Aware Index Layout}{5}{subsection.4.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.4}D2: Stall-Aware Residency}{5}{subsection.4.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.5}D3: Multi-Host Coordination}{5}{subsection.4.5}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {5}Evaluation}{5}{section.5}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {6}Related Work}{5}{section.6}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {7}Conclusion}{5}{section.7}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{References}{5}{section*.9}\protected@file@percent }
+\newlabel{TotPages}{{5}{5}{}{page.5}{}}
+\gdef \@abspage@last{5}
