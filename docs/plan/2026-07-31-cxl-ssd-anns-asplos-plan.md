@@ -30,7 +30,7 @@ query set = 50,000
 ```
 
 | Threads | QPS | mean latency us | avg read GB/s | peak read GB/s | NVMe BW util avg/peak | NVMe busy% | job CPU% |
-|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+|---:|---:|---:|---:|---:|---:|---:|---:|
 | 2 | 432.73 | 4559.78 | 0.13 | 0.17 | 1.9% / 2.4% | 80.9% | 81% |
 | 4 | 810.91 | 4869.92 | 0.24 | 0.31 | 3.4% / 4.4% | 95.4% | 144% |
 | 8 | 1568.87 | 5034.74 | 0.44 | 0.54 | 6.3% / 7.7% | 94.0% | 262% |
@@ -109,11 +109,11 @@ query set = 50,000
 - prefetch
    - 参考PipeANN，取消best-first依赖
 
-|Policy|QPS|Recall|CXL-DRAM hit%|
-|--|--|--|--|--|
-|无prefetch|1.33|0.929|10.47|
-|pipeline + pool|12.65|0.929|22.31|
-|prefetch + page|13.4|0.929|29.0|
+   |Policy|QPS|Recall|CXL-DRAM hit%|
+   |--|--|--|--|
+   |无prefetch|1.33|0.929|10.47|
+   |pipeline + pool|12.65|0.929|22.31|
+   |prefetch + page|13.4|0.929|29.0|
 
    - Text2Image-10M
 
