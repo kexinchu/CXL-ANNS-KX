@@ -285,6 +285,62 @@ queues: the ceiling is CPU-per-read, not queue depth.
 3. **Cut reads per query** (raises the BW-bound QPS ceiling itself): PQ-only traversal + deferred
    full-precision re-rank of a small finalist set.
 
+## 3.4 Cross-check on Text2Image-10M (mips, 4 KB nodes) — how to saturate NVMe read BW
+
+Rebuilt a PipeANN disk index on **Text2Image-10M** (10,000,000 × 200-d float, **inner product**,
+base `serving_t2i_10m/mem_R32.data`; PipeANN R=64 L=128 PQ=32; `idx_t2i_disk.index` = 13.65 GB).
+Node len 1060 B → **3 nodes / 4 KB page, IO size = 4 KB** (half the 1M's 8 KB). ~206 reads/query at
+L=150. Device throughput measured with a 100 ms `/proc/diskstats` sampler (`reads/s`, `sectors/s`,
+in-flight); 80k-query steady workload; `null` truthset for the BW runs.
+
+**NVMe read-BW ceiling ≈ 5.6 GB/s (~1.47M IOPS at 4 KB).** (For 1M's 8 KB it was ~5.8 GB/s /
+728k IOPS — same GB/s wall, more IOPS with smaller blocks.) Sweep (iso-config, `null` gt):
+
+| threads | mode | QPS | IOPS | BW (GB/s) | dev inflight | dev-idle |
+|---------|------|-----|------|-----------|--------------|----------|
+| 4  | pipe        | 2775 | 578k  | 2.21 | 38  | 0% |
+| 4  | cont D=32   | 3510 | 617k  | 2.36 | 44  | 0% |
+| 8  | pipe        | 4545 | 937k  | 3.58 | 73  | 0% |
+| 8  | **cont D=32** | **6807** | 1228k | **4.68** | 123 | 0% |
+| 16 | pipe        | 6439 | 1313k | 5.01 | 131 | 0% |
+| 16 | **cont D=32** | **7426** | 1418k | **5.41** | 474 | 0% |
+| 24 | pipe        | 7158 | 1450k | 5.53 | 167 | 0% |
+| 24 | cont D=32   | 7675 | 1422k | 5.43 | 742 | 0% |
+| 32 | pipe        | 7291 | 1474k | 5.62 | 188 | 0% |
+| 32 | cont D=32   | 7619 | 1416k | 5.40 | 1001 | 0% |
+
+Findings (this **corrects** the 1M claim that "pipe and cont tie at 16 threads"):
+- **To saturate NVMe read BW you must keep enough reads in flight.** pipe's per-query queue is
+  shallow (device inflight ~130 even at 16 threads), so pipe needs **24--32 cores** to approach the
+  ~5.6 GB/s wall. **Read-level cont reaches 4.68 GB/s at 8 cores and ~5.41 GB/s (96% of ceiling) at
+  16 cores** — it saturates the NVMe with roughly **half the cores**, holding device inflight ~474
+  (min 412, never idle).
+- **cont wins at *every* core count on T2I** (t8: 6807 vs 4545 = **1.5×**; t16: +15%), unlike the
+  1M/8 KB case where pipe caught up at 16 threads. Smaller 4 KB reads need ~2× the IOPS for the same
+  GB/s, and pipe's shallow queue can't supply them without many cores.
+- **Past the wall, extra depth is wasted (on NVMe).** cont BW plateaus ~5.4 GB/s from t16 on, while
+  its inflight keeps climbing (474→742→1001) with no BW gain — the device is maxed. That surplus
+  depth is exactly what pays off on a *high-latency* CXL-SSD (see §3.2), not on this NVMe.
+- **cont is also slightly more read-efficient**: at t32 cont does 186 reads/q vs pipe 202, so it
+  gets higher QPS (7619 vs 7291) at marginally lower BW.
+
+**Iso-recall (10k queries, gt_10k_k10.ibin, mips):** cont/coro explore a touch less than pipe at
+equal L (pipe L=150 → 61.07%; cont L=150 → 59.36%). Matching recall by a small L bump: **cont
+L=175 → 61.93% at 5789 QPS vs pipe L=150 → 61.07% at 4519 QPS = 1.28× at iso-recall (8 threads)**.
+So the QPS win is real, not a recall artifact.
+
+**Answer to "how to saturate NVMe read BW":** the ceiling is ~5.6 GB/s; reaching it needs aggregate
+device in-flight of ~150--200 reads. pipe needs many cores to get there; read-level continuous
+batching gets there with ~half the cores by holding deep per-thread queues, and keeps it pegged
+(0% device-idle, inflight never below 412 at 16 threads). To push the last ~4% / saturate with even
+fewer cores, cut CPU-per-read (SIMD PQ, drop robin_set, batched poll) — and note T2I packs **3 nodes
+per 4 KB page**, so page-aware read coalescing (a 4 KB read already carries 3 nodes) could cut
+physical reads up to ~3× here (PipeANN's `page_search`, mode 1, is the lever to fold in).
+
+Repro: build `tests/build_disk_index float serving_t2i_10m/mem_R32.data pipeann_t2i10m/idx_t2i 64 128 32 64 112 mips pq`;
+sweep `[PIPEANN_LANES=8] tests/search_disk_index float idx_t2i <T> 32 query_big.bin null 10 mips pq {2|4} 0 150`
+with `python3 pipeann_t2i10m/diskmon.py nvme0n1 90 0.1 <csv>`.
+
 ## 4. Reading for the paper
 - The bubbles are **intra-query and structural** (pointer-chasing → QD≈1); the only way to fill them
   is **cross-query** work. That is exactly continuous batching.
@@ -307,4 +363,102 @@ cd third_party/PipeANN/build
 # static batch:   tests/search_disk_index float idx_1m 1 4  query.bin gt100.bin 10 l2 pq 3 0 150
 # continuous:     PIPEANN_LANES=8 tests/search_disk_index float idx_1m 1 4 query.bin gt100.bin 10 l2 pq 4 0 150
 # device QD: iostat -x -y 1 N /dev/nvme0n1  (aqu-sz column)
+```
+
+## 6. Saturating NVMe read bandwidth (T2I-10M) — where the wall really is
+
+Goal: get the ANN search to consume ≥95% of the device's fio read bandwidth. Result: the
+95% target (7.10 GB/s) is **not reachable at 4 KB** by *any* client on this file; the ANN
+access pattern's practical ceiling is **~6.9 GB/s (92.7%)**, reached only by switching to
+larger (page-coalesced) reads. Full evidence below.
+
+### 6.1 Device / file ceilings (fio, io_uring, O_DIRECT, QD=256×8)
+| target            | 4 KB          | 8 KB          | 16 KB         | 128 KB / seq  |
+|-------------------|---------------|---------------|---------------|---------------|
+| raw `/dev/nvme0n1`| 7.30 GB/s (1.78M) | 7.39 | 7.42 | 7.47 |
+| index **file**    | 7.00 GB/s (1.71M) | 7.39 (902k) | 7.42 (453k) | — |
+
+So "7.47 GB/s" is the **large-block** number. At **4 KB random the file itself tops at 7.0
+GB/s** — 95% of 7.47 (=7.10) is above the 4 KB ceiling and only exists at ≥8 KB I/O.
+
+### 6.2 The ANN 4 KB path is IOPS-bound at ~1.43M (≈5.5 GB/s), not device-bound
+Thread/depth sweeps of read-level `cont` (mode 4), 4 KB reads, `diskmon.py` @100 ms
+(machine has 86 cores):
+
+| cfg                    | IOPS   | BW       | inflight | CPU busy |
+|------------------------|--------|----------|----------|----------|
+| cont t8  D32           | 1.23M  | 4.68 GB/s| 116      | ~10 cores|
+| cont t16 D32           | 1.43M  | 5.44     | 477      | ~18      |
+| cont t24 D32           | 1.43M  | 5.44     | 744      | ~26      |
+| cont t32 D32           | 1.42M  | 5.43     | 991      | ~34      |
+| cont t48 D32           | 1.42M  | 5.43     | 1512     | ~50      |
+| cont t16 D128          | 1.42M  | 5.40     | 1974     | ~18      |
+| cont t64 D32           | 1.42M  | 5.42     | 2019     | ~66      |
+| pipe t48 W8            | 1.44M  | **5.48** | 163      | ~87      |
+
+IOPS pins at **~1.43M from t16 onward, independent of threads (16→64) and device depth
+(inflight 477→2019)**. At inflight 2019 (= fio's QD 2048) on the *same file* we get 1.42M
+vs fio's 1.71M. So the gap is our **per-read software path** (compute interleaved with the
+issue/poll loop), not the device, the filesystem, or queue depth.
+
+**Ruled out empirically (all left IOPS at ~1.42M):**
+- Filesystem overhead — fio on the *index file* hits 1.71M (7.0 GB/s) at 4 KB.
+- Submit syscalls — added batched `queue_read()`+`submit_reads()` (one `io_uring_submit`
+  per refill round instead of per read): no change.
+- Ring setup — env-gated `IORING_SETUP_COOP_TASKRUN|SINGLE_ISSUER` (`PIPEANN_URING_FLAGS=2`):
+  no change.
+- Queue depth — raising D/lanes to inflight 2019: no change.
+
+### 6.3 Larger (page-coalesced) reads break the wall → 6.9 GB/s (92.7%)
+T2I disk index: `max_node_len=1060`, **`nnodes_per_sector=3`** — a 4 KB read already carries
+3 nodes, but the search uses only 1. Env-gated `PIPEANN_RDMUL=N` reads N contiguous pages
+per I/O (BW probe: parses only the target node):
+
+| read size | cfg              | IOPS  | BW        | inflight | CPU |
+|-----------|------------------|-------|-----------|----------|-----|
+| 4 KB      | t24 D32          | 1.43M | 5.44 GB/s | 744      | 26  |
+| 8 KB      | t16 D32          | 0.61M | **6.90**  | 1017     | 34  |
+| 16 KB     | t24 D48          | 0.45M | **6.91**  | 1142     | 26  |
+| 16 KB     | t32 D96 L24      | 0.45M | 6.91      | 3050     | 34  |
+| 32 KB     | t16 D48          | 0.23M | **6.93**  | 764      | 18  |
+
+Once reads are ≥8 KB the run is **device-BW-bound at ~6.9 GB/s** with huge headroom (IOPS
+far below the 1.43M software cap; only 18–34 of 86 cores busy; 0% device-idle). More depth
+(inflight 3050) or larger blocks (32 KB) do **not** exceed ~6.9. That ~6.9 vs fio's 7.4 at
+16 KB is the ANN LBA distribution (graph-offset reads cluster across fewer NAND dies than
+fio's uniform-random) plus small refill dips (min_inflight drops when a lane pauses to
+compute).
+
+### 6.4 Bottom line for the user's ask
+- **4 KB (today's real reads): 5.48 GB/s = 73% of 7.47.** Hard software IOPS ceiling
+  ~1.43M; not fixable by threads/depth/submit-batching/ring-flags. Closing 5.5→7.0 needs
+  I/O–compute *separation* (a dedicated issuer that never stops polling while workers
+  compute) — the pending "global request-level scheduler" task.
+- **Page-coalesced ≥8 KB reads: 6.9 GB/s = 92.7% of 7.47** — the realistic ceiling for this
+  workload's access pattern, hit with spare CPU/IOPS. The literal 95% (7.10) is only a
+  large-block/uniform-random fio artifact and is above what 4 KB or this LBA pattern allow.
+- **The productive win** (not just a BW probe): since T2I packs 3 nodes/4 KB, a real
+  page-coalescing search (consume the 3 co-fetched nodes; PipeANN `page_search`, mode 1)
+  gets both the ~93% BW *and* up to ~3× fewer physical reads → higher iso-recall QPS. That
+  is the recommended next implementation step.
+
+### 6.5 Code touched (all safe / gated)
+- `aligned_file_reader.h`: added virtual `queue_read()`/`submit_reads()` (default falls back
+  to per-op `send_read`).
+- `linux_aligned_file_reader.cpp`: io_uring batched-submit impl; env-gated ring flags
+  `PIPEANN_URING_FLAGS`.
+- `coro_search.cpp` (`cont_search`): batched submit per refill round; env-gated
+  `PIPEANN_RDMUL` read-size multiplier (default 1 = unchanged).
+- `pipeann_t2i10m/diskmon.py`: added CPU-busy sampling from `/proc/stat`.
+
+Repro:
+```bash
+cd /mnt/disk0/chukexin_motivation/pipeann_t2i10m
+BIN=.../PipeANN/build/tests/search_disk_index
+# 4 KB IOPS wall:  PIPEANN_LANES=8 $BIN float idx_t2i 24 32 query_big.bin null 10 mips pq 4 0 150
+# 8 KB (92% BW):   PIPEANN_RDMUL=2 PIPEANN_LANES=8 $BIN float idx_t2i 16 32 query_big.bin null 10 mips pq 4 0 150
+# fio ceiling:     fio --name=f --filename=idx_t2i_disk.index --rw=randread --bs=8k \
+#                    --iodepth=256 --numjobs=8 --ioengine=io_uring --direct=1 --readonly \
+#                    --group_reporting --runtime=12 --time_based --norandommap
+# monitor:         python3 diskmon.py nvme0n1 40 0.1 out.csv
 ```

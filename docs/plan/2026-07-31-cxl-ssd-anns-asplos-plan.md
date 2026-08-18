@@ -81,16 +81,33 @@ query set = 50,000
 
 ---
 
-## 0. 论文故事线（新）
+## 0. 论文故事线（新-降级）
 - **核心重点：** 本文的主线降级为 **flash-backed CXL memory tier 上的 graph ANNS 如何可用**。
 - 现有 ANNS 系统已覆盖：DiskANN 是优秀的 **block-SSD ANNS**，通过 PQ navigation、sector layout、AIO beam 和 node cache 在单机 SSD 上取得很高性能；CXL-ANNS / Cosmos 则是 **full-in-memory CXL-DRAM ANNS**，把图和向量放进高价值 CXL DRAM / 设备内存来避免 SSD stall。
 - 据我们所知，本文是第一个系统研究 **graph ANNS on flash-backed CXL–SSD memory semantics** 的工作：在真实单 CXL–SSD / DAX-like 设备上刻画 graph ANNS 的 residency 和 stall pathology，并设计 ANNS-aware runtime。相对 DiskANN，本工作不是替代其 block-SSD path，而是回答 CXL–SSD 这种新 memory-semantic flash tier 上缺失的管理问题；相对 CXL-ANNS / Cosmos，本工作不假设全库进入 CXL-DRAM，而是承认 flash 仍是冷语料的必要介质。系统贡献是通过语义驻留、共享/局部热集、有界升迁、layout/reorder 和 stall-aware scheduling，把 naive CXL–SSD 与 DiskANN 之间的性能差距尽量缩小。
 
 ---
 
+## challenges
+- Host - CXL-DRAM - CXL-SSD 速度差异
+
+|类型|公开数据范围|
+|--|--|
+|Local DRAM|~80-120 ns|
+|CXL-DRAM / Type-3 memory|~140-410 ns|
+|CXL SSD|~20-100 us|
+|本机实测|CXL-DRAM hit ～0.6 us, CXL-SSD ~70 us; ~130-140x|
+
+- 如何利用 CXL-DRAM 和 CXL-SSD之间的高带宽，隐藏miss开销
+   - 如何prefetch
+   - prefetch什么数据
+   - 何时prefetch
+   - 如何优化带宽 util （单个query看不远，需要continues batching提供lookahead）
+
 ## 初步结果
 
 - prefetch
+   - 参考PipeANN，取消best-first依赖
 
 |Policy|QPS|Recall|CXL-DRAM hit%|
 |--|--|--|--|--|
@@ -107,7 +124,7 @@ query set = 50,000
    |prefetch + page|17.4|42.1|
 
 
-- 考虑 continues batching
+- continues batching
    - 之前的 DiskANN 测试发现，虽然I/O是瓶颈，但是带宽使用存在明显的波峰波谷（fio实测当前 NVMe 顺序读上限约 7.47 GB/s）：
 
    | Test | QPS  | mean IOs/q | avg read GB/s | peak read GB/s | NVMe busy% | job CPU% | 
@@ -118,6 +135,33 @@ query set = 50,000
 <img src="./bubble.png.jpg" wdith=600>
 
    - 如何能够持续利用 带宽，保持带宽接近满负载使用？
+      - 为什么要这么做？
+         - CXL-DRAM 和 CXL-SSD 之间的带宽 160GB/s，保持持续高带宽使用 => 消除critical path上的 miss
+
+      - 先用 **fio** 摸清设备真实上限（io_uring, O_DIRECT, QD=256×8）：
+
+      | 目标 | 4 KB | 8 KB | 16 KB | 128 KB |
+      |---|---:|---:|---:|---:|
+      | 裸盘 `/dev/nvme0n1` | 7.30 (1.78M IOPS) | 7.39 | 7.42 | **7.47** |
+      | 索引文件 | **7.00** (1.71M) | 7.39 | 7.42 | — |
+
+      - 在 **PipeANN**（其 disk index + `pipe_search`）上验证 continues batching：`cont` 为我们在 PipeANN `coro_search.cpp` 中实现的 **read-level 全局调度器**（admit-on-retire，按单次读的粒度把设备队列维持在目标深度）。数据集 Text2Image-10M（10M×200d，MIPS，4 KB/页），iso-recall（L=150），86 核，`diskmon` @100ms 采样：
+
+      | threads | mode | QPS | BW | IOPS | inflight | CPU |
+      |---:|---|---:|---:|---:|---:|---:|
+      | 8  | pipe | 3467 | 2.43 GB/s | 636k | 45 | ~17 cores |
+      | 8  | **cont** | **7251** | **4.95** | 1.30M | 128 | ~10 |
+      | 16 | pipe | 5624 | 3.94 | 1.03M | 83 | ~33 |
+      | 16 | **cont** | **7394** | **5.43** | 1.42M | 477 | ~18 |
+      | 24 | pipe | 6890 | 4.82 | 1.26M | 120 | ~50 |
+      | 24 | **cont** | **7686** | **5.45** | 1.43M | 743 | ~26 |
+      | 32 | pipe | 7590 | 5.30 | 1.39M | 148 | ~66 |
+      | 32 | **cont** | 7668 | 5.43 | 1.42M | 1000 | ~34 |
+
+      - **结论**：`cont` 用 **约一半的核** 就把设备推到 4 KB 的软件上限（~1.43M IOPS / 5.4 GB/s）；
+      - 目前带宽BW占用仅 5.4 / 7.0 ～= 77%； 仍然存在bubble；如何进一步消除？
+         - 合并读 8-16 KB/s 能进一步放大BW，但是过度的预取会污染 CXL-DRAM 缓存
+         - 如何业管理，避免SSD 块中出现不想要的数据
 
 ---
 
