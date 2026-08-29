@@ -1,0 +1,161 @@
+% =============================================================================
+% §3 Motivation  — Target: 1.4--1.6 pages. Every finding is (A) exists (B) hurts.
+% 4.5/5 bar: negative results become design constraints, not embarrassment.
+% 填写: 换 Fig.~3--5 和 Table~1 的实测；caption 里的定性结论不要改，除非 finding 变了。
+% =============================================================================
+\section{Why Naive CXL-SSD ANNS Fails}
+\label{sec:motivation}
+
+A unified VA does not make graph ANNS fast. This section records the
+pathologies that a runtime must treat as first-class. Each finding answers
+two questions: \emph{does the effect exist in the numbers?} and \emph{how
+much does being wrong cost?} We later require every design module to name
+the finding it answers (Table~\ref{tab:findings}).
+
+\subsection{F1: A two-order miss cliff}
+\label{sec:mot-cliff}
+
+A full-precision load that misses the CXL-SSD window costs
+\num{CXL-SSD cold $\mu$s}; a hit in the software/device cache with a cold
+PTE costs \num{soft $\mu$s}; a warm PTE hit costs \num{warm $\mu$s}
+(Figure~\ref{fig:mot-cliff}). The ratio of the first to the last is
+\num{$\sim$100--140$\times$}. Graph search multiplies this tax by hops
+$\times$ degree. Once a modest fraction of loads miss, wall-clock time is
+spent in the NAND path, not in distance arithmetic. DiskANN already knew
+this for block I/O; the new fact is that \emph{memory-semantic} access does
+not remove the cliff --- it only changes how a miss is issued
+(\S\ref{sec:mot-qd}).
+
+\begin{figure}[t]
+  \centering
+  \phbox{0.98\columnwidth}{3.3cm}{%
+    Fig.~3 placeholder --- three bars or a CDF:\\
+    cold NAND / soft-cache$+$PTE-cold / PTE-warm.\\
+    Optional stacked bar: fraction of a full search in each tier.}
+  \caption{Miss cliff on flash-backed CXL memory. Soft-cache hits are
+    \emph{not} PTE hits; reporting only \texttt{mincore}/PTE occupancy
+    hides the middle step. \textbf{Fill-in:} per-vector latency and a
+    whole-search breakdown on the same index.}
+  \Description{Bar chart of vector-load latency at three residency tiers.}
+  \label{fig:mot-cliff}
+\end{figure}
+
+\subsection{F2: Page admission mismatches the graph}
+\label{sec:mot-page}
+
+Neighbor IDs are not sequential in the address space. Admitting 16\,KB OS
+pages (or CXL-SSD cachelines grouped as pages) therefore brings vectors the
+search will not score. On a high-dimensional corpus where a vector is
+already close to a page, page admission versus per-record admission
+splits QPS by \num{$\sim$3.6$\times$} and NAND reads by
+\num{$\sim$3.7$\times$} (Figure~\ref{fig:mot-pathology}a). The claim is
+scoped: at small dimensions several records share a page and the gap
+narrows. Default page-cache thinking is still the wrong default for this
+workload.
+
+\subsection{F3: Promotion volume without precision is harmful}
+\label{sec:mot-pref}
+
+Synchronous logical prefetch of 1-, 2-, or 8-hop neighborhoods leaves
+hit rate almost unchanged, multiplies NAND reads, and drops QPS by
+\num{$\sim$4--5$\times$} at the widest setting
+(Figure~\ref{fig:mot-pathology}b). Precision (\emph{used$/$promoted})
+falls as coverage grows; leftover pages evict useful ones from a
+few-gigabyte window. \emph{Wrong promotion costs more than a missed
+promotion.} The useful policy is a bounded, high-precision ensure of the
+nodes the search is about to expand --- not ``prefetch harder.''
+
+\subsection{F4: Search width is a stall knob}
+\label{sec:mot-beam}
+
+Raising \texttt{efSearch} / beam grows the unique IDs touched per query,
+cools the window, and raises NAND reads faster than it raises recall
+(Figure~\ref{fig:mot-pathology}c). Recall itself saturates once a hop
+budget is spent. A shared hot set at a \emph{small} beam beats a cold
+cache at a \emph{large} beam. A controller that chops beam on instantaneous
+miss rate does not, by itself, win at iso-recall: it has no recall
+constraint and no IO budget. Quality and stall must be controlled jointly.
+
+\begin{figure*}[t]
+  \centering
+  \phbox{0.98\textwidth}{3.5cm}{%
+    Fig.~4 placeholder --- three panels, same y-family (QPS or normalized):\\
+    (a)~record vs.\ 16\,KB page admission;\\
+    (b)~demand vs.\ 1-/2-/8-hop sync prefetch (precision annotated);\\
+    (c)~efSearch / beam sweep: QPS, hit\%, recall@10, NAND reads.}
+  \caption{Three default usages that amplify stall. (a)~Page admission.
+    (b)~Blind graph prefetch. (c)~Widening search. Each panel must keep
+    recall visible so raw QPS cannot be misread.
+    \textbf{Fill-in:} one protocol (dataset, $L$, cache bytes) across
+    panels if possible.}
+  \Description{Three-panel figure of page admission, prefetch precision,
+    and search-width coupling.}
+  \label{fig:mot-pathology}
+\end{figure*}
+
+\subsection{F5: A single query cannot fill the miss pipeline}
+\label{sec:mot-qd}
+
+Graph search is pointer-chasing. Even an excellent single-query pipeline
+leaves device-queue bubbles: the next hop is unknown until the current
+page is scored, the beam ramps slowly, and the query drains at the end
+(Figure~\ref{fig:mot-bubbles}). On NVMe, interleaving independent queries
+raises occupancy; a \emph{continuous}, fetch-level scheduler that admits
+work at read granularity can hold a target depth $D$.
+
+On CXL-SSD the same idea is necessary and insufficient. A blocking
+\texttt{memcpy} from a mapping is a synchronous NAND fault (effective
+QD$\approx 1$ per thread). A depth-oriented scheduler that issues
+\emph{speculative} fills then pays their latency on the critical path and
+can lose to a narrower pipeline. Continuous batching pays off on this tier
+only after memory-semantic fills are asynchronous
+(Figure~\ref{fig:design-pipe}, \S\ref{sec:d4}).
+
+\begin{figure}[t]
+  \centering
+  \phbox{0.98\columnwidth}{3.4cm}{%
+    Fig.~5 placeholder --- in-flight depth vs.\ time:\\
+    (a)~single-query pipeline; (b)~static batch; (c)~continuous fetch batching.\\
+    (Existing TikZ in sections/fig\_bubbles.tex can replace this box.)}
+  \caption{Pipeline bubbles. $y$ is in-flight device reads; $D$ is the
+    depth needed to exercise NAND parallelism. A single query cannot hold
+    $D$; a static batch drains at the barrier; continuous fetch-level
+    admission targets $D$ at unchanged recall.
+    \textbf{Fill-in:} swap in the measured schematic; add a CXL-SSD panel
+    that shows blocking load/store stuck at QD$\approx 1$.}
+  \Description{Three timelines of device queue occupancy under different
+    schedulers.}
+  \label{fig:mot-bubbles}
+\end{figure}
+
+\subsection{From findings to design constraints}
+\label{sec:mot-map}
+
+Table~\ref{tab:findings} is the contract for~\S\ref{sec:design}. We do not
+treat CXL-SSD as uniform memory (C1). We place the graph and PQ off the
+SSD window (C2). We promote few, precise records (C3) and share them
+across queries (C4). We control beam under iso-recall or an IO budget
+(C5), and we issue misses asynchronously at a target depth. Evaluation
+must compare against a block-SSD path on the same corpus and recall
+(C6).
+
+\begin{table}[t]
+  \caption{Findings become challenges become knobs.
+    \textbf{Fill-in:} replace \ph\ with the headline measured delta
+    (e.g., QPS $\times$, IO $\times$).}
+  \label{tab:findings}
+  \small
+  \begin{tabular}{@{}p{0.07\columnwidth}p{0.28\columnwidth}p{0.26\columnwidth}p{0.27\columnwidth}@{}}
+    \toprule
+    ID & Finding (exists $+$ hurts) & Challenge & \sys{} knob \\
+    \midrule
+    F1 & Miss cliff \ph$\times$ & C1 visibility of tiers & counters, cost model \\
+    F2 & Page $\neq$ record \ph$\times$ & C2 placement & record / hub admission \\
+    F3 & Low-precision promote \ph$\times$ & C3 bounded promote & top-$M$, byte budget \\
+    F4 & Beam cools the set \ph & C5 iso-recall & beam / early stop \\
+    F5 & Bubbles; mmap QD$\approx 1$ & C4/C5 pipeline & async fill $+$ \texttt{cont} \\
+    F7 & Shared hot set $>$ deep beam & C4 shared cache & cross-query pin \\
+    \bottomrule
+  \end{tabular}\\[2pt]
+  {\footnotesize \phnote}
+\end{table}

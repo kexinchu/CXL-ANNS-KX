@@ -1,0 +1,17 @@
+% =============================================================================
+% §9 Conclusion  — Target: 0.15--0.2 page. Restate opportunity vs. system.
+% =============================================================================
+\section{Conclusion}
+\label{sec:concl}
+
+Graph ANNS has a well-engineered block-SSD path and a well-engineered
+CXL-DRAM path. Flash-backed CXL memory is the third deployment point ---
+flash-priced capacity, a memory-semantic window, and a future one-copy
+hosting story --- but it is unusable if treated as slow DRAM or as mmap'd
+DiskANN. \sys{} is a runtime for that tier: it places the graph off the
+window, promotes few precise records, shares a hot set, controls search
+under iso-recall, and keeps NAND fills asynchronous and deep. The
+opportunity is the medium; the contribution is residency and stall
+control. We have stated where the prototype is a proxy and where the
+paper is a model, so that those sentences cannot migrate into the
+abstract as facts.

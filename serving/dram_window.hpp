@@ -224,6 +224,16 @@ struct DramWindow {
     return promote_page_unlocked(ssd_base, page_off, false);
   }
 
+  template <typename PlacementT>
+  void pin_vec_ids(const PlacementT& p, const std::vector<uint32_t>& ids, Metrics* m) {
+    size_t vb = p.packed_vec_bytes();
+    for (uint32_t id : ids) {
+      if (!p.hdr || id >= p.hdr->n) continue;
+      pin(p.ssd_base, p.vec(id), vb);
+      if (m) m->hotset_pins++;
+    }
+  }
+
   // Promote and pin all pages covering [ptr, ptr+len). Respects pin_bytes_cap.
   void pin(const uint8_t* ssd_base, const uint8_t* ssd_ptr, size_t len) {
     std::lock_guard<std::mutex> g(mu);

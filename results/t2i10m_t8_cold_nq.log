@@ -1,0 +1,51 @@
+========== T8 nq=200 2026-08-24T23:46:10+00:00 ==========
+[disk] samples=0
+--- search ---
+mapped vmem /dev/vmem0 off=450971566080 len=9600069632 fd=5 prefetch=1
+vec_stride=800 (packed=800)
+mapped DRAM window anon+mbind node=1 len=268435456 (fallback; not DAX)
+P3v2 softpin W=4 budget=67108864 install_top=4 fetch_top=0 page_group_b=0 install_all=0 threads=8 per_thread_window=1
+loaded id-map new→old n=10000000 from /mnt/disk0/chukexin_motivation/serving_t2i_10m/new_to_old_pagebin.bin
+query_select nq=200/10000 shuffle_seed=42 flush_window=0 oneshot_fp=1 pin_entry=1 host_used=1249356 host_cap=134217728 dram_bytes=268435456 pin_cap=16777216
+mapped DRAM window anon+mbind node=1 len=268435456 (fallback; not DAX)
+mapped DRAM window anon+mbind node=1 len=268435456 (fallback; not DAX)
+
+========== T8 nq=400 2026-08-24T23:46:10+00:00 ==========
+[disk] samples=0
+--- search ---
+mapped vmem /dev/vmem0 off=450971566080 len=9600069632 fd=5 prefetch=1
+vec_stride=800 (packed=800)
+mapped DRAM window anon+mbind node=1 len=268435456 (fallback; not DAX)
+P3v2 softpin W=4 budget=67108864 install_top=4 fetch_top=0 page_group_b=0 install_all=0 threads=8 per_thread_window=1
+loaded id-map new→old n=10000000 from /mnt/disk0/chukexin_motivation/serving_t2i_10m/new_to_old_pagebin.bin
+query_select nq=400/10000 shuffle_seed=42 flush_window=0 oneshot_fp=1 pin_entry=1 host_used=1417356 host_cap=134217728 dram_bytes=268435456 pin_cap=16777216
+mapped DRAM window anon+mbind node=1 len=268435456 (fallback; not DAX)
+
+========== T8 nq=800 2026-08-24T23:46:10+00:00 ==========
+[disk] samples=0
+--- search ---
+mapped vmem /dev/vmem0 off=450971566080 len=9600069632 fd=5 prefetch=1
+vec_stride=800 (packed=800)
+mapped DRAM window anon+mbind node=1 len=268435456 (fallback; not DAX)
+P3v2 softpin W=4 budget=67108864 install_top=4 fetch_top=0 page_group_b=0 install_all=0 threads=8 per_thread_window=1
+loaded id-map new→old n=10000000 from /mnt/disk0/chukexin_motivation/serving_t2i_10m/new_to_old_pagebin.bin
+query_select nq=800/10000 shuffle_seed=42 flush_window=0 oneshot_fp=1 pin_entry=1 host_used=1753356 host_cap=134217728 dram_bytes=268435456 pin_cap=16777216
+mapped DRAM window anon+mbind node=1 len=268435456 (fallback; not DAX)
+mapped DRAM window anon+mbind node=1 len=268435456 (fallback; not DAX)
+mapped DRAM window anon+mbind node=1 len=268435456 (fallback; not DAX)
+mapped DRAM window anon+mbind node=1 len=268435456 (fallback; not DAX)
+mapped DRAM window anon+mbind node=1 len=268435456 (fallback; not DAX)
+mapped DRAM window anon+mbind node=1 len=268435456 (fallback; not DAX)
+
+========== T8 nq=1600 2026-08-24T23:46:10+00:00 ==========
+[disk] samples=0
+--- search ---
+mapped vmem /dev/vmem0 off=450971566080 len=9600069632 fd=5 prefetch=1
+vec_stride=800 (packed=800)
+mapped DRAM window anon+mbind node=1 len=268435456 (fallback; not DAX)
+P3v2 softpin W=4 budget=67108864 install_top=4 fetch_top=0 page_group_b=0 install_all=0 threads=8 per_thread_window=1
+loaded id-map new→old n=10000000 from /mnt/disk0/chukexin_motivation/serving_t2i_10m/new_to_old_pagebin.bin
+query_select nq=1600/10000 shuffle_seed=42 flush_window=0 oneshot_fp=1 pin_entry=1 host_used=2425356 host_cap=134217728 dram_bytes=268435456 pin_cap=16777216
+mapped DRAM window anon+mbind node=1 len=268435456 (fallback; not DAX)
+mapped DRAM window anon+mbind node=1 len=268435456 (fallback; not DAX)
+

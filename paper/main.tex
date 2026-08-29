@@ -1,0 +1,109 @@
+% =============================================================================
+% FlashANNS --- ASPLOS 2027 September cycle (deadline 2026-09-09 AoE)
+%
+% REQUIRED class options (ASPLOS 2027 CFP):
+%   sigplan, anonymous, review, nonacm
+% Forbidden: \vspace squeezing, 9pt body, unnumbered pages.
+% Limit: 11 pages of body+figures+tables; refs / appendix / AI ack free.
+% Rapid Review: first TWO pages only. Keep §1 self-contained.
+%
+% 4.5/5 score bar this skeleton is written to:
+%   Novelty     --- scoped "first graph-ANNS runtime on SSD-backed CXL VA"
+%   Fit         --- OS residency + memory/storage hierarchy (two pillars)
+%   Completeness--- Route A: opportunity + D1--D5 + DiskANN bakeoff + ablation
+%   Honesty     --- proxy device, no 160 GB/s, Shared FAM is a model
+%   Empirics    --- iso-recall, named cons, SIGPLAN-style disclosure (§5)
+%   Presentation--- one claim per figure; money plot first in Eval
+% =============================================================================
+\documentclass[sigplan,anonymous,review,nonacm]{acmart}
+
+\settopmatter{printfolios=true, printccs=true, printacmref=false}
+
+\usepackage{booktabs}
+\usepackage{graphicx}
+\usepackage{tikz}
+\usetikzlibrary{patterns}
+
+\input{macros}
+
+%% Clickable citations (ASPLOS CFP asks for this).
+\hypersetup{colorlinks=true, citecolor=black, linkcolor=black, urlcolor=black}
+
+\begin{document}
+
+\title{FlashANNS: Stall-Aware Graph Search on Flash-Backed CXL Memory}
+
+\begin{abstract}
+Billion-scale approximate nearest neighbor search (ANNS) must scale
+corpus capacity and query throughput independently. Replicated block-SSD
+systems such as DiskANN pay a storage-replication tax as query hosts
+grow; full-in-memory CXL-DRAM systems such as CXL-ANNS and Cosmos pay a
+DRAM-capacity tax on the cold tail. Flash-backed CXL memory (CXL-SSD)
+is the third deployment point: a flash-priced corpus with a
+memory-semantic hot window and, under Shared FAM, a path to one-copy
+serving. It does not make NAND as fast as DRAM. Naive load/store search
+on this tier hits a two-order miss cliff, admits the wrong objects
+through page caches, pollutes the small DRAM window with low-precision
+prefetch, and collapses device parallelism to a blocking queue depth of
+one.
+
+We present \sys{}, a graph-ANNS runtime that jointly manages residency
+and stalls on flash-backed CXL memory. \sys{} places the graph and PQ
+codes in host DRAM, promotes only high-precision frontier and hub
+records into a bounded window, shares that hot set across queries,
+controls search width under an iso-recall objective, and issues
+asynchronous memory-semantic fills with continuous fetch-level batching.
+On \num{datasets}, at iso-recall@\num{$k$}, \sys{} achieves
+\num{X$\times$} the throughput of naive CXL-SSD and comes within
+\num{Y} of a same-machine DiskANN/PipeANN block path, without lifting
+the corpus into CXL-DRAM. We evaluate a software CXL-SSD proxy, do not
+claim a measured 160\,GB/s device-internal path, and treat multi-host
+one-copy as a conditioned deployment model rather than a result.
+\end{abstract}
+
+\begin{CCSXML}
+<ccs2012>
+ <concept>
+  <concept_id>10010520.10010521.10010537</concept_id>
+  <concept_desc>Computer systems organization~Secondary storage organization</concept_desc>
+  <concept_significance>500</concept_significance>
+ </concept>
+ <concept>
+  <concept_id>10002951.10002952.10003190.10003192</concept_id>
+  <concept_desc>Information systems~Nearest-neighbor search</concept_desc>
+  <concept_significance>500</concept_significance>
+ </concept>
+ <concept>
+  <concept_id>10011007.10010940.10010971</concept_id>
+  <concept_desc>Software and its engineering~Memory management</concept_desc>
+  <concept_significance>300</concept_significance>
+ </concept>
+</ccs2012>
+\end{CCSXML}
+
+\ccsdesc[500]{Computer systems organization~Secondary storage organization}
+\ccsdesc[500]{Information systems~Nearest-neighbor search}
+\ccsdesc[300]{Software and its engineering~Memory management}
+
+\keywords{CXL, CXL-SSD, approximate nearest neighbor search, graph ANNS,
+  memory-semantic flash, residency, prefetch, continuous batching}
+
+\maketitle
+
+\input{sections/intro}
+\input{sections/background}
+\input{sections/motivation}
+\input{sections/design}
+\input{sections/impl}
+\input{sections/eval}
+\input{sections/related}
+\input{sections/discussion}
+\input{sections/conclusion}
+
+\bibliographystyle{ACM-Reference-Format}
+\bibliography{refs}
+
+\appendix
+\input{sections/appendix}
+
+\end{document}

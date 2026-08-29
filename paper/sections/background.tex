@@ -1,0 +1,98 @@
+% =============================================================================
+% §2 Background  — Target: 0.8--1.0 page. No new claims.
+% 4.5/5 bar: enough for a non-ANNS ASPLOS reviewer to follow Design/Eval;
+% every compared system is named with its medium and interface.
+% 填写: 补 CXL-SSD 设备框图（Fig.~2）上的真实端口/窗口数字。
+% =============================================================================
+\section{Background and Deployment Points}
+\label{sec:background}
+
+\subsection{Graph ANNS and the block-SSD path}
+\label{sec:bg-anns}
+
+A graph ANNS index (Vamana~\cite{diskann}, HNSW~\cite{hnsw}) stores, for each
+vector, a small neighbor list. Search maintains a candidate set of width
+$L$ (beam / \texttt{efSearch}), repeatedly expanding the closest unread node,
+and returns the top-$k$. Quality is monotone in how many nodes are scored;
+\emph{stall} is monotone in how many of those scores miss the fast tier.
+
+DiskANN~\cite{diskann,freshdiskann} is the reference block-SSD design. Full-
+precision vectors and adjacency live in 4\,KB-aligned sectors on NVMe. A
+compact PQ codebook in DRAM scores neighbors without a NAND read; an
+\texttt{aio} beam issues several sector reads at once; a static node cache
+pins entry vertices. PipeANN~\cite{pipeann} keeps that layout and overlaps
+compute with I/O inside a single query, and can interleave queries to raise
+device queue depth. The first-class objects of this path are \emph{the I/O
+queue and the sector}. They are the wrong first-class objects once the
+device is no longer a block target but a faulting address space
+(\S\ref{sec:motivation}).
+
+\subsection{CXL-DRAM ANNS}
+\label{sec:bg-cxl-dram}
+
+CXL.mem lets a host map device HDM into its physical address space~\cite{cxl30}.
+CXL-ANNS~\cite{cxlanns,cxlanns-tocs} places the essential graph and embeddings
+in a Type-3 CXL-DRAM pool and hides $\sim$100\,ns far-memory delay with a
+relationship-aware cache and DSA-assisted prefetch. Cosmos~\cite{cosmos}
+further offloads traversal and distance to device-side compute. Second-tier
+and residual-quantization designs~\cite{secondtier,fatrq,hm-ann} also assume
+a DRAM- or NVM-priced far tier. \sys{} shares the \emph{interface}
+(load/store) with this line and rejects its \emph{capacity assumption}
+(the corpus fits in CXL-DRAM).
+
+\subsection{Flash-backed CXL memory}
+\label{sec:bg-cxl-ssd}
+
+A CXL-SSD pairs NAND with a modest DRAM cache and presents a byte-addressable
+window~\cite{skybyte,fromblocktobyte,cmm-h}. A hit is a CXL.mem load; a miss
+is a NAND fill into that window, then a retry. The programming model looks
+like memory; the miss tax looks like flash. Hardware and generic OS work on
+this tier does not manage graph-ANNS residency. CXL-AnySSD~\cite{cxl-anyssd}
+accelerates vector-DB traffic by removing swap, not by controlling promote
+precision or search stalls. P-HNSW~\cite{phnsw} studies crash-consistent
+graphs and mentions CXL-SSD; its experiments use DRAM-simulated PM.
+
+Three conditions must not be mixed when we talk about sharing
+(Figure~\ref{fig:bg-cxl}):
+
+\begin{enumerate}
+  \item \textbf{Direct-attach CXL-SSD.} One host, flash price, memory
+    semantics. Sufficient for the single-host claims in this paper.
+  \item \textbf{CXL 2.0 pooling / MLD.} Several hosts may time-share a
+    device; a given HDM region is owned by one host at a time.
+  \item \textbf{CXL 3.x Shared FAM / GFAM.} Several hosts may map the same
+    region at once. This is the standard premise for multi-host one-copy
+    serving, and additionally requires a fabric manager and a read-only
+    publish protocol. We do not evaluate it.
+\end{enumerate}
+
+\begin{figure}[t]
+  \centering
+  \phbox{0.98\columnwidth}{3.2cm}{%
+    Fig.~2 placeholder --- CXL-SSD stack:\\
+    host CPU $\rightarrow$ CXL link $\rightarrow$ endpoint
+    (DRAM window $+$ FTL $+$ NAND).\\
+    Annotate: host-side link is per-host; device-side bandwidth is shared.}
+  \caption{Flash-backed CXL memory. Host-side CXL links are independent;
+    device-side port, controller, DRAM cache, FTL, and NAND are shared.
+    One-copy reduces replicated capacity; it does not replicate SSD IOPS.
+    \textbf{Fill-in:} use the real endpoint you measure; mark the software
+    proxy path if that is the prototype.}
+  \Description{Block diagram of a host attached to a CXL-SSD endpoint with
+    a small DRAM window in front of NAND.}
+  \label{fig:bg-cxl}
+\end{figure}
+
+\paragraph{Media-cost sketch (qualitative).}
+Let $c_{\mathrm{DRAM}}$ and $c_{\mathrm{flash}}$ be unit media prices and
+$n_{\mathrm{HA}}$ the number of high-availability copies ($n_{\mathrm{HA}}\ll R$
+in the common case). Then
+\[
+  \mathrm{MediaCost}_{\text{CXL-DRAM}} \sim D\cdot c_{\mathrm{DRAM}},
+\]
+\[
+  \mathrm{MediaCost}_{\text{CXL-SSD}} \sim n_{\mathrm{HA}} D\cdot c_{\mathrm{flash}}
+    + H\cdot c_{\mathrm{cache}} + C_{\mathrm{fabric}}.
+\]
+We use this only to locate the third deployment point
+(Figure~\ref{fig:eval-scale}). We do not claim a lower TCO.

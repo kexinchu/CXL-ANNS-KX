@@ -1,0 +1,255 @@
+%%% -*-BibTeX-*-
+%%% Do NOT edit. File created by BibTeX with style
+%%% ACM-Reference-Format-Journals [18-Jan-2012].
+
+\begin{thebibliography}{19}
+
+%%% ====================================================================
+%%% NOTE TO THE USER: you can override these defaults by providing
+%%% customized versions of any of these macros before the \bibliography
+%%% command.  Each of them MUST provide its own final punctuation,
+%%% except for \shownote{} and \showURL{}.  The latter two
+%%% do not use final punctuation, in order to avoid confusing it with
+%%% the Web address.
+%%%
+%%% To suppress output of a particular field, define its macro to expand
+%%% to an empty string, or better, \unskip, like this:
+%%%
+%%% \newcommand{\showURL}[1]{\unskip}   % LaTeX syntax
+%%%
+%%% \def \showURL #1{\unskip}           % plain TeX syntax
+%%%
+%%% ====================================================================
+
+\ifx \showCODEN    \undefined \def \showCODEN     #1{\unskip}     \fi
+\ifx \showISBNx    \undefined \def \showISBNx     #1{\unskip}     \fi
+\ifx \showISBNxiii \undefined \def \showISBNxiii  #1{\unskip}     \fi
+\ifx \showISSN     \undefined \def \showISSN      #1{\unskip}     \fi
+\ifx \showLCCN     \undefined \def \showLCCN      #1{\unskip}     \fi
+\ifx \shownote     \undefined \def \shownote      #1{#1}          \fi
+\ifx \showarticletitle \undefined \def \showarticletitle #1{#1}   \fi
+\ifx \showURL      \undefined \def \showURL       {\relax}        \fi
+% The following commands are used for tagged output and should be
+% invisible to TeX
+\providecommand\bibfield[2]{#2}
+\providecommand\bibinfo[2]{#2}
+\providecommand\natexlab[1]{#1}
+\providecommand\showeprint[2][]{arXiv:#2}
+
+\bibitem[Anonymous(2024)]%
+        {secondtier}
+\bibfield{author}{\bibinfo{person}{Anonymous}.}
+  \bibinfo{year}{2024}\natexlab{}.
+\newblock \showarticletitle{Second-Tier Memory for Vector Search}.
+\newblock \bibinfo{journal}{\emph{arXiv preprint}} (\bibinfo{year}{2024}).
+\newblock
+\newblock
+\shownote{Replace with the Second-Tier Memory citation.}.
+
+
+\bibitem[Anonymous(2025a)]%
+        {bauhaus}
+\bibfield{author}{\bibinfo{person}{Anonymous}.}
+  \bibinfo{year}{2025}\natexlab{a}.
+\newblock \showarticletitle{Bauhaus: {CXL} Memory Tiering and Stranded
+  Capacity}.
+\newblock \bibinfo{journal}{\emph{Placeholder}} (\bibinfo{year}{2025}).
+\newblock
+
+
+\bibitem[Anonymous(2025b)]%
+        {cmm-h}
+\bibfield{author}{\bibinfo{person}{Anonymous}.}
+  \bibinfo{year}{2025}\natexlab{b}.
+\newblock \showarticletitle{{CMM-H}: {CXL} Memory Module with {NAND} Backing}.
+\newblock \bibinfo{journal}{\emph{Placeholder}} (\bibinfo{year}{2025}).
+\newblock
+\newblock
+\shownote{Replace with the CMM-H citation.}.
+
+
+\bibitem[Anonymous(2025c)]%
+        {cosmos}
+\bibfield{author}{\bibinfo{person}{Anonymous}.}
+  \bibinfo{year}{2025}\natexlab{c}.
+\newblock \showarticletitle{{Cosmos}: {CXL}-Based Full In-Memory Approximate
+  Nearest Neighbor Search with Near-Data Processing}.
+\newblock \bibinfo{journal}{\emph{IEEE Computer Architecture Letters}}
+  (\bibinfo{year}{2025}).
+\newblock
+\newblock
+\shownote{Replace with the camera-ready Cosmos / CAL'25 citation.}.
+
+
+\bibitem[Anonymous(2025d)]%
+        {cxl-anyssd}
+\bibfield{author}{\bibinfo{person}{Anonymous}.}
+  \bibinfo{year}{2025}\natexlab{d}.
+\newblock \showarticletitle{{CXL-AnySSD}: Composable {CXL} {SSD}s without
+  Swapping}.
+\newblock  (\bibinfo{year}{2025}).
+\newblock
+\newblock
+\shownote{UIUC thesis; replace with the public citation.}.
+
+
+\bibitem[Anonymous(2025e)]%
+        {distributedann}
+\bibfield{author}{\bibinfo{person}{Anonymous}.}
+  \bibinfo{year}{2025}\natexlab{e}.
+\newblock \showarticletitle{{DistributedANN}: Serving a Logical {DiskANN} Graph
+  over a Distributed Key-Value Store}.
+\newblock \bibinfo{journal}{\emph{arXiv preprint arXiv:2509.06046}}
+  (\bibinfo{year}{2025}).
+\newblock
+
+
+\bibitem[Anonymous(2025f)]%
+        {fromblocktobyte}
+\bibfield{author}{\bibinfo{person}{Anonymous}.}
+  \bibinfo{year}{2025}\natexlab{f}.
+\newblock \showarticletitle{From Block to Byte: Rethinking {SSD}s with {CXL}}.
+  In \bibinfo{booktitle}{\emph{Placeholder}}.
+\newblock
+\newblock
+\shownote{Replace with the From-Block-to-Byte citation.}.
+
+
+\bibitem[Anonymous(2025g)]%
+        {phnsw}
+\bibfield{author}{\bibinfo{person}{Anonymous}.}
+  \bibinfo{year}{2025}\natexlab{g}.
+\newblock \showarticletitle{{P-HNSW}: Crash-Consistent Hierarchical Navigable
+  Small World Graphs on Persistent Memory}.
+\newblock \bibinfo{journal}{\emph{Placeholder}} (\bibinfo{year}{2025}).
+\newblock
+
+
+\bibitem[Anonymous(2025h)]%
+        {pipeann}
+\bibfield{author}{\bibinfo{person}{Anonymous}.}
+  \bibinfo{year}{2025}\natexlab{h}.
+\newblock \showarticletitle{{PipeANN}: Pipelined Graph-Based Approximate
+  Nearest Neighbor Search on {SSD}}. In \bibinfo{booktitle}{\emph{USENIX
+  Symposium on Operating Systems Design and Implementation}}.
+\newblock
+\newblock
+\shownote{Replace with the camera-ready PipeANN / OSDI'25 citation.}.
+
+
+\bibitem[Anonymous(2025i)]%
+        {skybyte}
+\bibfield{author}{\bibinfo{person}{Anonymous}.}
+  \bibinfo{year}{2025}\natexlab{i}.
+\newblock \showarticletitle{{SkyByte}: Architecting an Efficient
+  Memory-Semantic {CXL}-based {SSD}}. In
+  \bibinfo{booktitle}{\emph{Placeholder}}.
+\newblock
+\newblock
+\shownote{Replace with the SkyByte citation.}.
+
+
+\bibitem[Anonymous(2026)]%
+        {fatrq}
+\bibfield{author}{\bibinfo{person}{Anonymous}.}
+  \bibinfo{year}{2026}\natexlab{}.
+\newblock \showarticletitle{{FaTRQ}: Far-Memory-Aware Residual Quantization for
+  Vector Search}.
+\newblock \bibinfo{journal}{\emph{arXiv preprint}} (\bibinfo{year}{2026}).
+\newblock
+\newblock
+\shownote{Replace with the camera-ready FaTRQ citation.}.
+
+
+\bibitem[Chen et~al\mbox{.}(2021)]%
+        {spann}
+\bibfield{author}{\bibinfo{person}{Qi Chen}, \bibinfo{person}{Bing Zhao},
+  \bibinfo{person}{Haidong Wang}, \bibinfo{person}{Mingqin Li},
+  \bibinfo{person}{Chuanjie Liu}, \bibinfo{person}{Zengzhong Li},
+  \bibinfo{person}{Mao Yang}, {and} \bibinfo{person}{Jingdong Wang}.}
+  \bibinfo{year}{2021}\natexlab{}.
+\newblock \showarticletitle{{SPANN}: Highly-efficient Billion-scale Approximate
+  Nearest Neighbor Search}. In \bibinfo{booktitle}{\emph{Advances in Neural
+  Information Processing Systems}}.
+\newblock
+
+
+\bibitem[CXL Consortium(2023)]%
+        {cxl30}
+CXL Consortium \bibinfo{year}{2023}\natexlab{}.
+\newblock \bibinfo{booktitle}{\emph{{Compute Express Link} Specification,
+  Revision 3.1}}.
+\newblock CXL Consortium.
+\newblock
+
+
+\bibitem[Jang et~al\mbox{.}(2023)]%
+        {cxlanns}
+\bibfield{author}{\bibinfo{person}{Junhyeok Jang}, \bibinfo{person}{Hanjin
+  Choi}, \bibinfo{person}{Hanyeoreum Bae}, \bibinfo{person}{Seungjun Lee},
+  \bibinfo{person}{Miryeong Kwon}, {and} \bibinfo{person}{Myoungsoo Jung}.}
+  \bibinfo{year}{2023}\natexlab{}.
+\newblock \showarticletitle{{CXL-ANNS}: Software-Hardware Collaborative Memory
+  Disaggregation and Computation for Billion-Scale Approximate Nearest Neighbor
+  Search}. In \bibinfo{booktitle}{\emph{USENIX Annual Technical Conference}}.
+\newblock
+
+
+\bibitem[Jang et~al\mbox{.}(2024)]%
+        {cxlanns-tocs}
+\bibfield{author}{\bibinfo{person}{Junhyeok Jang}, \bibinfo{person}{Hanjin
+  Choi}, \bibinfo{person}{Hanyeoreum Bae}, \bibinfo{person}{Seungjun Lee},
+  \bibinfo{person}{Miryeong Kwon}, {and} \bibinfo{person}{Myoungsoo Jung}.}
+  \bibinfo{year}{2024}\natexlab{}.
+\newblock \showarticletitle{Bridging Software-Hardware for Billion-Scale {ANNS}
+  with {CXL} Memory Disaggregation}.
+\newblock \bibinfo{journal}{\emph{ACM Transactions on Computer Systems}}
+  (\bibinfo{year}{2024}).
+\newblock
+
+
+\bibitem[Malkov and Yashunin(2020)]%
+        {hnsw}
+\bibfield{author}{\bibinfo{person}{Yury~A. Malkov} {and}
+  \bibinfo{person}{Dmitry~A. Yashunin}.} \bibinfo{year}{2020}\natexlab{}.
+\newblock \showarticletitle{Efficient and Robust Approximate Nearest Neighbor
+  Search Using Hierarchical Navigable Small World Graphs}. In
+  \bibinfo{booktitle}{\emph{IEEE Transactions on Pattern Analysis and Machine
+  Intelligence}}.
+\newblock
+
+
+\bibitem[Ren et~al\mbox{.}(2020)]%
+        {hm-ann}
+\bibfield{author}{\bibinfo{person}{Jie Ren}, \bibinfo{person}{Minjia Zhang},
+  {and} \bibinfo{person}{Dong Li}.} \bibinfo{year}{2020}\natexlab{}.
+\newblock \showarticletitle{{HM-ANN}: Efficient Billion-Point Nearest Neighbor
+  Search on Heterogeneous Memory}. In \bibinfo{booktitle}{\emph{Advances in
+  Neural Information Processing Systems}}.
+\newblock
+
+
+\bibitem[Singh et~al\mbox{.}(2021)]%
+        {freshdiskann}
+\bibfield{author}{\bibinfo{person}{Aditi Singh}, \bibinfo{person}{Suhas~Jayaram
+  Subramanya}, \bibinfo{person}{Rohan Kadekodi}, {and}
+  \bibinfo{person}{Harsha~Vardhan Simhadri}.} \bibinfo{year}{2021}\natexlab{}.
+\newblock \showarticletitle{{FreshDiskANN}: A Fast and Accurate Graph-Based
+  {ANN} Index for Streaming Similarity Search}. In
+  \bibinfo{booktitle}{\emph{arXiv preprint arXiv:2105.09613}}.
+\newblock
+
+
+\bibitem[Subramanya et~al\mbox{.}(2019)]%
+        {diskann}
+\bibfield{author}{\bibinfo{person}{Suhas~Jayaram Subramanya},
+  \bibinfo{person}{Fnu Devvrit}, \bibinfo{person}{Harsha~Vardhan Simhadri},
+  \bibinfo{person}{Ravishankar Krishnawamy}, {and} \bibinfo{person}{Rohan
+  Kadekodi}.} \bibinfo{year}{2019}\natexlab{}.
+\newblock \showarticletitle{{DiskANN}: Fast Accurate Billion-point Nearest
+  Neighbor Search on a Single Node}. In \bibinfo{booktitle}{\emph{Advances in
+  Neural Information Processing Systems}}.
+\newblock
+
+
+\end{thebibliography}

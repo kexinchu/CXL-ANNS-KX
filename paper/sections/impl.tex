@@ -1,0 +1,41 @@
+% =============================================================================
+% §5 Implementation  — Target: 0.5 page. 4.5/5 bar: disclose what is and is not
+% implemented (ASPLOS CFP + SIGPLAN empirical guidelines).
+% 填写: 补行数/ioctl 名/线程模型；不要把 software proxy 写成产品 CXL.mem SSD。
+% =============================================================================
+\section{Implementation}
+\label{sec:impl}
+
+\sys{} is implemented as a userspace runtime on top of a memory-semantic
+CXL-SSD device node and, when present, a CXL-DRAM DAX window. The
+prototype we evaluate uses a software CXL-SSD: \texttt{mmap} of the
+device presents a unified VA; a miss is a NAND fill into a configured
+DRAM cache; a batch ioctl submits many fills without one blocking
+bio per page. Graph search is integrated with a DiskANN/PipeANN-style
+engine so that the block-SSD baseline and the CXL-SSD path share the
+same index bytes and the same recall definition.
+
+\paragraph{What is implemented.}
+(1)~Placement of graph and PQ in host DRAM and vectors on the CXL-SSD
+mapping (\S\ref{sec:d1}). (2)~The promote/cache/stats residency API,
+including a byte budget and precision counters (\S\ref{sec:d2},
+\S\ref{sec:d5}). (3)~A shared hot-set with a fixed budget
+(\S\ref{sec:d3}). (4)~Asynchronous frontier prefetch and a fetch-level
+continuous scheduler (\S\ref{sec:d4}). (5)~An iso-recall harness that
+sweeps beam / $L$ and stops at a target recall@$k$.
+
+\paragraph{What is not implemented, and is not claimed.}
+A hardware CXL 3.x Shared FAM fabric; a device-side 160\,GB/s DRAM--SSD
+DMA engine; a production multi-tenant QoS layer; and a crash-consistent
+index publisher. The iso-recall \emph{controller} is implemented as a
+calibrated policy plus early-stop; a fully closed online learner is
+optional and is reported only if it appears in the ablation. Turning
+off PQ navigation on the official DiskANN SSD path required an
+experimental flag; we never present that flag as a supported upstream
+feature.
+
+\paragraph{Prototype scale.}
+The runtime is \num{LOC} lines of C/C++ beyond the unmodified search
+engine, plus \num{LOC-driver} lines in the software CXL-SSD path.
+Build and identity checks are scripted so that a device other than the
+one we measured cannot silently produce a ``CXL-SSD'' number.

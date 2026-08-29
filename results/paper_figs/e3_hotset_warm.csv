@@ -1,0 +1,9 @@
+# E3 warm hot-set. Protocol: no --flush-window; one discarded 20q warmup; then nq=100
+# (plan said nq=200; 100 is enough: hot-set loses by ~6x). seed=42 oneshot-fp k=10
+# kernel=7.0.0-30-generic backend=vmem_sw software /dev/vmem0 dax=absent
+# DECISION: FAIL. Demote D3 to entry pin + soft-pin. Do not claim hot-set beats beam.
+row,beam,hotset_bytes,nq,qps,mean_ms,p50,p90,p99,recall,hit_pct,dram_hits,ssd_misses,precision_pct,promote_pages,promote_used,hotset_pins,graph_in_dram,early_stop_patience
+A_beam300_hot0,300,0,100,14.29,69.991,64.709,100.898,170.951,0.9140,16.84,31744,156726,100.0,584834,584834,0,0,0
+B_beam300_hot64MiB,300,67108864,100,2.41,414.210,418.210,694.877,893.267,0.9140,92.12,6790875,580522,100.0,541648,541648,6017802,0,0
+C_beam150_hot0,150,0,100,37.45,26.698,25.618,34.679,45.239,0.8470,14.07,14030,85692,100.0,340803,340803,0,0,0
+D_beam150_hot64MiB,150,67108864,100,5.29,188.850,187.101,330.013,490.165,0.8470,93.84,5112228,335490,100.0,316401,316401,4485673,0,0

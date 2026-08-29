@@ -1,0 +1,190 @@
+LOG=/root/chukexin/CXL-ANNS-KX/results/t2i10m_perthread_sweep.log MONPID=57395
+========== T1_1GiB_nq50 2026-08-24T22:23:56+00:00 ==========
+CMD: --policy P3 --pipe-w 4 --install-top 4 --budget 67108864 --dram-backend numa --oneshot-fp --beam 300 --k 10 --iters 0 --shuffle-seed 42 --host-cap 67108864 --pin-entry --vmem-dev /dev/vmem0 --vmem-offset 450971566080 --vmem-len 9600069632 --entry /mnt/disk0/chukexin_motivation/serving_t2i_10m/serving_entry_t2i_10m_pagebin.bin --queries /mnt/disk0/chukexin_motivation/serving_t2i_10m/query_10k.fbin --gt /mnt/disk0/chukexin_motivation/serving_t2i_10m/gt_10k_k10.ibin --id-map /mnt/disk0/chukexin_motivation/serving_t2i_10m/new_to_old_pagebin.bin --dram-bytes 1073741824 --max-q 50 --threads 1
+mapped vmem /dev/vmem0 off=450971566080 len=9600069632 fd=5 prefetch=1
+vec_stride=800 (packed=800)
+mapped DRAM window anon+mbind node=1 len=1073741824 (fallback; not DAX)
+P3v2 softpin W=4 budget=67108864 install_top=4 fetch_top=0 page_group_b=0 install_all=0 threads=1 per_thread_window=1
+loaded id-map new→old n=10000000 from /mnt/disk0/chukexin_motivation/serving_t2i_10m/new_to_old_pagebin.bin
+query_select nq=50/10000 shuffle_seed=42 flush_window=0 oneshot_fp=1 pin_entry=1 host_used=1123356 host_cap=67108864 dram_bytes=1073741824 pin_cap=67108864
+policy=P3 budget=67108864 dram_bytes=1073741824 nq=50 beam=300 k=10 iters=0 oneshot_fp=1 pin_bytes=1253376/67108864
+wall_s=2.037 throughput_QPS=24.55
+cxl_ssd_to_dram_promote_GBps=0.650 promote_bytes=1324789760 target=12.0
+latency_ms mean=40.720 p50=40.477 p90=55.658 p99=65.741
+recall@10=0.9320
+cxl_dram_hit_pct=41.69
+metrics queries=50 dram_hits=48731 ssd_misses=68168 hit_pct=41.69 promote_bytes=1324789760 avg_promote_ns=11799.1 prefetch_pages=312558 evicts=0 dist=257255
+CSV,P3,67108864,1073741824,50,300,0,24.55,40.720,40.477,55.658,65.741,0.9320,41.69,48731,68168
+elapsed_s=2.12 maxrss_kb=1148936
+
+========== T1_256MiB_nq200 2026-08-24T22:23:59+00:00 ==========
+CMD: --policy P3 --pipe-w 4 --install-top 4 --budget 67108864 --dram-backend numa --oneshot-fp --beam 300 --k 10 --iters 0 --shuffle-seed 42 --host-cap 67108864 --pin-entry --vmem-dev /dev/vmem0 --vmem-offset 450971566080 --vmem-len 9600069632 --entry /mnt/disk0/chukexin_motivation/serving_t2i_10m/serving_entry_t2i_10m_pagebin.bin --queries /mnt/disk0/chukexin_motivation/serving_t2i_10m/query_10k.fbin --gt /mnt/disk0/chukexin_motivation/serving_t2i_10m/gt_10k_k10.ibin --id-map /mnt/disk0/chukexin_motivation/serving_t2i_10m/new_to_old_pagebin.bin --dram-bytes 268435456 --max-q 200 --threads 1 --per-thread-window
+mapped vmem /dev/vmem0 off=450971566080 len=9600069632 fd=5 prefetch=1
+vec_stride=800 (packed=800)
+mapped DRAM window anon+mbind node=1 len=268435456 (fallback; not DAX)
+P3v2 softpin W=4 budget=67108864 install_top=4 fetch_top=0 page_group_b=0 install_all=0 threads=1 per_thread_window=1
+loaded id-map new→old n=10000000 from /mnt/disk0/chukexin_motivation/serving_t2i_10m/new_to_old_pagebin.bin
+query_select nq=200/10000 shuffle_seed=42 flush_window=0 oneshot_fp=1 pin_entry=1 host_used=1249356 host_cap=67108864 dram_bytes=268435456 pin_cap=16777216
+policy=P3 budget=67108864 dram_bytes=268435456 nq=200 beam=300 k=10 iters=0 oneshot_fp=1 pin_bytes=1253376/16777216
+wall_s=9.911 throughput_QPS=20.18
+cxl_ssd_to_dram_promote_GBps=0.530 promote_bytes=5254361088 target=12.0
+latency_ms mean=49.544 p50=50.304 p90=64.702 p99=73.636
+recall@10=0.9110
+cxl_dram_hit_pct=39.89
+metrics queries=200 dram_hits=180701 ssd_misses=272297 hit_pct=39.89 promote_bytes=5254361088 avg_promote_ns=17425.7 prefetch_pages=1240675 evicts=206761 dist=1027131
+CSV,P3,67108864,268435456,200,300,0,20.18,49.544,50.304,64.702,73.636,0.9110,39.89,180701,272297
+elapsed_s=10.04 maxrss_kb=3002348
+
+========== T2_256MiB_nq200 2026-08-24T22:24:09+00:00 ==========
+CMD: --policy P3 --pipe-w 4 --install-top 4 --budget 67108864 --dram-backend numa --oneshot-fp --beam 300 --k 10 --iters 0 --shuffle-seed 42 --host-cap 67108864 --pin-entry --vmem-dev /dev/vmem0 --vmem-offset 450971566080 --vmem-len 9600069632 --entry /mnt/disk0/chukexin_motivation/serving_t2i_10m/serving_entry_t2i_10m_pagebin.bin --queries /mnt/disk0/chukexin_motivation/serving_t2i_10m/query_10k.fbin --gt /mnt/disk0/chukexin_motivation/serving_t2i_10m/gt_10k_k10.ibin --id-map /mnt/disk0/chukexin_motivation/serving_t2i_10m/new_to_old_pagebin.bin --dram-bytes 268435456 --max-q 200 --threads 2 --per-thread-window
+mapped vmem /dev/vmem0 off=450971566080 len=9600069632 fd=5 prefetch=1
+vec_stride=800 (packed=800)
+mapped DRAM window anon+mbind node=1 len=268435456 (fallback; not DAX)
+P3v2 softpin W=4 budget=67108864 install_top=4 fetch_top=0 page_group_b=0 install_all=0 threads=2 per_thread_window=1
+loaded id-map new→old n=10000000 from /mnt/disk0/chukexin_motivation/serving_t2i_10m/new_to_old_pagebin.bin
+query_select nq=200/10000 shuffle_seed=42 flush_window=0 oneshot_fp=1 pin_entry=1 host_used=1249356 host_cap=67108864 dram_bytes=268435456 pin_cap=16777216
+mapped DRAM window anon+mbind node=1 len=268435456 (fallback; not DAX)
+mapped DRAM window anon+mbind node=1 len=268435456 (fallback; not DAX)
+policy=P3 budget=67108864 dram_bytes=268435456 nq=200 beam=300 k=10 iters=0 oneshot_fp=1 pin_bytes=0/16777216
+wall_s=4.558 throughput_QPS=43.88
+cxl_ssd_to_dram_promote_GBps=1.153 promote_bytes=5253738496 target=12.0
+latency_ms mean=45.208 p50=46.275 p90=60.215 p99=69.807
+recall@10=0.9110
+cxl_dram_hit_pct=40.99
+metrics queries=200 dram_hits=189237 ssd_misses=272479 hit_pct=40.99 promote_bytes=5253738496 avg_promote_ns=15543.6 prefetch_pages=1240199 evicts=141407 dist=1027131
+CSV,P3,67108864,268435456,200,300,0,43.88,45.208,46.275,60.215,69.807,0.9110,40.99,189237,272479
+elapsed_s=4.65 maxrss_kb=3262328
+
+========== T4_256MiB_nq200 2026-08-24T22:24:13+00:00 ==========
+CMD: --policy P3 --pipe-w 4 --install-top 4 --budget 67108864 --dram-backend numa --oneshot-fp --beam 300 --k 10 --iters 0 --shuffle-seed 42 --host-cap 67108864 --pin-entry --vmem-dev /dev/vmem0 --vmem-offset 450971566080 --vmem-len 9600069632 --entry /mnt/disk0/chukexin_motivation/serving_t2i_10m/serving_entry_t2i_10m_pagebin.bin --queries /mnt/disk0/chukexin_motivation/serving_t2i_10m/query_10k.fbin --gt /mnt/disk0/chukexin_motivation/serving_t2i_10m/gt_10k_k10.ibin --id-map /mnt/disk0/chukexin_motivation/serving_t2i_10m/new_to_old_pagebin.bin --dram-bytes 268435456 --max-q 200 --threads 4 --per-thread-window
+mapped vmem /dev/vmem0 off=450971566080 len=9600069632 fd=5 prefetch=1
+vec_stride=800 (packed=800)
+mapped DRAM window anon+mbind node=1 len=268435456 (fallback; not DAX)
+P3v2 softpin W=4 budget=67108864 install_top=4 fetch_top=0 page_group_b=0 install_all=0 threads=4 per_thread_window=1
+loaded id-map new→old n=10000000 from /mnt/disk0/chukexin_motivation/serving_t2i_10m/new_to_old_pagebin.bin
+query_select nq=200/10000 shuffle_seed=42 flush_window=0 oneshot_fp=1 pin_entry=1 host_used=1249356 host_cap=67108864 dram_bytes=268435456 pin_cap=16777216
+mapped DRAM window anon+mbind node=1 len=268435456 (fallback; not DAX)
+mapped DRAM window anon+mbind node=1 len=268435456 (fallback; not DAX)
+mapped DRAM window anon+mbind node=1 len=268435456 (fallback; not DAX)
+mapped DRAM window anon+mbind node=1 len=268435456 (fallback; not DAX)
+policy=P3 budget=67108864 dram_bytes=268435456 nq=200 beam=300 k=10 iters=0 oneshot_fp=1 pin_bytes=0/16777216
+wall_s=2.126 throughput_QPS=94.07
+cxl_ssd_to_dram_promote_GBps=2.496 promote_bytes=5307310080 target=12.0
+latency_ms mean=41.639 p50=41.131 p90=56.478 p99=69.730
+recall@10=0.9110
+cxl_dram_hit_pct=41.18
+metrics queries=200 dram_hits=191896 ssd_misses=274108 hit_pct=41.18 promote_bytes=5307310080 avg_promote_ns=12090.7 prefetch_pages=1252198 evicts=11964 dist=1027131
+CSV,P3,67108864,268435456,200,300,0,94.07,41.639,41.131,56.478,69.730,0.9110,41.18,191896,274108
+elapsed_s=2.22 maxrss_kb=3775660
+
+========== T8_256MiB_nq200 2026-08-24T22:24:16+00:00 ==========
+CMD: --policy P3 --pipe-w 4 --install-top 4 --budget 67108864 --dram-backend numa --oneshot-fp --beam 300 --k 10 --iters 0 --shuffle-seed 42 --host-cap 67108864 --pin-entry --vmem-dev /dev/vmem0 --vmem-offset 450971566080 --vmem-len 9600069632 --entry /mnt/disk0/chukexin_motivation/serving_t2i_10m/serving_entry_t2i_10m_pagebin.bin --queries /mnt/disk0/chukexin_motivation/serving_t2i_10m/query_10k.fbin --gt /mnt/disk0/chukexin_motivation/serving_t2i_10m/gt_10k_k10.ibin --id-map /mnt/disk0/chukexin_motivation/serving_t2i_10m/new_to_old_pagebin.bin --dram-bytes 268435456 --max-q 200 --threads 8 --per-thread-window
+mapped vmem /dev/vmem0 off=450971566080 len=9600069632 fd=5 prefetch=1
+vec_stride=800 (packed=800)
+mapped DRAM window anon+mbind node=1 len=268435456 (fallback; not DAX)
+P3v2 softpin W=4 budget=67108864 install_top=4 fetch_top=0 page_group_b=0 install_all=0 threads=8 per_thread_window=1
+loaded id-map new→old n=10000000 from /mnt/disk0/chukexin_motivation/serving_t2i_10m/new_to_old_pagebin.bin
+query_select nq=200/10000 shuffle_seed=42 flush_window=0 oneshot_fp=1 pin_entry=1 host_used=1249356 host_cap=67108864 dram_bytes=268435456 pin_cap=16777216
+mapped DRAM window anon+mbind node=1 len=268435456 (fallback; not DAX)
+mapped DRAM window anon+mbind node=1 len=268435456 (fallback; not DAX)
+mapped DRAM window anon+mbind node=1 len=268435456 (fallback; not DAX)
+mapped DRAM window anon+mbind node=1 len=268435456 (fallback; not DAX)
+mapped DRAM window anon+mbind node=1 len=268435456 (fallback; not DAX)
+mapped DRAM window anon+mbind node=1 len=268435456 (fallback; not DAX)
+mapped DRAM window anon+mbind node=1 len=268435456 (fallback; not DAX)
+mapped DRAM window anon+mbind node=1 len=268435456 (fallback; not DAX)
+policy=P3 budget=67108864 dram_bytes=268435456 nq=200 beam=300 k=10 iters=0 oneshot_fp=1 pin_bytes=0/16777216
+wall_s=1.195 throughput_QPS=167.36
+cxl_ssd_to_dram_promote_GBps=4.504 promote_bytes=5382475776 target=12.0
+latency_ms mean=46.128 p50=44.240 p90=60.510 p99=99.038
+recall@10=0.9110
+cxl_dram_hit_pct=42.67
+metrics queries=200 dram_hits=205727 ssd_misses=276361 hit_pct=42.67 promote_bytes=5382475776 avg_promote_ns=8857.5 prefetch_pages=1268671 evicts=0 dist=1027131
+CSV,P3,67108864,268435456,200,300,0,167.36,46.128,44.240,60.510,99.038,0.9110,42.67,205727,276361
+elapsed_s=1.30 maxrss_kb=3750768
+
+========== T16_256MiB_nq200 2026-08-24T22:24:17+00:00 ==========
+CMD: --policy P3 --pipe-w 4 --install-top 4 --budget 67108864 --dram-backend numa --oneshot-fp --beam 300 --k 10 --iters 0 --shuffle-seed 42 --host-cap 67108864 --pin-entry --vmem-dev /dev/vmem0 --vmem-offset 450971566080 --vmem-len 9600069632 --entry /mnt/disk0/chukexin_motivation/serving_t2i_10m/serving_entry_t2i_10m_pagebin.bin --queries /mnt/disk0/chukexin_motivation/serving_t2i_10m/query_10k.fbin --gt /mnt/disk0/chukexin_motivation/serving_t2i_10m/gt_10k_k10.ibin --id-map /mnt/disk0/chukexin_motivation/serving_t2i_10m/new_to_old_pagebin.bin --dram-bytes 268435456 --max-q 200 --threads 16 --per-thread-window
+mapped vmem /dev/vmem0 off=450971566080 len=9600069632 fd=5 prefetch=1
+vec_stride=800 (packed=800)
+mapped DRAM window anon+mbind node=1 len=268435456 (fallback; not DAX)
+P3v2 softpin W=4 budget=67108864 install_top=4 fetch_top=0 page_group_b=0 install_all=0 threads=16 per_thread_window=1
+loaded id-map new→old n=10000000 from /mnt/disk0/chukexin_motivation/serving_t2i_10m/new_to_old_pagebin.bin
+query_select nq=200/10000 shuffle_seed=42 flush_window=0 oneshot_fp=1 pin_entry=1 host_used=1249356 host_cap=67108864 dram_bytes=268435456 pin_cap=16777216
+mapped DRAM window anon+mbind node=1 len=268435456 (fallback; not DAX)
+mapped DRAM window anon+mbind node=1 len=268435456 (fallback; not DAX)
+mapped DRAM window anon+mbind node=1 len=268435456 (fallback; not DAX)
+mapped DRAM window anon+mbind node=1 len=268435456 (fallback; not DAX)
+mapped DRAM window anon+mbind node=1 len=268435456 (fallback; not DAX)
+mapped DRAM window anon+mbind node=1 len=268435456 (fallback; not DAX)
+mapped DRAM window anon+mbind node=1 len=268435456 (fallback; not DAX)
+mapped DRAM window anon+mbind node=1 len=268435456 (fallback; not DAX)
+mapped DRAM window anon+mbind node=1 len=268435456 (fallback; not DAX)
+mapped DRAM window anon+mbind node=1 len=268435456 (fallback; not DAX)
+mapped DRAM window anon+mbind node=1 len=268435456 (fallback; not DAX)
+mapped DRAM window anon+mbind node=1 len=268435456 (fallback; not DAX)
+mapped DRAM window anon+mbind node=1 len=268435456 (fallback; not DAX)
+mapped DRAM window anon+mbind node=1 len=268435456 (fallback; not DAX)
+mapped DRAM window anon+mbind node=1 len=268435456 (fallback; not DAX)
+mapped DRAM window anon+mbind node=1 len=268435456 (fallback; not DAX)
+policy=P3 budget=67108864 dram_bytes=268435456 nq=200 beam=300 k=10 iters=0 oneshot_fp=1 pin_bytes=0/16777216
+wall_s=1.156 throughput_QPS=173.00
+cxl_ssd_to_dram_promote_GBps=4.691 promote_bytes=5423460352 target=12.0
+latency_ms mean=88.627 p50=81.074 p90=127.997 p99=189.192
+recall@10=0.9110
+cxl_dram_hit_pct=48.43
+metrics queries=200 dram_hits=262420 ssd_misses=279390 hit_pct=48.43 promote_bytes=5423460352 avg_promote_ns=11776.1 prefetch_pages=1275938 evicts=0 dist=1027131
+CSV,P3,67108864,268435456,200,300,0,173.00,88.627,81.074,127.997,189.192,0.9110,48.43,262420,279390
+elapsed_s=1.25 maxrss_kb=3650248
+
+========== T32_256MiB_nq200 2026-08-24T22:24:18+00:00 ==========
+CMD: --policy P3 --pipe-w 4 --install-top 4 --budget 67108864 --dram-backend numa --oneshot-fp --beam 300 --k 10 --iters 0 --shuffle-seed 42 --host-cap 67108864 --pin-entry --vmem-dev /dev/vmem0 --vmem-offset 450971566080 --vmem-len 9600069632 --entry /mnt/disk0/chukexin_motivation/serving_t2i_10m/serving_entry_t2i_10m_pagebin.bin --queries /mnt/disk0/chukexin_motivation/serving_t2i_10m/query_10k.fbin --gt /mnt/disk0/chukexin_motivation/serving_t2i_10m/gt_10k_k10.ibin --id-map /mnt/disk0/chukexin_motivation/serving_t2i_10m/new_to_old_pagebin.bin --dram-bytes 268435456 --max-q 200 --threads 32 --per-thread-window
+mapped vmem /dev/vmem0 off=450971566080 len=9600069632 fd=5 prefetch=1
+vec_stride=800 (packed=800)
+mapped DRAM window anon+mbind node=1 len=268435456 (fallback; not DAX)
+P3v2 softpin W=4 budget=67108864 install_top=4 fetch_top=0 page_group_b=0 install_all=0 threads=32 per_thread_window=1
+loaded id-map new→old n=10000000 from /mnt/disk0/chukexin_motivation/serving_t2i_10m/new_to_old_pagebin.bin
+query_select nq=200/10000 shuffle_seed=42 flush_window=0 oneshot_fp=1 pin_entry=1 host_used=1249356 host_cap=67108864 dram_bytes=268435456 pin_cap=16777216
+mapped DRAM window anon+mbind node=1 len=268435456 (fallback; not DAX)
+mapped DRAM window anon+mbind node=1 len=268435456 (fallback; not DAX)
+mapped DRAM window anon+mbind node=1 len=268435456 (fallback; not DAX)
+mapped DRAM window anon+mbind node=1 len=268435456 (fallback; not DAX)
+mapped DRAM window anon+mbind node=1 len=268435456 (fallback; not DAX)
+mapped DRAM window anon+mbind node=1 len=268435456 (fallback; not DAX)
+mapped DRAM window anon+mbind node=1 len=268435456 (fallback; not DAX)
+mapped DRAM window anon+mbind node=1 len=268435456 (fallback; not DAX)
+mapped DRAM window anon+mbind node=1 len=268435456 (fallback; not DAX)
+mapped DRAM window anon+mbind node=1 len=268435456 (fallback; not DAX)
+mapped DRAM window anon+mbind node=1 len=268435456 (fallback; not DAX)
+mapped DRAM window anon+mbind node=1 len=268435456 (fallback; not DAX)
+mapped DRAM window anon+mbind node=1 len=268435456 (fallback; not DAX)
+mapped DRAM window anon+mbind node=1 len=268435456 (fallback; not DAX)
+mapped DRAM window anon+mbind node=1 len=268435456 (fallback; not DAX)
+mapped DRAM window anon+mbind node=1 len=268435456 (fallback; not DAX)
+mapped DRAM window anon+mbind node=1 len=268435456 (fallback; not DAX)
+mapped DRAM window anon+mbind node=1 len=268435456 (fallback; not DAX)
+mapped DRAM window anon+mbind node=1 len=268435456 (fallback; not DAX)
+mapped DRAM window anon+mbind node=1 len=268435456 (fallback; not DAX)
+mapped DRAM window anon+mbind node=1 len=268435456 (fallback; not DAX)
+mapped DRAM window anon+mbind node=1 len=268435456 (fallback; not DAX)
+mapped DRAM window anon+mbind node=1 len=268435456 (fallback; not DAX)
+mapped DRAM window anon+mbind node=1 len=268435456 (fallback; not DAX)
+mapped DRAM window anon+mbind node=1 len=268435456 (fallback; not DAX)
+mapped DRAM window anon+mbind node=1 len=268435456 (fallback; not DAX)
+mapped DRAM window anon+mbind node=1 len=268435456 (fallback; not DAX)
+mapped DRAM window anon+mbind node=1 len=268435456 (fallback; not DAX)
+mapped DRAM window anon+mbind node=1 len=268435456 (fallback; not DAX)
+mapped DRAM window anon+mbind node=1 len=268435456 (fallback; not DAX)
+mapped DRAM window anon+mbind node=1 len=268435456 (fallback; not DAX)
+mapped DRAM window anon+mbind node=1 len=268435456 (fallback; not DAX)
+policy=P3 budget=67108864 dram_bytes=268435456 nq=200 beam=300 k=10 iters=0 oneshot_fp=1 pin_bytes=0/16777216
+wall_s=1.330 throughput_QPS=150.33
+cxl_ssd_to_dram_promote_GBps=4.102 promote_bytes=5456822272 target=12.0
+latency_ms mean=200.132 p50=177.988 p90=324.768 p99=399.008
+recall@10=0.9110
+cxl_dram_hit_pct=57.79
+metrics queries=200 dram_hits=389525 ssd_misses=284474 hit_pct=57.79 promote_bytes=5456822272 avg_promote_ns=23082.6 prefetch_pages=1279065 evicts=0 dist=1027131
+CSV,P3,67108864,268435456,200,300,0,150.33,200.132,177.988,324.768,399.008,0.9110,57.79,389525,284474
+elapsed_s=1.43 maxrss_kb=3481112
+
+========== diskmon ==========

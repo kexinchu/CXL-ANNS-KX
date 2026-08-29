@@ -1,0 +1,51 @@
+% =============================================================================
+% Appendix --- does NOT count toward the 11-page limit.
+% Reviewers are not required to read this. Put extra sweeps here, not claims
+% that the main text needs.
+% =============================================================================
+\section{Fill-in Checklist}
+\label{app:checklist}
+
+Table~\ref{tab:app-checklist} is the author-facing map from each
+placeholder to the result file that should replace it. Delete this
+appendix before a submission if it is still author notes; or keep a
+cleaned artifact appendix after the numbers exist.
+
+\begin{table*}[t]
+  \caption{Placeholder $\rightarrow$ intended source. Author notes; not a
+    scientific result.}
+  \label{tab:app-checklist}
+  \small
+  \begin{tabular}{@{}llp{0.46\textwidth}@{}}
+    \toprule
+    Id & Type & Replace with \\
+    \midrule
+    Fig.~\ref{fig:intro-position} & figure* & 3-column deployment $+$ runtime overlay \\
+    Fig.~\ref{fig:bg-cxl} & figure & Measured/proxy CXL-SSD stack \\
+    Fig.~\ref{fig:mot-cliff} & figure & Cold / soft / warm latency $+$ search breakdown \\
+    Fig.~\ref{fig:mot-pathology} & figure* & Page vs.\ record; prefetch precision; beam sweep \\
+    Fig.~\ref{fig:mot-bubbles} & figure & \texttt{sections/fig\_bubbles.tex} or a measured redraw \\
+    Tab.~\ref{tab:findings} & table & Headline deltas from MOTIVATION\_FINDINGS \\
+    Fig.~\ref{fig:design-arch} & figure* & Implemented component names \\
+    Tab.~\ref{tab:placement} & table & Byte counts on the primary corpus \\
+    Fig.~\ref{fig:design-promote} & figure & Promote API $+$ default $M$/budget \\
+    Fig.~\ref{fig:design-pipe} & figure* & \texttt{cont} $+$ async fill; blocking mmap failure \\
+    Tab.~\ref{tab:setup} & table & Locked platform and corpora \\
+    Fig.~\ref{fig:eval-main} & figure* & Iso-recall QPS (money plot) \\
+    Tab.~\ref{tab:eval-main} & table* & End-to-end row per baseline \\
+    Fig.~\ref{fig:eval-ablate} & figure* & Leave-one-out $+$ Pareto \\
+    Tab.~\ref{tab:ablate} & table & Leave-one-out numbers \\
+    Fig.~\ref{fig:eval-scale} & figure & Scale sweep $+$ provisioning model \\
+    Tab.~\ref{tab:related} & table* & Camera-ready citations \\
+    \bottomrule
+  \end{tabular}
+\end{table*}
+
+\section{Artifact Outline}
+\label{app:artifact}
+
+An ASPLOS artifact should include: the identity gate for the CXL-SSD
+node; scripts that reset the window (cold protocol); the iso-recall
+harness; and the exact command lines that produce
+Figures~\ref{fig:eval-main}--\ref{fig:eval-scale}. We will not point a
+reviewer at an identifiable internal hostname.

@@ -1,0 +1,40 @@
+% =============================================================================
+% §8 Discussion / Limitations  — Target: 0.35--0.45 page.
+% 4.5/5 bar: reviewers reward named limits more than hidden ones.
+% =============================================================================
+\section{Discussion and Limitations}
+\label{sec:discuss}
+
+\paragraph{Proxy versus product.}
+The measured CXL-SSD is a software device that fills NAND behind
+\texttt{mmap}. Latency cliffs, QD collapse, and promote pollution are
+properties of \emph{memory-semantic flash}, not of one driver. Absolute
+QPS and lock artifacts may move on a hardware BAR path; we will not
+relabel the proxy as a shipping CXL.mem SSD.
+
+\paragraph{One-copy is a deployment claim, not a result.}
+Figure~\ref{fig:eval-scale}b is a provisioning model. Concurrent
+multi-host mapping needs CXL 3.x Shared FAM, a fabric manager, and a
+read-only publish protocol~\cite{cxl30}. CXL 2.0 pooling is not that.
+Even with one copy, device-side IOPS remain shared: one-copy removes
+capacity replication, not bandwidth replication.
+
+\paragraph{DiskANN remains the block-path champion.}
+PQ navigation plus deep \texttt{aio} is extremely good at not reading
+full-precision vectors. \sys{} is the runtime for the tier where those
+vectors \emph{do} live in a load/store flash address space. A residual
+QPS gap on the PQ-on block path is an expected con, not a surprise we
+omit.
+
+\paragraph{Layout tax is dimension-dependent.}
+Record-vs-page (F2) is strongest when a vector is comparable to a page.
+Low-dimension corpora need the page-bin experiment; we will not
+universalize a 1024-d result.
+
+\paragraph{What would change our mind.}
+If a hardware CXL-SSD with device-side copy saturates a wide internal
+bus, the \emph{async issue} path stays, the \emph{depth} target changes.
+If Shared FAM is available, D3 becomes a multi-host coherence/publish
+problem we have not solved. If bounded promote never beats demand on
+the primary corpus, contribution~3 shrinks to shared hot set $+$
+stall-aware scheduling and we will say so.

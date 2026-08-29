@@ -1,0 +1,218 @@
+% =============================================================================
+% §6 Evaluation  — Route A full matrix. Target: 2.6--3.0 pages.
+% 4.5/5 bar: lead with the money plot; iso-recall everywhere; ablate every
+% claimed module; name cons; fair DiskANN protocol.
+% 填写: 按 caption 合同换图，不要为了更好看改坐标含义。
+% =============================================================================
+\section{Evaluation}
+\label{sec:eval}
+
+We answer five questions:
+
+\begin{enumerate}
+  \item[\textbf{Q1}] Does naive CXL-SSD graph ANNS fail in the ways
+    \S\ref{sec:motivation} claimed?
+  \item[\textbf{Q2}] At iso-recall, does the full \sys{} stack approach a
+    same-machine DiskANN/PipeANN block path without putting the corpus in
+    CXL-DRAM?
+  \item[\textbf{Q3}] Does each module (placement, promote, hot set,
+    controller, async/\texttt{cont}) move the iso-recall curve?
+  \item[\textbf{Q4}] Do the trends hold as $n$, dimension, and concurrency
+    change?
+  \item[\textbf{Q5}] Where does the system lose, and is the loss honest?
+\end{enumerate}
+
+\subsection{Setup}
+\label{sec:eval-setup}
+
+\begin{table}[t]
+  \caption{Platform and corpora. \textbf{Fill-in:} lock one primary
+    corpus for Q2 and put the rest in sensitivity.}
+  \label{tab:setup}
+  \small
+  \begin{tabular}{@{}ll@{}}
+    \toprule
+    Item & Configuration \\
+    \midrule
+    Host CPU / DRAM     & \ph \\
+    CXL-DRAM (optional) & \ph\ (or ``absent this boot'') \\
+    CXL-SSD             & software proxy $\rightarrow$ NVMe \ph \\
+    Window / cache      & \ph\ GiB DRAM window, \ph\ GiB device cache \\
+    Block-SSD baseline  & same NVMe, \texttt{O\_DIRECT}/\texttt{io\_uring} \\
+    Primary corpus      & \ph\ (dim, metric, $n$) \\
+    Sensitivity         & \ph \\
+    Index               & Vamana/HNSW, $R=$\ph, PQ $=$ \ph \\
+    Target quality      & recall@10 and recall@100 floors \ph \\
+    Protocol            & cold: reset window; warm: stated separately \\
+    \bottomrule
+  \end{tabular}\\[2pt]
+  {\footnotesize \phnote}
+\end{table}
+
+Table~\ref{tab:setup} is the locked configuration. The primary metric is
+\emph{iso-recall QPS} (and p99) at a stated recall@$k$ floor. We always
+report NAND reads, promote bytes, and the three-level hit breakdown.
+A run that does not declare cold vs.\ warm is discarded: the window is
+small enough that accidental warm-up invents speedups.
+
+\paragraph{Baselines.}
+(1)~\textbf{Demand:} CXL-SSD load/store, no promote.
+(2)~\textbf{Page:} 16\,KB admission.
+(3)~\textbf{Sync-2hop:} the F3 policy.
+(4)~\textbf{Static-wide:} large beam, no controller.
+(5)~\textbf{Miss-chop:} cut beam on instantaneous miss (the F9 policy).
+(6)~\textbf{DiskANN/PipeANN:} official block path, same machine, same
+corpus, same recall floor; PQ on unless a figure is labeled
+\texttt{--no\_pq\_nav}.
+(7)~\textbf{Oracle:} corpus already in CXL-DRAM / host DRAM (upper bound).
+
+We never present a home-grown \texttt{O\_DIRECT} reader as ``DiskANN.''
+
+\subsection{Q1: Naive CXL-SSD fails}
+\label{sec:eval-mot}
+
+Figure~\ref{fig:mot-cliff}--\ref{fig:mot-bubbles} are reproduced on the
+evaluation machine under the Table~\ref{tab:setup} protocol so that
+Design and Evaluation share one dataset. We expect the same qualitative
+shape: a two-order cliff, page admission and blind prefetch losing to
+demand, beam cooling the set, and blocking load/store stuck near
+QD$\approx 1$. If a finding does not reproduce, it is dropped from the
+intro, not explained away in a footnote.
+
+\subsection{Q2: End-to-end iso-recall (the money plot)}
+\label{sec:eval-main}
+
+\begin{figure*}[t]
+  \centering
+  \phbox{0.98\textwidth}{4.0cm}{%
+    Fig.~9 placeholder --- THE money plot:\\
+    $x$: recall@10 (and/or @100); $y$: QPS (log if needed).\\
+    Lines: Demand, Page, Sync-2hop, PipeANN/DiskANN, Oracle, \sys{}.}
+  \caption{Iso-recall throughput. A 4.5 paper is won or lost on this
+    figure. \sys{} must beat every naive CXL-SSD policy by a clear gap
+    and must state the residual gap to DiskANN/PipeANN and to the
+    oracle --- including when we lose.
+    \textbf{Fill-in:} one primary corpus; cold protocol; error bars or
+    repeated runs if variance is visible.}
+  \Description{Recall versus QPS for the proposed system and baselines.}
+  \label{fig:eval-main}
+\end{figure*}
+
+\begin{table*}[t]
+  \caption{End-to-end at the primary recall floor. \textbf{Fill-in:} one
+    row per baseline; do not omit IO or DRAM just because QPS looks good.}
+  \label{tab:eval-main}
+  \small
+  \setlength{\tabcolsep}{5pt}
+  \begin{tabular*}{\textwidth}{@{\extracolsep{\fill}}lrrrrrr@{}}
+    \toprule
+    System & Recall@10 & QPS & p99 ($\mu$s) & NAND reads/q & Promote B/q & Host DRAM \\
+    \midrule
+    Demand CXL-SSD     & \ph & \ph & \ph & \ph & \ph & \ph \\
+    Page admission     & \ph & \ph & \ph & \ph & \ph & \ph \\
+    Sync 2-hop         & \ph & \ph & \ph & \ph & \ph & \ph \\
+    Static wide beam   & \ph & \ph & \ph & \ph & \ph & \ph \\
+    Miss-chop beam     & \ph & \ph & \ph & \ph & \ph & \ph \\
+    DiskANN (PQ on)    & \ph & \ph & \ph & \ph & --- & \ph \\
+    PipeANN block      & \ph & \ph & \ph & \ph & --- & \ph \\
+    Oracle CXL-DRAM    & \ph & \ph & \ph & 0 & --- & \ph \\
+    \textbf{\sys{}}    & \ph & \ph & \ph & \ph & \ph & \ph \\
+    \bottomrule
+  \end{tabular*}\\[2pt]
+  {\footnotesize \phnote}
+\end{table*}
+
+Figure~\ref{fig:eval-main} and Table~\ref{tab:eval-main} are the
+submission's main result. The claim we will defend is: at the locked
+recall floor, \sys{} delivers \num{X$\times$} Demand and comes within
+\num{Y} of the block-SSD path, while keeping the corpus on flash and
+host DRAM at \num{graph$+$PQ} rather than $D$. If absolute QPS loses to
+DiskANN, we still report it and shift emphasis to IO efficiency and
+DRAM footprint --- we do not hide the bar.
+
+\subsection{Q3: Each module is necessary}
+\label{sec:eval-ablate}
+
+\begin{figure*}[t]
+  \centering
+  \phbox{0.98\textwidth}{3.6cm}{%
+    Fig.~10 placeholder --- two panels:\\
+    (a)~leave-one-out iso-recall QPS (full \sys{} vs.\ $-$promote
+    $-$hotset $-$controller $-$async/cont $-$pagebin);\\
+    (b)~promote-byte / hot-set-fraction Pareto (QPS vs.\ budget).}
+  \caption{Ablation and budget Pareto. Removing any contributed module
+    must move the main metric. The Pareto must show a bounded sweet
+    spot, not ``more cache is always better.''
+    \textbf{Fill-in:} same recall floor as Figure~\ref{fig:eval-main}.}
+  \Description{Bar ablation and a Pareto curve of cache/promote budget.}
+  \label{fig:eval-ablate}
+\end{figure*}
+
+\begin{table}[t]
+  \caption{Leave-one-out at the primary recall floor.}
+  \label{tab:ablate}
+  \small
+  \begin{tabular}{@{}lrrr@{}}
+    \toprule
+    Variant & QPS & NAND/q & Hit (win/PTE) \\
+    \midrule
+    Full \sys{}              & \ph & \ph & \ph \\
+    $-$ bounded promote      & \ph & \ph & \ph \\
+    $-$ shared hot set       & \ph & \ph & \ph \\
+    $-$ iso-recall control   & \ph & \ph & \ph \\
+    $-$ async $+$ \texttt{cont} & \ph & \ph & \ph \\
+    $-$ page-bin (if used)   & \ph & \ph & \ph \\
+    Demand only              & \ph & \ph & \ph \\
+    \bottomrule
+  \end{tabular}\\[2pt]
+  {\footnotesize \phnote}
+\end{table}
+
+Figure~\ref{fig:eval-ablate} and Table~\ref{tab:ablate} are the
+falsifiability test for contribution~3. We also sweep promote $M$ and
+hot-set fraction to show the F3 lesson in a positive form: there is a
+budget at which precision and QPS peak, and past it they fall.
+
+\subsection{Q4: Scale and the one-copy opportunity}
+\label{sec:eval-scale}
+
+\begin{figure}[t]
+  \centering
+  \phbox{0.98\columnwidth}{3.5cm}{%
+    Fig.~11 placeholder --- two panels:\\
+    (a)~QPS vs.\ $n$ / dim / threads at iso-recall;\\
+    (b)~provisioned media vs.\ $R$ query hosts
+    (replicated SSD vs.\ CXL-DRAM vs.\ CXL-SSD $n_{\mathrm{HA}}$).}
+  \caption{Scaling and provisioning. (a)~Trends must not collapse on the
+    primary knob range. (b)~Qualitative capacity tax as query hosts grow;
+    this is the Route~A opportunity figure, not a TCO claim, and not a
+    Shared-FAM measurement.
+    \textbf{Fill-in:} (b) can be analytic plus one measured single-host
+    point; label it as a model.}
+  \Description{Scalability sweep and a provisioning curve over replica
+    count.}
+  \label{fig:eval-scale}
+\end{figure}
+
+Figure~\ref{fig:eval-scale}a sweeps corpus size, dimension, and
+concurrency. Figure~\ref{fig:eval-scale}b is the only place we plot the
+one-copy opportunity: provisioned flash/DRAM as a function of $R$, using
+the media-cost sketch of~\S\ref{sec:background}. The measured prototype
+is still one host; the curve is a model, checked against the observation
+that device-side bandwidth is shared (Figure~\ref{fig:bg-cxl}).
+
+\subsection{Q5: Losses, overhead, and fairness}
+\label{sec:eval-limit}
+
+We report the cases \sys{} loses or looks worse: warm working sets that
+already fit the window (async prefetch $\approx$ demand); low dimension
+where page$\approx$record; the residual gap to PQ-navigated DiskANN;
+and software-proxy artifacts (global cache lock, QD ceiling). Host-DRAM
+consumed by the graph and PQ is a cost, not a footnote. CPU is reported
+because DiskANN on this class of machine is I/O-bound, not CPU-bound;
+if \sys{} becomes CPU-bound we say so.
+
+\paragraph{Takeaway.}
+Q1--Q4 must be answerable from the figures in this section alone. If the
+money plot needs a verbal caveat that changes the claim, the claim in
+\S\ref{sec:intro} is the thing to change.

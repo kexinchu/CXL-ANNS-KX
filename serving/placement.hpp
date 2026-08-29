@@ -31,6 +31,13 @@ struct Placement {
   size_t vec_stride = 0;  // bytes between vectors (packed or page-aligned)
   void* dram_arena = nullptr;
   size_t dram_bytes = 0;
+  const uint8_t* graph_host = nullptr;
+  size_t graph_host_bytes = 0;
+
+  void set_graph_host(const uint8_t* p, size_t n) {
+    graph_host = p;
+    graph_host_bytes = n;
+  }
 
   void set_header(const CxanLayoutHeader* h) {
     hdr = h;
@@ -47,8 +54,8 @@ struct Placement {
     return ssd_base + hdr->off_pq + (size_t)id * hdr->pq_bytes;
   }
   const uint32_t* nbrs(uint32_t id) const {
-    return reinterpret_cast<const uint32_t*>(ssd_base + hdr->off_graph +
-                                             (size_t)id * hdr->R * 4);
+    const uint8_t* base = graph_host ? graph_host : (ssd_base + hdr->off_graph);
+    return reinterpret_cast<const uint32_t*>(base + (size_t)id * hdr->R * 4);
   }
   const uint8_t* vec(uint32_t id) const {
     return ssd_base + hdr->off_vectors + (size_t)id * vec_stride;

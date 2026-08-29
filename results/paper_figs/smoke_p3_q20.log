@@ -1,0 +1,15 @@
+=== SMOKE 2026-08-29T03:52:37+00:00 kernel=7.0.0-30-generic vmem=software nvme=/dev/nvme2n1 dax=absent ===
+mapped vmem /dev/vmem0 off=429496729600 len=9600069632 fd=5 prefetch=1
+vec_stride=800 (packed=800)
+mapped DRAM window anon+mbind node=1 len=1073741824 (fallback; not DAX)
+P3v2 softpin W=4 budget=67108864 install_top=4 fetch_top=0 page_group_b=0 install_all=0 threads=1 per_thread_window=1
+query_select nq=20/10000 shuffle_seed=42 flush_window=1 oneshot_fp=1 pin_entry=1 host_used=1098156 host_cap=33554432 dram_bytes=1073741824 pin_cap=67108864
+policy=P3 budget=67108864 dram_bytes=1073741824 nq=20 beam=300 k=10 iters=0 oneshot_fp=1 pin_bytes=34390016/67108864 graph_in_dram=0 hotset_bytes=0 early_stop_patience=0
+wall_s=3.409 throughput_QPS=5.87
+cxl_ssd_to_dram_promote_GBps=0.194 promote_bytes=661979136 target=12.0
+latency_ms mean=169.875 p50=123.000 p90=200.568 p99=711.775
+recall@10=0.9400
+cxl_dram_hit_pct=3.10
+early_stop_hops_avg=320.65 precision_pct=100.0
+metrics queries=20 dram_hits=1242 ssd_misses=38871 hit_pct=3.10 promote_bytes=661979136 avg_promote_ns=39636.3 prefetch_pages=147033 evicts=0 dist=104360 precision_pct=100.0 promote_pages=122613 promote_used=122613 hotset_pins=0
+CSV,P3,67108864,1073741824,20,300,0,5.87,169.875,123.000,200.568,711.775,0.9400,3.10,1242,38871,100.0,122613,122613,0,0,0,0

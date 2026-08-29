@@ -1,0 +1,17 @@
+# E5 iso-recall money plot. floor=0.92. nq=100. same seed-42 query slice as serving
+# (results/paper_figs/e5_query_100.fbin + e5_gt_100.ibin).
+# kernel=7.0.0-30-generic dax=absent
+# Serving: software /dev/vmem0 → nvme2n1, oneshot-fp, true-cold reload each row.
+# Block: PipeANN search_disk_index on /mnt/disk0 (nvme0n1) idx_t2i, PQ-on, O_DIRECT.
+# PipeANN needs L~2000 for 0.92 because PQ nav; serving oneshot-fp hits 0.944 at L=400.
+# pagebin serving row: NOT restaged on this SSD — omit from plot.
+# T=8 block rows are extra (block path can use QD); do not put on the T=1 line.
+family,row,threads,L,nq,qps,recall,mean_ms,notes
+serving,P0_demand,1,400,100,1.56,0.9440,639.730,true-cold oneshot-fp packed
+serving,P3_install_top4,1,400,100,4.65,0.9440,214.068,true-cold oneshot-fp packed
+serving,P3_pagebin,1,400,100,,,,"MISSING: pagebin image not on this SSD"
+block,PipeANN_pipe,1,2000,100,57.56,0.9250,17.315,PQ-on mode=2 W=8
+block,PipeANN_cont,1,2000,100,53.83,0.9280,,PQ-on mode=4 lanes=8
+block,PipeANN_beam_DiskANN-style,1,2200,100,10.23,0.9220,97.721,PQ-on mode=0 W=4
+block_extra,PipeANN_pipe_T8,8,2000,100,336.40,0.9250,22.582,QD extra; not vs serving T=1
+block_extra,PipeANN_cont_T8,8,2000,100,282.61,0.9270,,QD extra lanes=16

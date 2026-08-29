@@ -1,0 +1,33 @@
+% =============================================================================
+% FlashANNS writing macros. Change the system name in one place.
+% Numbers the authors have not yet locked go through \num{...}.
+% =============================================================================
+\newcommand{\sys}{FlashANNS}
+
+% Fill-in numeric / qualitative result. Renders as a bold bracket so it cannot
+% be mistaken for a measured number at submission time.
+\newcommand{\num}[1]{[{\bfseries #1}]}
+
+% Short inline "to be filled" token for table cells.
+\newcommand{\ph}{\textemdash}
+
+% -----------------------------------------------------------------------------
+% Placeholder figure body. Caption is written by the caller and is the contract:
+% when you replace the box, do not change what the caption claims unless the
+% paper argument changes.
+%   #1 width   (e.g. 0.98\columnwidth or 0.98\textwidth)
+%   #2 height  (e.g. 3.4cm) -- keep modest; 11-page budget
+%   #3 label shown inside the box (figure id + what to draw)
+% -----------------------------------------------------------------------------
+\newcommand{\phbox}[3]{%
+  \begin{tikzpicture}
+    \draw[thick, dashed, draw=black!45, fill=black!4]
+      (0,0) rectangle (#1,#2);
+    \node[align=center, text=black!55, font=\small,
+          text width=0.92*#1] at (0.5*#1, 0.5*#2) {#3};
+  \end{tikzpicture}%
+}
+
+% Common "fill later" footnote for tables.
+\newcommand{\phnote}{Every \ph\ cell is a placeholder. Replace with the
+  measured value under the protocol in~\S\ref{sec:eval-setup}.}

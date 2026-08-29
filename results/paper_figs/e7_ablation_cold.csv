@@ -1,0 +1,11 @@
+# E7 TRUE-COLD isolated rows. Reload vmem_sw before each row (cache_used=0).
+# kernel=7.0.0-30-generic backend=vmem_sw /dev/nvme2n1 serial=2F50A1360XK3
+# dax=absent dram-backend=numa 1GiB node1 seed=42 oneshot-fp flush-window no-hotset
+# L=300 nq=100. recall@10=0.9140 is BELOW floor 0.92; money-plot L is 400 (see e5).
+# full = same-session install_top=4 rerun (6.50). First-after-staging was 5.79.
+# VOID: results/paper_figs/e7_ablation.csv (no reload; device cache warm).
+row,policy,budget,dram,nq,beam,iters,qps,mean_ms,p50,p90,p99,recall,hit_pct,dram_hits,ssd_misses,precision_pct,promote_pages,promote_used,hotset_pins,graph_in_dram,hotset_bytes,early_stop_patience
+full,P3,67108864,1073741824,100,300,0,6.50,153.407,142.472,170.943,279.750,0.9140,3.84,6333,158678,100.0,608620,608620,0,0,0,0
+no_promote,P0,0,1073741824,100,300,0,1.87,534.847,502.244,763.175,1146.278,0.9140,1.08,7102,647885,100.0,608649,608649,0,0,0,0
+no_async,P3,67108864,1073741824,100,300,0,0.61,1627.424,1611.100,2382.324,2828.985,0.9140,3.84,6333,158678,100.0,608620,608620,0,0,0,0
+install_all,P3,67108864,1073741824,100,300,0,6.12,162.614,152.684,174.749,294.785,0.9140,1.08,7100,647885,100.0,608620,608620,0,0,0,0

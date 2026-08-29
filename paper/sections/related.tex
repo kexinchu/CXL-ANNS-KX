@@ -1,0 +1,55 @@
+% =============================================================================
+% §7 Related Work  — Target: 0.7 page + Table 5.
+% 4.5/5 bar: 4 sentences per neighbor (where data lives, slow path, delay
+% scale, one-line difference). No "they also do ANNS."
+% 填写: 把 Anonymous bib 换成正式引用；不要扩大 “first” 范围。
+% =============================================================================
+\section{Related Work}
+\label{sec:related}
+
+Table~\ref{tab:related} is the comparison we want a reviewer to use.
+Prose below only records the one-line difference; it does not repeat the
+background.
+
+\paragraph{Block-SSD and distributed graph ANNS.}
+DiskANN, FreshDiskANN, PipeANN, and SPANN~\cite{diskann,freshdiskann,pipeann,spann}
+optimize sector layout, PQ navigation, and I/O overlap on a block device.
+DistributedANN~\cite{distributedann} serves one logical graph from a KV
+store. \sys{} is not ``a better \texttt{io\_uring} scheduler.'' Its
+first-class objects are residency, promotion precision, and
+memory-semantic miss depth. NVMe-oF and KV sharing still present a
+block/KV slow path and a per-host cache.
+
+\paragraph{CXL-DRAM and near-memory ANNS.}
+CXL-ANNS and Cosmos~\cite{cxlanns,cxlanns-tocs,cosmos} --- and
+second-tier / residual designs~\cite{secondtier,fatrq,hm-ann} --- assume
+a DRAM- or NVM-priced far tier and optimize for $\sim$100\,ns, not for
+tens of microseconds of NAND plus a small polluted window. Their caches
+and prefetchers are not transferable at that delay gap (F3). We do not
+require Type-2 / PNM compute.
+
+\paragraph{CXL-SSD hardware and generic software.}
+SkyByte, From-Block-to-Byte, CMM-H, and CXL-AnySSD~\cite{skybyte,fromblocktobyte,cmm-h,cxl-anyssd}
+build or evaluate the medium. They do not jointly manage graph-ANNS
+residency, bounded promotion, and stall-aware search. P-HNSW~\cite{phnsw}
+is about crash consistency on PM, not serving residency on CXL-SSD.
+
+\begin{table*}[t]
+  \caption{Related systems on the dimensions that actually differ.
+    \textbf{Fill-in:} keep these columns; add a row only if it changes a column.}
+  \label{tab:related}
+  \small
+  \setlength{\tabcolsep}{4pt}
+  \begin{tabular*}{\textwidth}{@{\extracolsep{\fill}}p{0.13\textwidth}p{0.12\textwidth}p{0.10\textwidth}p{0.13\textwidth}p{0.14\textwidth}p{0.13\textwidth}p{0.13\textwidth}@{}}
+    \toprule
+    System & Full-prec.\ home & Graph home & Slow path & Capacity assumption & Optimize for & Cache unit \\
+    \midrule
+    DiskANN / PipeANN & NVMe sectors & with vectors & async block I/O & flash is enough & IOPS, PQ trips & 4\,KB / entry cache \\
+    Second-Tier / FaTRQ & CXL/RDMA/NVM & varies & far load & second tier holds index & 4\,KB vs.\ fine read & fine-grained far \\
+    CXL-ANNS & \textbf{all CXL-DRAM} & CXL & CXL.mem $+$ DSA & pool holds corpus & $\sim$100\,ns $+$ near-data & relation cache \\
+    Cosmos / PNM & device DRAM & device & on-device cores & multi-device DRAM & offload walk/dist & device place \\
+    CXL-SSD HW / AnySSD & NAND HDM & n/a & fault / generic & flash $+$ window & composable SSD, no swap & pages / OS \\
+    \textbf{\sys{}} & \textbf{CXL-SSD} & \textbf{host DRAM} & fault $+$ async fill & flash required; not all-DRAM & residency $+$ stall & record / hub / top-$M$ \\
+    \bottomrule
+  \end{tabular*}
+\end{table*}

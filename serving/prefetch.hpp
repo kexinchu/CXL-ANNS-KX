@@ -28,6 +28,7 @@ struct Prefetch {
   uint32_t install_top = 4;  // P3: max host pages/hop queued for DAX install
   uint32_t fetch_top = 0;    // P3: max SSD→host pages/hop (0 = budget only)
   bool page_group_b = false; // B: install/soft-pin adjacent pages of a 2-page group
+  bool install_all_fetched = false;  // P3: install every fetched page (hit% / useful BW)
 
   struct Job {
     const uint8_t* ptr = nullptr;
@@ -137,13 +138,16 @@ struct Prefetch {
 
   void on_expand(Placement& p, DramWindow& w, uint32_t node) {
     if (policy == PrefetchPolicy::P0) return;
-    const uint32_t* nbr_ptr = reinterpret_cast<const uint32_t*>(
-        w.lookup_or_promote(p.ssd_base, reinterpret_cast<const uint8_t*>(p.nbrs(node)),
-                            (size_t)p.hdr->R * 4));
-    uint32_t lim = neighbor_k < p.hdr->R ? neighbor_k : p.hdr->R;
     uint32_t nbr_local[64];
-    if (lim > 64) lim = 64;
-    std::memcpy(nbr_local, nbr_ptr, lim * sizeof(uint32_t));
+    uint32_t R = p.hdr->R;
+    if (R > 64) R = 64;
+    if (p.graph_host) {
+      std::memcpy(nbr_local, p.nbrs(node), (size_t)R * 4);
+    } else {
+      w.copy_through(p.ssd_base, reinterpret_cast<const uint8_t*>(p.nbrs(node)),
+                     (size_t)R * 4, reinterpret_cast<uint8_t*>(nbr_local));
+    }
+    uint32_t lim = neighbor_k < R ? neighbor_k : R;
     size_t vb = (size_t)p.hdr->dim * p.hdr->vec_bytes;
     for (uint32_t i = 0; i < lim; ++i) {
       uint32_t nb = nbr_local[i];
@@ -184,7 +188,9 @@ struct Prefetch {
       uint32_t nbr_local[64];
       uint32_t R = p.hdr->R;
       if (R > 64) R = 64;
-      {
+      if (p.graph_host) {
+        std::memcpy(nbr_local, p.nbrs(node), (size_t)R * 4);
+      } else {
         alignas(64) uint8_t nbuf[64 * 4];
         w.copy_through(p.ssd_base, reinterpret_cast<const uint8_t*>(p.nbrs(node)),
                        (size_t)R * 4, nbuf);
