@@ -1,0 +1,232 @@
+=== IDENTITY 2026-08-30T03:12:21+00:00 kernel=6.18.0-rc5 ===
+nvme4=/dev/nvme4n1 cache=8192
+DAX absent
+mapped vmem /dev/vmem0 off=429496729600 len=9600069632 fd=5 prefetch=1
+vec_stride=800 (packed=800)
+mapped DRAM window anon+mbind node=0 len=1073741824 (fallback; not DAX)
+P3v2 softpin W=4 budget=67108864 install_top=4 fetch_top=0 page_group_b=0 install_all=0 threads=1 per_thread_window=1
+loaded id-map new→old n=10000000 from /mnt/disk0/chukexin_motivation/serving_t2i_10m/new_to_old_pagebin.bin
+query_select nq=10/10000 shuffle_seed=42 flush_window=1 oneshot_fp=1 pin_entry=1 host_used=1089756 host_cap=67108864 dram_bytes=1073741824 pin_cap=67108864
+policy=P3 budget=67108864 dram_bytes=1073741824 nq=10 beam=400 k=10 iters=0 oneshot_fp=1 pin_bytes=34390016/67108864
+wall_s=2.913 throughput_QPS=3.43
+cxl_ssd_to_dram_promote_GBps=0.151 promote_bytes=438456320 target=12.0
+latency_ms mean=290.468 p50=215.795 p90=310.470 p99=905.229
+recall@10=0.0000
+cxl_dram_hit_pct=2.36
+metrics queries=10 dram_hits=681 ssd_misses=28214 hit_pct=2.36 promote_bytes=438456320 avg_promote_ns=49620.2 prefetch_pages=94631 evicts=0 dist=66796
+CSV,P3,67108864,1073741824,10,400,0,3.43,290.468,215.795,310.470,905.229,0.0000,2.36,681,28214
+=== IDENTITY 2026-08-30T03:12:40+00:00 kernel=6.18.0-rc5 ===
+nvme4=/dev/nvme4n1 cache=361820160
+DAX absent
+mapped vmem /dev/vmem0 off=429496729600 len=9600069632 fd=5 prefetch=1
+vec_stride=800 (packed=800)
+mapped DRAM window anon+mbind node=0 len=1073741824 (fallback; not DAX)
+P3v2 softpin W=4 budget=67108864 install_top=4 fetch_top=0 page_group_b=0 install_all=0 threads=1 per_thread_window=1
+query_select nq=10/10000 shuffle_seed=42 flush_window=1 oneshot_fp=1 pin_entry=1 host_used=1089756 host_cap=67108864 dram_bytes=1073741824 pin_cap=67108864
+policy=P3 budget=67108864 dram_bytes=1073741824 nq=10 beam=400 k=10 iters=0 oneshot_fp=1 pin_bytes=34390016/67108864
+wall_s=3.045 throughput_QPS=3.28
+cxl_ssd_to_dram_promote_GBps=0.144 promote_bytes=438456320 target=12.0
+latency_ms mean=303.509 p50=209.450 p90=348.213 p99=1062.903
+recall@10=0.9300
+cxl_dram_hit_pct=2.36
+metrics queries=10 dram_hits=681 ssd_misses=28214 hit_pct=2.36 promote_bytes=438456320 avg_promote_ns=55819.3 prefetch_pages=94631 evicts=0 dist=66796
+CSV,P3,67108864,1073741824,10,400,0,3.28,303.509,209.450,348.213,1062.903,0.9300,2.36,681,28214
+=== IDENTITY 2026-08-30T03:12:48+00:00 kernel=6.18.0-rc5 ===
+nvme4=/dev/nvme4n1 cache=361820160
+DAX absent
+mapped vmem /dev/vmem0 off=429496729600 len=9600069632 fd=5 prefetch=1
+vec_stride=800 (packed=800)
+mapped DRAM window anon+mbind node=0 len=1073741824 (fallback; not DAX)
+query_select nq=50/10000 shuffle_seed=42 flush_window=1 oneshot_fp=1 pin_entry=1 host_used=1123356 host_cap=67108864 dram_bytes=1073741824 pin_cap=67108864
+policy=P0 budget=0 dram_bytes=1073741824 nq=50 beam=400 k=10 iters=0 oneshot_fp=1 pin_bytes=34390016/67108864
+wall_s=38.732 throughput_QPS=1.29
+cxl_ssd_to_dram_promote_GBps=0.043 promote_bytes=1670311936 target=12.0
+latency_ms mean=773.206 p50=797.844 p90=1059.593 p99=1532.983
+recall@10=0.9460
+cxl_dram_hit_pct=0.94
+metrics queries=50 dram_hits=3890 ssd_misses=407791 hit_pct=0.94 promote_bytes=1670311936 avg_promote_ns=92715.2 prefetch_pages=0 evicts=0 dist=322201
+CSV,P0,0,1073741824,50,400,0,1.29,773.206,797.844,1059.593,1532.983,0.9460,0.94,3890,407791
+mapped vmem /dev/vmem0 off=429496729600 len=9600069632 fd=5 prefetch=1
+vec_stride=800 (packed=800)
+mapped DRAM window anon+mbind node=0 len=1073741824 (fallback; not DAX)
+P3v2 softpin W=4 budget=67108864 install_top=4 fetch_top=0 page_group_b=0 install_all=0 threads=1 per_thread_window=1
+query_select nq=50/10000 shuffle_seed=42 flush_window=1 oneshot_fp=1 pin_entry=1 host_used=1123356 host_cap=67108864 dram_bytes=1073741824 pin_cap=67108864
+policy=P3 budget=67108864 dram_bytes=1073741824 nq=50 beam=400 k=10 iters=0 oneshot_fp=1 pin_bytes=34390016/67108864
+wall_s=11.303 throughput_QPS=4.42
+cxl_ssd_to_dram_promote_GBps=0.176 promote_bytes=1990369280 target=12.0
+latency_ms mean=225.223 p50=204.349 p90=237.575 p99=696.006
+recall@10=0.9460
+cxl_dram_hit_pct=3.05
+metrics queries=50 dram_hits=3342 ssd_misses=106246 hit_pct=3.05 promote_bytes=1990369280 avg_promote_ns=37729.0 prefetch_pages=457277 evicts=0 dist=322201
+CSV,P3,67108864,1073741824,50,400,0,4.42,225.223,204.349,237.575,696.006,0.9460,3.05,3342,106246
+mapped vmem /dev/vmem0 off=429496729600 len=9600069632 fd=5 prefetch=0
+vec_stride=800 (packed=800)
+mapped DRAM window anon+mbind node=0 len=1073741824 (fallback; not DAX)
+P3v2 softpin W=4 budget=67108864 install_top=4 fetch_top=0 page_group_b=0 install_all=0 threads=1 per_thread_window=1
+query_select nq=50/10000 shuffle_seed=42 flush_window=1 oneshot_fp=1 pin_entry=1 host_used=1123356 host_cap=67108864 dram_bytes=1073741824 pin_cap=67108864
+policy=P3 budget=67108864 dram_bytes=1073741824 nq=50 beam=400 k=10 iters=0 oneshot_fp=1 pin_bytes=34390016/67108864
+wall_s=107.179 throughput_QPS=0.47
+cxl_ssd_to_dram_promote_GBps=0.019 promote_bytes=1990369280 target=12.0
+latency_ms mean=2142.674 p50=2242.795 p90=3104.016 p99=3739.880
+recall@10=0.9460
+cxl_dram_hit_pct=3.05
+metrics queries=50 dram_hits=3342 ssd_misses=106246 hit_pct=3.05 promote_bytes=1990369280 avg_promote_ns=36531.0 prefetch_pages=457277 evicts=0 dist=322201
+CSV,P3,67108864,1073741824,50,400,0,0.47,2142.674,2242.795,3104.016,3739.880,0.9460,3.05,3342,106246
+mapped vmem /dev/vmem0 off=429496729600 len=9600069632 fd=5 prefetch=1
+vec_stride=800 (packed=800)
+mapped DRAM window anon+mbind node=0 len=1073741824 (fallback; not DAX)
+P3v2 softpin W=4 budget=67108864 install_top=4 fetch_top=0 page_group_b=0 install_all=1 threads=1 per_thread_window=1
+query_select nq=50/10000 shuffle_seed=42 flush_window=1 oneshot_fp=1 pin_entry=1 host_used=1123356 host_cap=67108864 dram_bytes=1073741824 pin_cap=67108864
+policy=P3 budget=67108864 dram_bytes=1073741824 nq=50 beam=400 k=10 iters=0 oneshot_fp=1 pin_bytes=34390016/67108864
+wall_s=11.206 throughput_QPS=4.46
+cxl_ssd_to_dram_promote_GBps=0.288 promote_bytes=3223339008 target=12.0
+latency_ms mean=223.237 p50=203.693 p90=230.305 p99=659.575
+recall@10=0.9460
+cxl_dram_hit_pct=0.94
+metrics queries=50 dram_hits=3888 ssd_misses=407791 hit_pct=0.94 promote_bytes=3223339008 avg_promote_ns=12572.2 prefetch_pages=758295 evicts=0 dist=322201
+CSV,P3,67108864,1073741824,50,400,0,4.46,223.237,203.693,230.305,659.575,0.9460,0.94,3888,407791
+=== IDENTITY 2026-08-30T03:16:30+00:00 kernel=6.18.0-rc5 ===
+nvme4=/dev/nvme4n1 cache=1478651904
+DAX absent
+mapped vmem /dev/vmem0 off=429496729600 len=9600069632 fd=5 prefetch=1
+vec_stride=800 (packed=800)
+mapped DRAM window anon+mbind node=0 len=268435456 (fallback; not DAX)
+P3v2 softpin W=4 budget=67108864 install_top=4 fetch_top=0 page_group_b=0 install_all=0 threads=1 per_thread_window=1
+query_select nq=50/10000 shuffle_seed=42 flush_window=1 oneshot_fp=1 pin_entry=1 host_used=1123356 host_cap=67108864 dram_bytes=268435456 pin_cap=16777216
+policy=P3 budget=67108864 dram_bytes=268435456 nq=50 beam=400 k=10 iters=0 oneshot_fp=1 pin_bytes=16777216/16777216
+wall_s=11.152 throughput_QPS=4.48
+cxl_ssd_to_dram_promote_GBps=0.179 promote_bytes=1991577600 target=12.0
+latency_ms mean=222.804 p50=203.681 p90=222.473 p99=681.602
+recall@10=0.9460
+cxl_dram_hit_pct=2.78
+metrics queries=50 dram_hits=3047 ssd_misses=106541 hit_pct=2.78 promote_bytes=1991577600 avg_promote_ns=37036.9 prefetch_pages=457277 evicts=0 dist=322201
+CSV,P3,67108864,268435456,50,400,0,4.48,222.804,203.681,222.473,681.602,0.9460,2.78,3047,106541
+mapped vmem /dev/vmem0 off=429496729600 len=9600069632 fd=5 prefetch=1
+vec_stride=800 (packed=800)
+mapped DRAM window anon+mbind node=0 len=268435456 (fallback; not DAX)
+P3v2 softpin W=4 budget=67108864 install_top=4 fetch_top=0 page_group_b=0 install_all=0 threads=4 per_thread_window=1
+query_select nq=50/10000 shuffle_seed=42 flush_window=1 oneshot_fp=1 pin_entry=1 host_used=1123356 host_cap=67108864 dram_bytes=268435456 pin_cap=16777216
+mapped DRAM window anon+mbind node=0 len=268435456 (fallback; not DAX)
+mapped DRAM window anon+mbind node=0 len=268435456 (fallback; not DAX)
+mapped DRAM window anon+mbind node=0 len=268435456 (fallback; not DAX)
+mapped DRAM window anon+mbind node=0 len=268435456 (fallback; not DAX)
+policy=P3 budget=67108864 dram_bytes=268435456 nq=50 beam=400 k=10 iters=0 oneshot_fp=1 pin_bytes=0/16777216
+wall_s=25.429 throughput_QPS=1.97
+cxl_ssd_to_dram_promote_GBps=0.082 promote_bytes=2094665728 target=12.0
+latency_ms mean=2011.775 p50=1736.282 p90=2213.621 p99=5639.430
+recall@10=0.9460
+cxl_dram_hit_pct=2.50
+metrics queries=50 dram_hits=3373 ssd_misses=131709 hit_pct=2.50 promote_bytes=2094665728 avg_promote_ns=172641.4 prefetch_pages=457277 evicts=0 dist=322201
+CSV,P3,67108864,268435456,50,400,0,1.97,2011.775,1736.282,2213.621,5639.430,0.9460,2.50,3373,131709
+mapped vmem /dev/vmem0 off=429496729600 len=9600069632 fd=5 prefetch=1
+vec_stride=800 (packed=800)
+mapped DRAM window anon+mbind node=0 len=268435456 (fallback; not DAX)
+P3v2 softpin W=4 budget=67108864 install_top=4 fetch_top=0 page_group_b=0 install_all=0 threads=8 per_thread_window=1
+query_select nq=50/10000 shuffle_seed=42 flush_window=1 oneshot_fp=1 pin_entry=1 host_used=1123356 host_cap=67108864 dram_bytes=268435456 pin_cap=16777216
+mapped DRAM window anon+mbind node=0 len=268435456 (fallback; not DAX)
+mapped DRAM window anon+mbind node=0 len=268435456 (fallback; not DAX)
+mapped DRAM window anon+mbind node=0 len=268435456 (fallback; not DAX)
+mapped DRAM window anon+mbind node=0 len=268435456 (fallback; not DAX)
+mapped DRAM window anon+mbind node=0 len=268435456 (fallback; not DAX)
+mapped DRAM window anon+mbind node=0 len=268435456 (fallback; not DAX)
+mapped DRAM window anon+mbind node=0 len=268435456 (fallback; not DAX)
+mapped DRAM window anon+mbind node=0 len=268435456 (fallback; not DAX)
+policy=P3 budget=67108864 dram_bytes=268435456 nq=50 beam=400 k=10 iters=0 oneshot_fp=1 pin_bytes=0/16777216
+wall_s=27.291 throughput_QPS=1.83
+cxl_ssd_to_dram_promote_GBps=0.082 promote_bytes=2232127488 target=12.0
+latency_ms mean=4262.181 p50=3622.133 p90=8183.903 p99=9324.798
+recall@10=0.9460
+cxl_dram_hit_pct=2.25
+metrics queries=50 dram_hits=3805 ssd_misses=165269 hit_pct=2.25 promote_bytes=2232127488 avg_promote_ns=281210.4 prefetch_pages=457277 evicts=0 dist=322201
+CSV,P3,67108864,268435456,50,400,0,1.83,4262.181,3622.133,8183.903,9324.798,0.9460,2.25,3805,165269
+=== IDENTITY 2026-08-30T03:24:19+00:00 kernel=6.18.0-rc5 ===
+nvme4=/dev/nvme4n1 cache=4294967296
+DAX absent
+mapped vmem /dev/vmem0 off=450971566080 len=9600069632 fd=5 prefetch=1
+vec_stride=800 (packed=800)
+mapped DRAM window anon+mbind node=0 len=1073741824 (fallback; not DAX)
+P3v2 softpin W=4 budget=67108864 install_top=4 fetch_top=0 page_group_b=0 install_all=0 threads=1 per_thread_window=1
+loaded id-map new→old n=10000000 from /mnt/disk0/chukexin_motivation/serving_t2i_10m/new_to_old_pagebin.bin
+query_select nq=10/10000 shuffle_seed=42 flush_window=1 oneshot_fp=1 pin_entry=1 host_used=1089756 host_cap=67108864 dram_bytes=1073741824 pin_cap=67108864
+policy=P3 budget=67108864 dram_bytes=1073741824 nq=10 beam=400 k=10 iters=0 oneshot_fp=1 pin_bytes=1253376/67108864
+wall_s=1.902 throughput_QPS=5.26
+cxl_ssd_to_dram_promote_GBps=0.188 promote_bytes=357556224 target=12.0
+latency_ms mean=189.500 p50=188.812 p90=219.605 p99=241.353
+recall@10=0.9600
+cxl_dram_hit_pct=46.48
+metrics queries=10 dram_hits=16248 ssd_misses=18711 hit_pct=46.48 promote_bytes=357556224 avg_promote_ns=25102.1 prefetch_pages=84116 evicts=0 dist=66666
+CSV,P3,67108864,1073741824,10,400,0,5.26,189.500,188.812,219.605,241.353,0.9600,46.48,16248,18711
+=== IDENTITY 2026-08-30T03:24:25+00:00 kernel=6.18.0-rc5 ===
+nvme4=/dev/nvme4n1 cache=235446272
+DAX absent
+mapped vmem /dev/vmem0 off=450971566080 len=9600069632 fd=5 prefetch=1
+vec_stride=800 (packed=800)
+mapped DRAM window anon+mbind node=0 len=1073741824 (fallback; not DAX)
+P3v2 softpin W=4 budget=67108864 install_top=4 fetch_top=0 page_group_b=0 install_all=0 threads=1 per_thread_window=1
+loaded id-map new→old n=10000000 from /mnt/disk0/chukexin_motivation/serving_t2i_10m/new_to_old_pagebin.bin
+query_select nq=50/10000 shuffle_seed=42 flush_window=1 oneshot_fp=1 pin_entry=1 host_used=1123356 host_cap=67108864 dram_bytes=1073741824 pin_cap=67108864
+policy=P3 budget=67108864 dram_bytes=1073741824 nq=50 beam=400 k=10 iters=0 oneshot_fp=1 pin_bytes=1253376/67108864
+wall_s=8.358 throughput_QPS=5.98
+cxl_ssd_to_dram_promote_GBps=0.205 promote_bytes=1717424128 target=12.0
+latency_ms mean=166.587 p50=166.179 p90=201.893 p99=250.017
+recall@10=0.9500
+cxl_dram_hit_pct=36.08
+metrics queries=50 dram_hits=50541 ssd_misses=89555 hit_pct=36.08 promote_bytes=1717424128 avg_promote_ns=22626.1 prefetch_pages=405117 evicts=0 dist=323751
+CSV,P3,67108864,1073741824,50,400,0,5.98,166.587,166.179,201.893,250.017,0.9500,36.08,50541,89555
+=== IDENTITY 2026-08-30T03:24:34+00:00 kernel=6.18.0-rc5 ===
+nvme4=/dev/nvme4n1 cache=1027428352
+DAX absent
+mapped vmem /dev/vmem0 off=450971566080 len=9600069632 fd=5 prefetch=1
+vec_stride=800 (packed=800)
+mapped DRAM window anon+mbind node=0 len=268435456 (fallback; not DAX)
+P3v2 softpin W=4 budget=67108864 install_top=4 fetch_top=0 page_group_b=0 install_all=0 threads=1 per_thread_window=1
+loaded id-map new→old n=10000000 from /mnt/disk0/chukexin_motivation/serving_t2i_10m/new_to_old_pagebin.bin
+query_select nq=50/10000 shuffle_seed=42 flush_window=1 oneshot_fp=1 pin_entry=1 host_used=1123356 host_cap=67108864 dram_bytes=268435456 pin_cap=16777216
+policy=P3 budget=67108864 dram_bytes=268435456 nq=50 beam=400 k=10 iters=0 oneshot_fp=1 pin_bytes=1253376/16777216
+wall_s=8.064 throughput_QPS=6.20
+cxl_ssd_to_dram_promote_GBps=0.213 promote_bytes=1717424128 target=12.0
+latency_ms mean=161.067 p50=155.310 p90=197.518 p99=233.745
+recall@10=0.9500
+cxl_dram_hit_pct=36.08
+metrics queries=50 dram_hits=50541 ssd_misses=89555 hit_pct=36.08 promote_bytes=1717424128 avg_promote_ns=20567.7 prefetch_pages=405117 evicts=0 dist=323751
+CSV,P3,67108864,268435456,50,400,0,6.20,161.067,155.310,197.518,233.745,0.9500,36.08,50541,89555
+mapped vmem /dev/vmem0 off=450971566080 len=9600069632 fd=5 prefetch=1
+vec_stride=800 (packed=800)
+mapped DRAM window anon+mbind node=0 len=268435456 (fallback; not DAX)
+P3v2 softpin W=4 budget=67108864 install_top=4 fetch_top=0 page_group_b=0 install_all=0 threads=4 per_thread_window=1
+loaded id-map new→old n=10000000 from /mnt/disk0/chukexin_motivation/serving_t2i_10m/new_to_old_pagebin.bin
+query_select nq=50/10000 shuffle_seed=42 flush_window=1 oneshot_fp=1 pin_entry=1 host_used=1123356 host_cap=67108864 dram_bytes=268435456 pin_cap=16777216
+mapped DRAM window anon+mbind node=0 len=268435456 (fallback; not DAX)
+mapped DRAM window anon+mbind node=0 len=268435456 (fallback; not DAX)
+mapped DRAM window anon+mbind node=0 len=268435456 (fallback; not DAX)
+mapped DRAM window anon+mbind node=0 len=268435456 (fallback; not DAX)
+policy=P3 budget=67108864 dram_bytes=268435456 nq=50 beam=400 k=10 iters=0 oneshot_fp=1 pin_bytes=0/16777216
+wall_s=16.946 throughput_QPS=2.95
+cxl_ssd_to_dram_promote_GBps=0.102 promote_bytes=1721184256 target=12.0
+latency_ms mean=1342.514 p50=1390.012 p90=1669.474 p99=2197.604
+recall@10=0.9500
+cxl_dram_hit_pct=45.36
+metrics queries=50 dram_hits=75117 ssd_misses=90473 hit_pct=45.36 promote_bytes=1721184256 avg_promote_ns=78359.3 prefetch_pages=405117 evicts=0 dist=323751
+CSV,P3,67108864,268435456,50,400,0,2.95,1342.514,1390.012,1669.474,2197.604,0.9500,45.36,75117,90473
+mapped vmem /dev/vmem0 off=450971566080 len=9600069632 fd=5 prefetch=1
+vec_stride=800 (packed=800)
+mapped DRAM window anon+mbind node=0 len=268435456 (fallback; not DAX)
+P3v2 softpin W=4 budget=67108864 install_top=4 fetch_top=0 page_group_b=0 install_all=0 threads=8 per_thread_window=1
+loaded id-map new→old n=10000000 from /mnt/disk0/chukexin_motivation/serving_t2i_10m/new_to_old_pagebin.bin
+query_select nq=50/10000 shuffle_seed=42 flush_window=1 oneshot_fp=1 pin_entry=1 host_used=1123356 host_cap=67108864 dram_bytes=268435456 pin_cap=16777216
+mapped DRAM window anon+mbind node=0 len=268435456 (fallback; not DAX)
+mapped DRAM window anon+mbind node=0 len=268435456 (fallback; not DAX)
+mapped DRAM window anon+mbind node=0 len=268435456 (fallback; not DAX)
+mapped DRAM window anon+mbind node=0 len=268435456 (fallback; not DAX)
+mapped DRAM window anon+mbind node=0 len=268435456 (fallback; not DAX)
+mapped DRAM window anon+mbind node=0 len=268435456 (fallback; not DAX)
+mapped DRAM window anon+mbind node=0 len=268435456 (fallback; not DAX)
+mapped DRAM window anon+mbind node=0 len=268435456 (fallback; not DAX)
+policy=P3 budget=67108864 dram_bytes=268435456 nq=50 beam=400 k=10 iters=0 oneshot_fp=1 pin_bytes=0/16777216
+wall_s=18.409 throughput_QPS=2.72
+cxl_ssd_to_dram_promote_GBps=0.094 promote_bytes=1726197760 target=12.0
+latency_ms mean=2860.663 p50=2811.785 p90=3654.404 p99=4525.925
+recall@10=0.9500
+cxl_dram_hit_pct=54.06
+metrics queries=50 dram_hits=107885 ssd_misses=91697 hit_pct=54.06 promote_bytes=1726197760 avg_promote_ns=147720.0 prefetch_pages=405117 evicts=0 dist=323751
+CSV,P3,67108864,268435456,50,400,0,2.72,2860.663,2811.785,3654.404,4525.925,0.9500,54.06,107885,91697

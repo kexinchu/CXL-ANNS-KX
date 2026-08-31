@@ -6,6 +6,7 @@
 #include <condition_variable>
 #include <cstdint>
 #include <cstring>
+#include <functional>
 #include <mutex>
 #include <thread>
 #include <vector>
@@ -16,6 +17,7 @@ struct PageCopyPool {
     uint8_t* dst = nullptr;
     size_t len = 0;
     std::atomic<uint8_t>* ready = nullptr;
+    std::function<void()> fn;
   };
 
   size_t nworkers = 0;
@@ -61,11 +63,19 @@ struct PageCopyPool {
     inflight.fetch_add(1, std::memory_order_relaxed);
     {
       std::lock_guard<std::mutex> g(mu);
-      if (q_head > 1024 && q_head * 2 > q.size()) {
-        q.erase(q.begin(), q.begin() + (std::ptrdiff_t)q_head);
-        q_head = 0;
-      }
-      q.push_back(Job{src, dst, len, ready});
+      compact_locked();
+      q.push_back(Job{src, dst, len, ready, nullptr});
+    }
+    cv.notify_one();
+  }
+
+  // Run fn on a worker. Search thread must not block on NAND ioctl.
+  void submit_fn(std::function<void()> fn) {
+    inflight.fetch_add(1, std::memory_order_relaxed);
+    {
+      std::lock_guard<std::mutex> g(mu);
+      compact_locked();
+      q.push_back(Job{nullptr, nullptr, 0, nullptr, std::move(fn)});
     }
     cv.notify_one();
   }
@@ -82,6 +92,13 @@ struct PageCopyPool {
   }
 
  private:
+  void compact_locked() {
+    if (q_head > 1024 && q_head * 2 > q.size()) {
+      q.erase(q.begin(), q.begin() + (std::ptrdiff_t)q_head);
+      q_head = 0;
+    }
+  }
+
   void loop() {
     for (;;) {
       Job job;
@@ -89,9 +106,10 @@ struct PageCopyPool {
         std::unique_lock<std::mutex> lk(mu);
         cv.wait(lk, [&] { return stop || q_head < q.size(); });
         if (stop && q_head >= q.size()) return;
-        job = q[q_head++];
+        job = std::move(q[q_head++]);
       }
-      if (job.dst && job.src && job.len) std::memcpy(job.dst, job.src, job.len);
+      if (job.fn) job.fn();
+      else if (job.dst && job.src && job.len) std::memcpy(job.dst, job.src, job.len);
       if (job.ready) job.ready->store(1, std::memory_order_release);
       inflight.fetch_sub(1, std::memory_order_acq_rel);
     }

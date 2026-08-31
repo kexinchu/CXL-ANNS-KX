@@ -1,0 +1,4 @@
+=== vmem_sw SEQ true-cold ===
+probe mode=seq pages=16384 issued_B=67108864 nvme_B=65011712 wall_s=0.0375 issued_GBps=1.792 nvme_GBps=1.736
+=== vmem_sw RND true-cold ===
+probe mode=rnd pages=16384 issued_B=67108864 nvme_B=66142208 wall_s=0.0524 issued_GBps=1.281 nvme_GBps=1.263

@@ -8,10 +8,11 @@ Graph ANNS has a well-engineered block-SSD path and a well-engineered
 CXL-DRAM path. Flash-backed CXL memory is the third deployment point ---
 flash-priced capacity, a memory-semantic window, and a future one-copy
 hosting story --- but it is unusable if treated as slow DRAM or as mmap'd
-DiskANN. \sys{} is a runtime for that tier: it places the graph off the
-window, promotes few precise records, shares a hot set, controls search
-under iso-recall, and keeps NAND fills asynchronous and deep. The
-opportunity is the medium; the contribution is residency and stall
-control. We have stated where the prototype is a proxy and where the
-paper is a model, so that those sentences cannot migrate into the
-abstract as facts.
+DiskANN. \sys{} is a runtime for that tier: the host should score from a
+small window as if it were CXL-DRAM, while prefetch and continuous
+batching hide NAND that actually holds $D$. The opportunity is the
+medium; the contribution is making flash invisible on the critical path.
+The contribution is making flash invisible on the critical path:
+100\% of scores come from the window, and the host does not wait on
+CXL-SSD. The remaining work is to keep that invariant under load, not
+to retreat from it.

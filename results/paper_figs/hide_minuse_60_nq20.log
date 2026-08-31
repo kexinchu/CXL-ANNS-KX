@@ -1,0 +1,22 @@
+mapped vmem /dev/vmem0 off=450971566080 len=9600069632 fd=5 prefetch=1 cache_used=0
+nbr-bundle off=9600069632 stride=28672 bytes=267.03 GiB score_page=0 look_k=0
+graph-file /mnt/disk0/chukexin_motivation/serving_t2i_10m/pagebin_graph.bin
+graph-in-dram bytes=1280000000 src=graph-file
+vec_stride=800 (packed=800) graph_in_dram=1
+mapped DRAM window anon+mbind node=1 len=1073741824 (fallback; not DAX)
+P3v2 softpin W=16 budget=67108864 install_top=4 fetch_top=0 page_group_b=0 install_all=0 threads=1 per_thread_window=1 cont_batch=0 score_page=0 expand_batch=8 issue_ahead=2 min_issue_use=0.60
+loaded id-map new→old n=10000000 from /mnt/disk0/chukexin_motivation/serving_t2i_10m/new_to_old_pagebin.bin
+query_select nq=20/10000 shuffle_seed=42 flush_window=0 oneshot_fp=1 oracle_dram=0 oracle_window=0 pin_entry=1 host_used=1098156 host_cap=33554432 dram_bytes=1073741824 pin_cap=268435456
+hide_warm_entry ids=8192 pin_bytes=6553600/268435456
+policy=P3 budget=67108864 dram_bytes=1073741824 nq=20 beam=400 k=10 iters=0 oneshot_fp=1 pin_bytes=6553600/268435456
+wall_s=0.779 throughput_QPS=25.66
+cxl_ssd_to_dram_promote_GBps=1.187 promote_bytes=925483008 target=12.0
+latency_ms mean=38.967 p50=39.833 p90=44.070 p99=54.179
+recall@10=0.9550
+cxl_dram_hit_pct=7.93
+metrics queries=20 dram_hits=9728 ssd_misses=112974 hit_pct=7.93 promote_bytes=925483008 avg_promote_ns=2278.4 prefetch_pages=225948 evicts=0 dist=209608
+hide from_win=209608 from_bounce=0 from_win_pct=100.00 hide_prec=185.54 crit_wait_ns=115742731 device_fill_ns=121463127 overlap=0.16
+prefetch_use issued=111143 used=68784 page_use_pct=61.89 look_issued=0 look_used=0 look_use_pct=0.00 miss_use_pct=61.89 byte_use_pct=36.83 slot_use_pct=60.57 issue_use_pct=87.27 slots_on_pages=273395 slots_scored=165587 issue_slots=148605 issue_want=129684 scored_vec_B=167670400 nvme_read_B=449286144
+issue_use_hist=[0,.2):0 [.2,.4):0 [.4,.6):0 [.6,.8):15314 [.8,1]:25164
+nvme_real_GBps=0.576 occ_vs_rnd_peak=37.0% peak_GBps=1.560 page_use=61.89 slot_use=60.57 issue_use=87.27
+CSV,P3,67108864,1073741824,20,400,0,25.66,38.967,39.833,44.070,54.179,0.9550,7.93,9728,112974,100.00,185.54,115742731,0.16

@@ -33,6 +33,10 @@ struct Placement {
   size_t dram_bytes = 0;
   const uint8_t* graph_host = nullptr;
   size_t graph_host_bytes = 0;
+  // Per-node packed N(u) immediately after the layout image (page-aligned).
+  uint64_t bundle_off = 0;
+  uint64_t bundle_stride = 0;
+  uint64_t bundle_bytes = 0;
 
   void set_graph_host(const uint8_t* p, size_t n) {
     graph_host = p;
@@ -60,6 +64,11 @@ struct Placement {
   const uint8_t* vec(uint32_t id) const {
     return ssd_base + hdr->off_vectors + (size_t)id * vec_stride;
   }
+  const uint8_t* bundle_slot(uint32_t src, uint32_t k) const {
+    return ssd_base + bundle_off + (uint64_t)src * bundle_stride +
+           (uint64_t)k * packed_vec_bytes();
+  }
+  bool has_bundle() const { return bundle_stride && bundle_bytes; }
 
   size_t packed_vec_bytes() const {
     return hdr ? (size_t)hdr->dim * hdr->vec_bytes : 0;
@@ -87,5 +96,40 @@ struct Placement {
     uint32_t i1 = (uint32_t)((rel_hi - 1) / vec_stride);
     if (i1 >= hdr->n) i1 = hdr->n - 1;
     for (uint32_t i = i0; i <= i1; ++i) fn(i);
+  }
+
+  // IDs whose full packed vector lies inside one page (the 5-in-4KiB slots).
+  template <typename Fn>
+  void for_ids_contained_in_page(uint64_t page_off, size_t page_bytes, Fn fn) const {
+    if (!hdr || !page_bytes) return;
+    const size_t packed = packed_vec_bytes();
+    if (!packed || packed > page_bytes) return;
+    if (has_bundle() && page_off >= bundle_off && page_off < bundle_off + bundle_bytes) {
+      const uint64_t rel = page_off - bundle_off;
+      const uint32_t u = (uint32_t)(rel / bundle_stride);
+      if (u >= hdr->n) return;
+      const uint64_t local = rel % bundle_stride;
+      const uint32_t* nb = nbrs(u);
+      for (uint32_t k = 0; k < hdr->R; ++k) {
+        const uint64_t a = (uint64_t)k * packed;
+        const uint64_t b = a + packed;
+        if (a >= local && b <= local + page_bytes) fn(nb[k]);
+      }
+      return;
+    }
+    if (!vec_stride) return;
+    const uint64_t v0 = hdr->off_vectors;
+    const uint64_t vlo = page_off > v0 ? page_off : v0;
+    const uint64_t vhi = page_off + page_bytes;
+    if (vlo >= v0 + hdr->len_vectors || vlo >= vhi) return;
+    uint32_t i0 = (uint32_t)((vlo - v0 + vec_stride - 1) / vec_stride);
+    uint32_t i1 = (uint32_t)((vhi - v0) / vec_stride);
+    if (i1) i1--;
+    if (i1 >= hdr->n) i1 = hdr->n - 1;
+    for (uint32_t i = i0; i <= i1 && i < hdr->n; ++i) {
+      const uint64_t a = v0 + (uint64_t)i * vec_stride;
+      const uint64_t b = a + packed;
+      if (a >= page_off && b <= page_off + page_bytes) fn(i);
+    }
   }
 };

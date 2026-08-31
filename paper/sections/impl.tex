@@ -1,41 +1,44 @@
 % =============================================================================
-% §5 Implementation  — Target: 0.5 page. 4.5/5 bar: disclose what is and is not
-% implemented (ASPLOS CFP + SIGPLAN empirical guidelines).
-% 填写: 补行数/ioctl 名/线程模型；不要把 software proxy 写成产品 CXL.mem SSD。
+% §5 Implementation  — Target: 0.5 page. Disclose what is and is not measured.
 % =============================================================================
 \section{Implementation}
 \label{sec:impl}
 
-\sys{} is implemented as a userspace runtime on top of a memory-semantic
-CXL-SSD device node and, when present, a CXL-DRAM DAX window. The
-prototype we evaluate uses a software CXL-SSD: \texttt{mmap} of the
-device presents a unified VA; a miss is a NAND fill into a configured
-DRAM cache; a batch ioctl submits many fills without one blocking
-bio per page. Graph search is integrated with a DiskANN/PipeANN-style
-engine so that the block-SSD baseline and the CXL-SSD path share the
-same index bytes and the same recall definition.
+\sys{} is a userspace beam search (\texttt{serving/search\_beam}) over a
+CXAN packed (or page-binned) image \texttt{mmap}'d from
+\texttt{/dev/vmem0}. Policy P3 issues hop-ranked miss pages with
+\texttt{VMEM\_IOC\_PREFETCH\_BATCH}, copies into a host bounce
+(\texttt{PageCopyPool}), scores there, and installs only
+\texttt{install\_top} pages into a 1\,GiB DramWindow. That split is
+exactly the hide debt~\S\ref{sec:eval}: scoring still waits on the
+bounce, so NAND is not yet off the critical path.
+
+\paragraph{What we measure (2026-08-30, \texttt{gpu01}).}
+Kernel \texttt{6.18.0-rc5}. FPGA Altera \texttt{0000:15:00.0} bound to
+\texttt{ntcx}/\texttt{mem2nvme} (32\,GiB BAR). NAND I/O goes through
+\texttt{nvmex} on \texttt{0000:d9:00.0} ($\rightarrow$
+\texttt{/dev/nvme4n1}, Dell CD8P 1.92\,TB). Userspace
+\texttt{/dev/vmem0} is \texttt{vmem\_sw}: 28\,GiB logical RAM map, 4\,GiB
+device cache, 2\,MiB stripe. HPS registers return
+\texttt{-EOPNOTSUPP}; stores to the BAR read back as \texttt{0xff}.
+Hardware \texttt{vmem.ko} implements \texttt{PREFETCH\_BATCH} but is
+\textbf{not} the measured path. CXL-DRAM DAX is absent; DramWindow is
+anonymous pages bound to NUMA node~1.
 
 \paragraph{What is implemented.}
-(1)~Placement of graph and PQ in host DRAM and vectors on the CXL-SSD
-mapping (\S\ref{sec:d1}). (2)~The promote/cache/stats residency API,
-including a byte budget and precision counters (\S\ref{sec:d2},
-\S\ref{sec:d5}). (3)~A shared hot-set with a fixed budget
-(\S\ref{sec:d3}). (4)~Asynchronous frontier prefetch and a fetch-level
-continuous scheduler (\S\ref{sec:d4}). (5)~An iso-recall harness that
-sweeps beam / $L$ and stops at a target recall@$k$.
+P0 demand promote and P3 bounded install; \texttt{PREFETCH\_BATCH};
+page-bin layout pack; iso-recall $L$ picker; optional graph copy into
+host DRAM (intended default for hide rows). Entry subgraph $\le$32\,MiB
+is pinned. A shared LFU hot set was prototyped and \emph{lost} QPS on
+the warm protocol; we do not ship it as a result.
 
 \paragraph{What is not implemented, and is not claimed.}
-A hardware CXL 3.x Shared FAM fabric; a device-side 160\,GB/s DRAM--SSD
-DMA engine; a production multi-tenant QoS layer; and a crash-consistent
-index publisher. The iso-recall \emph{controller} is implemented as a
-calibrated policy plus early-stop; a fully closed online learner is
-optional and is reported only if it appears in the ablation. Turning
-off PQ navigation on the official DiskANN SSD path required an
-experimental flag; we never present that flag as a supported upstream
-feature.
+Product CXL.mem SSD; HPS fill of the FPGA BAR; Shared FAM; a 160\,GB/s
+DRAM--SSD engine; closed-loop F9 miss-chop; multi-thread shared-window
+speedup. DiskANN PQ-off is never placed on the PQ-on line.
 
 \paragraph{Prototype scale.}
-The runtime is \num{LOC} lines of C/C++ beyond the unmodified search
-engine, plus \num{LOC-driver} lines in the software CXL-SSD path.
-Build and identity checks are scripted so that a device other than the
-one we measured cannot silently produce a ``CXL-SSD'' number.
+The serving binary is a single translation unit plus small headers on
+top of the CXAN layout. The software CXL-SSD path is the out-of-tree
+\texttt{vmem\_sw} driver. A log header that omits kernel, BDF, and
+\texttt{vmem\_sw} vs.\ \texttt{vmem.ko} is an invalid row.

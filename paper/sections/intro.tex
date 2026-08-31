@@ -91,16 +91,22 @@ depth can become a pessimization until fills are made asynchronous. Widening
 search (\texttt{efSearch} / beam) to ``buy recall'' further cools the working
 set and couples quality to stall.
 
-This paper presents \sys{}, a graph-ANNS \emph{runtime} for flash-backed CXL
-memory. \sys{} does not replace DiskANN's block-SSD path and does not assume
-that the corpus fits in CXL-DRAM. It answers the management problem that the
-new tier leaves open: \emph{which} objects occupy the small memory-semantic
-window, \emph{which} misses are issued, and \emph{how} those misses stay
-overlapped with compute and with other queries under an iso-recall objective.
+This paper presents \sys{}, a graph-ANNS \emph{runtime} whose service
+goal is to make CXL-SSD \emph{invisible on the search critical path}.
+The host should score as if the working set already lived in a small
+CXL-DRAM window; the corpus stays on flash because that window cannot
+hold $D$. Prefetch, page admission, bandwidth caps, and continuous
+batching exist to finish NAND fills \emph{before} a hop scores---not to
+make blocking \texttt{load}/\texttt{store} slightly faster.
+\sys{} does not replace DiskANN's block-SSD path and does not assume
+the corpus fits in CXL-DRAM. A single walk cannot hide hop $i{+}1$
+until hop $i$ scores (pointer-chasing); inter-query continuous issue is
+what keeps device depth up while one walk is stuck.
 The runtime has five coupled modules
-(\S\ref{sec:design}): semantic placement; bounded precise promotion;
-a cross-query shared hot set; stall-aware search control; and continuous
-fetch-level batching over asynchronous memory-semantic reads.
+(\S\ref{sec:design}): semantic placement; bounded window admission;
+entry / soft-pin (not a thrashing LFU hot set); stall-aware search
+control; and continuous fetch-level batching over asynchronous
+memory-semantic reads.
 
 To our knowledge, this is the first \emph{graph-ANNS serving system} that
 directly operates over an SSD-backed CXL address space and jointly manages
@@ -112,31 +118,33 @@ This paper makes four contributions:
 
 \begin{enumerate}
   \item \textbf{A third deployment point, stated with its limits.} We
-    separate the CXL-SSD \emph{opportunity} (flash-priced capacity, optional
-    one-copy) from the \emph{system} (residency/stall control), and we name
+    separate the CXL-SSD \emph{opportunity} (flash-priced $D$, a small
+    memory-semantic window, optional one-copy) from the \emph{system}
+    (hide NAND from the ANNS critical path), and we name
     the CXL 2.0 vs.\ 3.x conditions under which one-copy is even
     well-formed~(\S\ref{sec:intro}, \S\ref{sec:background}).
   \item \textbf{A measured pathology of graph ANNS on this tier.} We show
     that naive page caches, blind prefetch, unconstrained search width, and
     blocking load/store each amplify stall, and we turn the negative results
     into design constraints~(\S\ref{sec:motivation}).
-  \item \textbf{A complete ANNS-aware runtime.} \sys{} jointly implements
-    placement, bounded promotion, a shared hot set, iso-recall search
-    control, and continuous miss batching~(\S\ref{sec:design},
-    \S\ref{sec:impl}).
-  \item \textbf{An iso-recall evaluation against the two published points.}
-    At matched recall, we compare \sys{} to naive CXL-SSD policies, to a
-    same-machine DiskANN/PipeANN block path, and (as an upper bound) to an
-    all-in-CXL-DRAM oracle, and we ablate each module~(\S\ref{sec:eval}).
+  \item \textbf{A runtime that tries to hide flash from graph search.}
+    \sys{} places graph/PQ off the window, admits few pages, prefetches
+    the next hop off the scoring path, and batches fills across queries
+    under an iso-recall $L$~(\S\ref{sec:design}, \S\ref{sec:impl}).
+  \item \textbf{An iso-recall evaluation of hide, not just QPS.}
+    At matched recall we report critical-path wait, window-hit on scored
+    vectors, QPS vs.\ demand and vs.\ an in-window oracle, and a
+    same-machine DiskANN/PipeANN residual~(\S\ref{sec:eval}).
 \end{enumerate}
 
 \paragraph{Scope we do not claim.}
-The experimental device is a software CXL-SSD that services
-\texttt{load}/\texttt{store} misses from NAND (plus an optional commercial
-CXL-DRAM window). We do not report a measured 160\,GB/s device-side DRAM--SSD
-path. Multi-host one-copy is a deployment narrative conditioned on Shared FAM;
-the prototype is single-host. Cost claims are qualitative provisioning
-curves, not TCO.
+The prototype is an FPGA Type-2/BAR endpoint (\texttt{mem2nvme}/\texttt{nvmex})
+plus a software memory-semantic node (\texttt{/dev/vmem0}, \texttt{vmem\_sw})
+in front of a 1.92\,TB NVMe. Device HPS and CPU writes into the 32\,GiB BAR
+are not live; we do not publish BAR-path numbers. A Montage-style CXL-DRAM
+DAX window is \emph{absent} on the measured boot---the 1\,GiB search window
+is host DRAM (\texttt{mbind}). We do not report 160\,GB/s device-side copy,
+product CXL.mem SSD, or Shared-FAM one-copy. Cost claims are qualitative.
 
 The rest of the paper is organized as follows.
 \S\ref{sec:background} reviews graph ANNS and CXL memory-semantic flash.

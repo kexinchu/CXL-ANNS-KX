@@ -12,41 +12,41 @@ We answer five questions:
 \begin{enumerate}
   \item[\textbf{Q1}] Does naive CXL-SSD graph ANNS fail in the ways
     \S\ref{sec:motivation} claimed?
-  \item[\textbf{Q2}] At iso-recall, does the full \sys{} stack approach a
-    same-machine DiskANN/PipeANN block path without putting the corpus in
-    CXL-DRAM?
-  \item[\textbf{Q3}] Does each module (placement, promote, hot set,
-    controller, async/\texttt{cont}) move the iso-recall curve?
-  \item[\textbf{Q4}] Do the trends hold as $n$, dimension, and concurrency
-    change?
-  \item[\textbf{Q5}] Where does the system lose, and is the loss honest?
+  \item[\textbf{Q2}] At iso-recall, does \sys{} move FP scoring off the
+    NAND critical path (hide), and what QPS remains vs.\ demand and vs.\
+    an in-window oracle?
+  \item[\textbf{Q3}] Which module (graph-in-host, bounded install,
+    prefetch/\texttt{cont}, page-bin) moves \emph{hide} (critical-path
+    wait, score-from-window), not only QPS?
+  \item[\textbf{Q4}] Does hide appear only after warmup (service hide),
+    or also on a true-cold reload?
+  \item[\textbf{Q5}] What remains vs.\ an in-window oracle and vs.\
+    PipeANN, and is the residual honest?
 \end{enumerate}
 
 \subsection{Setup}
 \label{sec:eval-setup}
 
 \begin{table}[t]
-  \caption{Platform and corpora. \textbf{Fill-in:} lock one primary
-    corpus for Q2 and put the rest in sensitivity.}
+  \caption{Locked evaluation platform (2026-08-30, \texttt{gpu01}).}
   \label{tab:setup}
   \small
   \begin{tabular}{@{}ll@{}}
     \toprule
     Item & Configuration \\
     \midrule
-    Host CPU / DRAM     & \ph \\
-    CXL-DRAM (optional) & \ph\ (or ``absent this boot'') \\
-    CXL-SSD             & software proxy $\rightarrow$ NVMe \ph \\
-    Window / cache      & \ph\ GiB DRAM window, \ph\ GiB device cache \\
-    Block-SSD baseline  & same NVMe, \texttt{O\_DIRECT}/\texttt{io\_uring} \\
-    Primary corpus      & \ph\ (dim, metric, $n$) \\
-    Sensitivity         & \ph \\
-    Index               & Vamana/HNSW, $R=$\ph, PQ $=$ \ph \\
-    Target quality      & recall@10 and recall@100 floors \ph \\
-    Protocol            & cold: reset window; warm: stated separately \\
+    Host CPU / DRAM     & dual-socket Xeon, $\sim$64+64\,GiB host DRAM \\
+    CXL-DRAM window     & \textbf{absent}; 1\,GiB DramWindow $=$ \texttt{mbind} node~1 \\
+    CXL-SSD             & FPGA \texttt{nvmex}+CD8P; \texttt{/dev/vmem0}=\texttt{vmem\_sw} \\
+    Window / cache      & 1\,GiB host window, 4\,GiB \texttt{vmem\_sw} cache \\
+    Block-SSD baseline  & PipeANN on \texttt{/mnt/disk0} (\texttt{nvme0n1}), PQ on \\
+    Primary corpus      & Text2Image-10M, 200-d, MIPS \\
+    Sensitivity         & packed vs.\ page-bin; $L$ picker \\
+    Index               & Vamana $R{=}32$, oneshot FP (no PQ nav on serving) \\
+    Target quality      & recall@10 $\ge 0.92$ (picker chose $L{=}400$) \\
+    Protocol            & cold: \texttt{rmmod} \texttt{vmem\_sw} until \texttt{cache\_used}${}=0$ \\
     \bottomrule
-  \end{tabular}\\[2pt]
-  {\footnotesize \phnote}
+  \end{tabular}
 \end{table}
 
 Table~\ref{tab:setup} is the locked configuration. The primary metric is
@@ -64,7 +64,9 @@ small enough that accidental warm-up invents speedups.
 (6)~\textbf{DiskANN/PipeANN:} official block path, same machine, same
 corpus, same recall floor; PQ on unless a figure is labeled
 \texttt{--no\_pq\_nav}.
-(7)~\textbf{Oracle:} corpus already in CXL-DRAM / host DRAM (upper bound).
+(7)~\textbf{Oracle-in-window:} pin the measured working set in the
+1\,GiB window, then search with no SSD fills (the hide upper bound).
+This is not DiskANN.
 
 We never present a home-grown \texttt{O\_DIRECT} reader as ``DiskANN.''
 
@@ -85,22 +87,24 @@ intro, not explained away in a footnote.
 \begin{figure*}[t]
   \centering
   \phbox{0.98\textwidth}{4.0cm}{%
-    Fig.~9 placeholder --- THE money plot:\\
-    $x$: recall@10 (and/or @100); $y$: QPS (log if needed).\\
-    Lines: Demand, Page, Sync-2hop, PipeANN/DiskANN, Oracle, \sys{}.}
-  \caption{Iso-recall throughput. A 4.5 paper is won or lost on this
-    figure. \sys{} must beat every naive CXL-SSD policy by a clear gap
-    and must state the residual gap to DiskANN/PipeANN and to the
-    oracle --- including when we lose.
-    \textbf{Fill-in:} one primary corpus; cold protocol; error bars or
-    repeated runs if variance is visible.}
+    Fig.~9 money plot (hide first):\\
+    stacked \texttt{crit\_wait} vs.\ compute at iso-recall;\\
+    twin axis QPS. Lines: Demand, P3 packed, P3 pagebin,\\
+    $-$prefetch, oracle-in-window, PipeANN $T{=}1$.}
+  \caption{Hide at the primary recall floor. The money plot is
+    critical-path NAND wait, not QPS alone. \sys{} passes only if
+    \texttt{crit\_wait} approaches the in-window oracle. QPS vs.\
+    PipeANN is a named residual (oneshot FP vs.\ PQ navigation).
+    Until hide counters pass we write ``gap to demand,'' not
+    ``search cannot see flash.''}
   \Description{Recall versus QPS for the proposed system and baselines.}
   \label{fig:eval-main}
 \end{figure*}
 
 \begin{table*}[t]
-  \caption{End-to-end at the primary recall floor. \textbf{Fill-in:} one
-    row per baseline; do not omit IO or DRAM just because QPS looks good.}
+  \caption{True-cold T2I-10M, $L{=}400$, $nq{=}100$, seed 42, oneshot FP.
+    Hide cells (\texttt{crit\_wait}, score-from-window) stay \ph{} until
+    the runtime split. NAND/promote columns stay \ph{} until remeasured.}
   \label{tab:eval-main}
   \small
   \setlength{\tabcolsep}{5pt}
@@ -108,27 +112,44 @@ intro, not explained away in a footnote.
     \toprule
     System & Recall@10 & QPS & p99 ($\mu$s) & NAND reads/q & Promote B/q & Host DRAM \\
     \midrule
-    Demand CXL-SSD     & \ph & \ph & \ph & \ph & \ph & \ph \\
+    Demand CXL-SSD (P0) & 0.944 & 1.64 & $1.3{\times}10^{6}$ & \ph & \ph & 1\,GiB win. \\
     Page admission     & \ph & \ph & \ph & \ph & \ph & \ph \\
     Sync 2-hop         & \ph & \ph & \ph & \ph & \ph & \ph \\
     Static wide beam   & \ph & \ph & \ph & \ph & \ph & \ph \\
     Miss-chop beam     & \ph & \ph & \ph & \ph & \ph & \ph \\
     DiskANN (PQ on)    & \ph & \ph & \ph & \ph & --- & \ph \\
-    PipeANN block      & \ph & \ph & \ph & \ph & --- & \ph \\
-    Oracle CXL-DRAM    & \ph & \ph & \ph & 0 & --- & \ph \\
-    \textbf{\sys{}}    & \ph & \ph & \ph & \ph & \ph & \ph \\
+    PipeANN pipe T=1   & 0.925 & 57.6 & $1.7{\times}10^{4}$ & \ph & --- & PQ nav \\
+    Oracle host DRAM ($nq{=}20$) & 0.950 & 66.5 & $4.8{\times}10^{4}$ & 0 & --- & 9.6\,GiB pop. \\
+    Oracle 1\,GiB window ($nq{=}20$) & 0.925 & 85.8 & $1.5{\times}10^{4}$ & 0 & --- & WS pinned \\
+    \textbf{\sys{} hide packed} ($nq{=}20$) & 0.930 & 24.67 & $5.7{\times}10^{4}$ & \ph & 100\% win & 1\,GiB \\
+    \textbf{\sys{} hide pagebin} ($nq{=}20$, $L{=}400$) & 0.940 & 50.25 & $2.7{\times}10^{4}$ & \ph & 100\% win & 1\,GiB \\
+    \textbf{\sys{} hide pagebin} ($nq{=}100$, $L{=}400$) & 0.933 & 49.25 & $3.6{\times}10^{4}$ & \ph & 100\% win & 1\,GiB \\
+    \textbf{\sys{} P3 packed} ($nq{=}100$, pre-hide) & 0.944 & 4.08 & $2.4{\times}10^{5}$ & \ph & \ph & 1\,GiB \\
+    \textbf{\sys{} P3 pagebin} ($nq{=}100$, pre-hide) & 0.932 & 5.35 & $1.9{\times}10^{5}$ & \ph & \ph & 1\,GiB \\
     \bottomrule
   \end{tabular*}\\[2pt]
   {\footnotesize \phnote}
 \end{table*}
 
 Figure~\ref{fig:eval-main} and Table~\ref{tab:eval-main} are the
-submission's main result. The claim we will defend is: at the locked
-recall floor, \sys{} delivers \num{X$\times$} Demand and comes within
-\num{Y} of the block-SSD path, while keeping the corpus on flash and
-host DRAM at \num{graph$+$PQ} rather than $D$. If absolute QPS loses to
-DiskANN, we still report it and shift emphasis to IO efficiency and
-DRAM footprint --- we do not hide the bar.
+submission's main result. On the 2026-08-30 true-cold T2I-10M boot
+(clock alloc, miss-only, expand-bundle pages),
+hide pagebin is $50.25$ QPS at $nq{=}20$ and $49.25$ at $nq{=}100$
+($L{=}400$, recall@10 $\ge 0.92$, \texttt{from\_win}${}=100\%$, bounce${}=0$,
+in-page slot-use $100\%$ with no extra scores). Neighbors of one expand
+share seven sequential pages; we score only those neighbors. Star-BFS
+pagebin without the bundle is $25\%$ slot-use (one of five). Real NVMe
+occupancy is sectors-read$\times$512 over the timed window over the
+isolated random \texttt{PREFETCH\_BATCH} peak ($1.560$\,GB/s), not
+``a fill is in flight.'' One query is $0.600/1.560=38.5\%$; four
+concurrent queries (private $512$\,MiB windows, $nq{=}100$) reach
+$1.027/1.560=65.8\%$ at $87.21$ QPS---the useful-only ceiling
+($\approx 12$\,MB/q $\times 87$ QPS $\approx 1.04$\,GB/s). That is
+score-path hide; single-query service hide vs.\ the in-window oracle
+($85.8$ QPS) is $50.25/85.8\approx 0.59\times$. QPS vs.\ PipeANN (57.6
+at $L{=}2000$, PQ on, $T{=}1$) stays a named residual---oneshot FP vs.\
+PQ navigation, not a hidden bar. We write the residual as a gap to the
+oracle, not ``search cannot see flash.''
 
 \subsection{Q3: Each module is necessary}
 \label{sec:eval-ablate}
@@ -137,8 +158,9 @@ DRAM footprint --- we do not hide the bar.
   \centering
   \phbox{0.98\textwidth}{3.6cm}{%
     Fig.~10 placeholder --- two panels:\\
-    (a)~leave-one-out iso-recall QPS (full \sys{} vs.\ $-$promote
-    $-$hotset $-$controller $-$async/cont $-$pagebin);\\
+    (a)~leave-one-out \emph{hide} (crit-wait, score-from-window) and QPS
+    (full vs.\ $-$promote $-$prefetch $-$pagebin $-$graph-in-DRAM);
+    do not plot $-$LFU-hotset as a loss;\\
     (b)~promote-byte / hot-set-fraction Pareto (QPS vs.\ budget).}
   \caption{Ablation and budget Pareto. Removing any contributed module
     must move the main metric. The Pareto must show a bounded sweet
@@ -154,15 +176,15 @@ DRAM footprint --- we do not hide the bar.
   \small
   \begin{tabular}{@{}lrrr@{}}
     \toprule
-    Variant & QPS & NAND/q & Hit (win/PTE) \\
+    Variant & QPS & \texttt{crit\_wait} & From-win.\\
     \midrule
-    Full \sys{}              & \ph & \ph & \ph \\
-    $-$ bounded promote      & \ph & \ph & \ph \\
-    $-$ shared hot set       & \ph & \ph & \ph \\
-    $-$ iso-recall control   & \ph & \ph & \ph \\
-    $-$ async $+$ \texttt{cont} & \ph & \ph & \ph \\
-    $-$ page-bin (if used)   & \ph & \ph & \ph \\
-    Demand only              & \ph & \ph & \ph \\
+    Full \sys{} (pagebin)    & 5.35 & \ph & 34\% hit \\
+    $-$ page-bin (packed)    & 4.08 & \ph & 3.1\% hit \\
+    $-$ \texttt{PREFETCH\_BATCH} & \ph & \ph & must fail hide \\
+    $-$ graph-in-host        & \ph & \ph & \ph \\
+    $-$ bounded \texttt{install\_top} & \ph & \ph & \ph \\
+    Demand only (P0)         & 1.64 & NAND-class & 1.0\% \\
+    LFU hot set (void)       & --- & --- & warm QPS collapsed \\
     \bottomrule
   \end{tabular}\\[2pt]
   {\footnotesize \phnote}
@@ -173,33 +195,30 @@ falsifiability test for contribution~3. We also sweep promote $M$ and
 hot-set fraction to show the F3 lesson in a positive form: there is a
 budget at which precision and QPS peak, and past it they fall.
 
-\subsection{Q4: Scale and the one-copy opportunity}
+\subsection{Q4: Cold hide versus service hide}
 \label{sec:eval-scale}
 
 \begin{figure}[t]
   \centering
   \phbox{0.98\columnwidth}{3.5cm}{%
-    Fig.~11 placeholder --- two panels:\\
-    (a)~QPS vs.\ $n$ / dim / threads at iso-recall;\\
-    (b)~provisioned media vs.\ $R$ query hosts
-    (replicated SSD vs.\ CXL-DRAM vs.\ CXL-SSD $n_{\mathrm{HA}}$).}
-  \caption{Scaling and provisioning. (a)~Trends must not collapse on the
-    primary knob range. (b)~Qualitative capacity tax as query hosts grow;
-    this is the Route~A opportunity figure, not a TCO claim, and not a
-    Shared-FAM measurement.
-    \textbf{Fill-in:} (b) can be analytic plus one measured single-host
-    point; label it as a model.}
-  \Description{Scalability sweep and a provisioning curve over replica
-    count.}
+    Fig.~11 --- cold reload vs.\ 1 discarded warmup:\\
+    $y$: \texttt{crit\_wait}, score-from-window, QPS.\\
+    If only warm hides, label it service hide.}
+  \caption{True-cold (\texttt{vmem\_sw} \texttt{cache\_used}${}=0$) versus
+    a discarded warmup then 100 queries. Hide that appears only after
+    warmup is a service property, not a cold-start property. Shared-FAM
+    provisioning stays a discussion model, not this figure.}
+  \Description{Cold versus warm hide metrics on the same index.}
   \label{fig:eval-scale}
 \end{figure}
 
-Figure~\ref{fig:eval-scale}a sweeps corpus size, dimension, and
-concurrency. Figure~\ref{fig:eval-scale}b is the only place we plot the
-one-copy opportunity: provisioned flash/DRAM as a function of $R$, using
-the media-cost sketch of~\S\ref{sec:background}. The measured prototype
-is still one host; the curve is a model, checked against the observation
-that device-side bandwidth is shared (Figure~\ref{fig:bg-cxl}).
+Figure~\ref{fig:eval-scale} is the service question. A production ANNS
+process is allowed a discarded warmup; a paper row is not allowed to
+confuse that with a true-cold reload. If \texttt{crit\_wait} collapses
+only on the warm pass, we say so in the caption and do not migrate the
+sentence into~\S\ref{sec:intro}. The one-copy capacity sketch of
+\S\ref{sec:background} remains a model; we do not plot it as a measured
+Q4.
 
 \subsection{Q5: Losses, overhead, and fairness}
 \label{sec:eval-limit}
@@ -213,6 +232,6 @@ because DiskANN on this class of machine is I/O-bound, not CPU-bound;
 if \sys{} becomes CPU-bound we say so.
 
 \paragraph{Takeaway.}
-Q1--Q4 must be answerable from the figures in this section alone. If the
+Q2--Q4 must be answerable from hide counters, not from QPS prose. If the
 money plot needs a verbal caveat that changes the claim, the claim in
 \S\ref{sec:intro} is the thing to change.

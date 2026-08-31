@@ -76,8 +76,8 @@ Three conditions must not be mixed when we talk about sharing
   \caption{Flash-backed CXL memory. Host-side CXL links are independent;
     device-side port, controller, DRAM cache, FTL, and NAND are shared.
     One-copy reduces replicated capacity; it does not replicate SSD IOPS.
-    \textbf{Fill-in:} use the real endpoint you measure; mark the software
-    proxy path if that is the prototype.}
+    \textbf{Measured endpoint:} FPGA BAR (32\,GiB, HPS down) $+$
+    \texttt{nvmex} NVMe; userspace \texttt{vmem\_sw}. Do not draw 160\,GB/s.}
   \Description{Block diagram of a host attached to a CXL-SSD endpoint with
     a small DRAM window in front of NAND.}
   \label{fig:bg-cxl}

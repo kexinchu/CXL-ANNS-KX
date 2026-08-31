@@ -35,6 +35,10 @@ int main() {
   p.set_graph_host(host.data(), host.size());
   assert(p.nbrs(1)[1] == 99);
   assert(reinterpret_cast<const uint32_t*>(img.data() + 128)[3] == 3);
+  std::vector<uint32_t> contained;
+  uint64_t page = 192;
+  p.for_ids_contained_in_page(page, 4096, [&](uint32_t id) { contained.push_back(id); });
+  assert(contained.size() == 4);
   std::puts("test_placement OK");
   return 0;
 }

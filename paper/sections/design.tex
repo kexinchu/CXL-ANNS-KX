@@ -8,24 +8,34 @@
 \label{sec:design}
 
 \sys{} is a userspace ANNS runtime plus a thin residency plane in front of
-host DRAM, an optional CXL-DRAM window, and a flash-backed CXL address
-space (Figure~\ref{fig:design-arch}). Search is still best-first graph
-walk. What changes is \emph{where} each object lives, \emph{which} cold
-records are made resident, and \emph{when} a miss is issued relative to
-other work.
+host DRAM, a bounded window that plays the role of CXL-DRAM, and a
+flash-backed CXL address space that holds $D$
+(Figure~\ref{fig:design-arch}). Search is still best-first graph walk.
+The service contract is a \emph{split}: prefetch and continuous
+batching may touch CXL-SSD; the scoring thread may not. A hop that
+computes a full-precision distance from bytes that were not already in
+the window is a hide failure, not a successful promote.
+
+One walk cannot fully hide hop $i{+}1$ until hop $i$ scores
+(pointer-chasing). Intra-query hide is lookahead of the current
+frontier only. Inter-query continuous issue is what keeps device depth
+up while a single walk is stuck. We do not claim the measured prototype
+has met this contract~(\S\ref{sec:eval}); the modules below are the
+mechanisms that must.
 
 \begin{figure*}[t]
   \centering
   \phbox{0.98\textwidth}{3.8cm}{%
     Fig.~6 placeholder --- architecture:\\
-    top: Placement $|$ Promote Ctrl $|$ Shared Hot Set $|$ Search Ctrl;\\
-    middle: residency plane (cache / uncache / promote / stats);\\
-    bottom: host DRAM $|$ CXL-DRAM window $|$ CXL-SSD corpus.}
-  \caption{\sys{} architecture. The residency plane is the only path that
-    moves full-precision bytes between CXL-SSD and the hot window. Search
-    never page-faults a neighbor ``to be helpful.''
-    \textbf{Fill-in:} use the implemented component names; mark the
-    software-proxy device explicitly.}
+    top: Placement $|$ Window admit $|$ Prefetch+\texttt{cont} $|$ $L$ ctrl;\\
+    middle: residency plane (fill off crit path / score from window);\\
+    bottom: host DRAM (graph/PQ) $|$ window $=$ virtual CXL-DRAM $|$ CXL-SSD.}
+  \caption{\sys{} architecture. From the host, scored bytes look like
+    CXL-DRAM; capacity is CXL-SSD. The residency plane is the only path
+    that moves full-precision bytes. Search never page-faults a neighbor
+    ``to be helpful.''
+    \textbf{Fill-in:} use shipped names (\texttt{PREFETCH\_BATCH},
+    DramWindow, \texttt{install\_top}); mark \texttt{vmem\_sw}.}
   \Description{Layered architecture of the ANNS runtime over three memory
     tiers.}
   \label{fig:design-arch}
@@ -61,8 +71,8 @@ to stop the window from turning into an accidental adjacency cache.
     PQ / codebook        & host DRAM & tiny, extremely hot \\
     Query / visited      & host DRAM & per-worker state \\
     Full-precision vec.  & CXL-SSD   & capacity \\
-    Hub / shared hot set & window / CXL-DRAM & F7 \\
-    Frontier-top nbrs    & bounded promote & F3, F5 \\
+    Entry / soft-pin     & window (tiny) & F7; LFU hot set demoted \\
+    Frontier-top nbrs    & window via prefetch & F3, F5; score only if resident \\
     \bottomrule
   \end{tabular}
 \end{table}
@@ -74,16 +84,20 @@ Promotion is an explicit \texttt{promote(ids[], level, budget)} on the
 residency plane (Figure~\ref{fig:design-promote}). The only ids that
 enter the call are the neighbors of the \emph{current frontier top-$M$}
 --- the nodes the walk will expand next. A global and a per-query byte
-budget cap how much may move; overflow falls back to demand fill. The
-target level is a choice (F1): install into the device/software cache
-only, or also install PTEs. The runtime tracks
-$\mathrm{precision}=\mathrm{used}/\mathrm{promoted}$ online and shrinks
-$M$ when precision falls below a threshold.
+budget cap how much may move. \texttt{install\_top} decides \emph{who
+stays} in the window after a fill, not \emph{who the hop may wait for
+to score}. Precision is
+$\mathrm{scored\textrm{-}from\textrm{-}window}/\mathrm{fetched}$, not
+``every fetched page later scored from a host bounce.''
+
+The measured P3 loop still scores from that bounce after
+\texttt{PREFETCH\_BATCH} returns~(\S\ref{sec:impl}). That is overlap,
+not hide; the rewrite in the evaluation plan splits the two.
 
 We forbid the policies F3 already falsified: synchronous high-coverage
-2-hop prefetch, and ``fault harder'' loops that raise queue depth by
-touching unused pages. Over-promotion is the failure mode the byte
-budget exists to prevent.
+2-hop prefetch, \texttt{install\_all}, and ``fault harder'' loops that
+raise queue depth by touching unused pages. Over-promotion is the
+failure mode the byte budget exists to prevent.
 
 \begin{figure}[t]
   \centering
@@ -108,42 +122,31 @@ residency, not a new index family. We report it as a placement option
 and show when it helps (small dim) and when it does not (vector $\approx$
 page).
 
-\subsection{D3: Shared hot set}
+\subsection{D3: Entry pin and soft-pin (hot set demoted)}
 \label{sec:d3}
 
 Single-query deepening is a bad way to spend a small window (F4, F7).
-\sys{} maintains a cross-query hot set: a fixed byte budget (a configured
-fraction of the CXL-SSD DRAM window) holding either high in-degree hubs
-or IDs that a short sliding window of queries repeats. Replacement is
-LFU with aging so a burst cannot freeze the set. The hot set is
-\emph{decoupled} from beam: the default is a modest beam plus a warm
-shared set, not a large beam on a cold device.
+A 64\,MiB shared LFU set raised hit rate and \emph{destroyed} QPS on a
+warm protocol (14.3$\rightarrow$2.4); we do not ship it as D3.
+What remains is a tiny hard pin of the entry subgraph ($\le$32\,MiB)
+and a hop-decaying soft-pin of recently installed pages. Pinning is
+never implicit in a page fault. Cross-query reuse, if it happens, is
+because prefetch and \texttt{install\_top} left useful pages in the
+window---not because an LFU daemon is competing with search.
 
-The API is \texttt{cache(ids[])} / \texttt{uncache(ids[])}. Pinning is
-never implicit in a page fault. Multi-tenant isolation, if enabled,
-partitions the budget; the paper evaluation uses a single tenant unless
-stated.
-
-\subsection{D4: Stall-aware search and continuous batching}
+\subsection{D4: Hide engine --- lookahead prefetch and continuous batching}
 \label{sec:d4}
 
-The search controller maximizes QPS at a recall@$k$ floor (or maximizes
-recall at a fixed time/IO budget). It is \emph{not} a one-shot ``if miss
-rate is high, cut beam'' rule. Offline, we record beam $\rightarrow$
-(recall, IO) curves. Online, the controller picks the smallest beam that
-meets the recall floor, or stops when marginal recall per additional IO
-falls below a threshold. When D3 reports a high hot-set hit rate the
-controller may raise beam slightly, because the extra candidates are
-cheap.
-
-Continuous fetch-level batching is the mechanism that makes that control
-loop feasible on a slow miss path (Figure~\ref{fig:design-pipe}). A
-global scheduler keeps a target number $D$ of memory-semantic fills
-in flight, admitting the next read when one retires --- not when a
-query, a hop, or a static group finishes. Fills are issued with an
-asynchronous batch interface so that $D$ concurrent NAND operations
-actually reach the device. Scoring of already-resident records proceeds
-on the host and is never queued behind a fill it does not depend on.
+D4 is the hide engine, not a QPS knob. Offline, we pick the smallest
+beam $L$ that meets the recall@$k$ floor. Online, the runtime issues
+\texttt{PREFETCH\_BATCH} for pages the \emph{next} hop (and the next
+admitted query) will score, then computes distances only on bytes
+already in the window. Continuous fetch-level batching keeps a target
+device depth $D$ across queries so one pointer-chasing walk does not
+collapse to QD$\approx 1$ (Figure~\ref{fig:design-pipe}). Scoring of
+already-resident records is never queued behind a fill it does not
+depend on. We do not merge the PipeANN binary; its \texttt{cont} path
+is the block-device contrast, not this runtime.
 
 \begin{figure*}[t]
   \centering
@@ -166,13 +169,17 @@ on the host and is never queued behind a fill it does not depend on.
 \subsection{D5: Observability}
 \label{sec:d5}
 
-Every experiment in~\S\ref{sec:eval} is required to report the same
-counters the controller sees: $\Delta$NAND reads, $\Delta$faults,
-soft-cache / PTE / path hits, promote precision, hot-set hit rate,
-in-flight depth, and iso-recall@$k$. QPS without those counters is not a
-result. The residency plane exports \texttt{stats()} for this purpose.
+Every experiment in~\S\ref{sec:eval} is required to report hide
+counters first: fraction of full-precision scores whose bytes were
+already in the window (\texttt{score\_from\_window}), critical-path
+wait on NAND (\texttt{crit\_wait\_ns}), overlap
+(\texttt{device\_fill\_ns}/\texttt{wall\_ns}), then QPS at the
+iso-recall floor. Promote precision is
+scored-from-window$/$fetched. QPS without those counters is not a hide
+result.
 
 \paragraph{What we refuse to hide.}
-If a module cannot move the iso-recall curve in an ablation, it is
-removed from the contribution list rather than kept as decoration. That
-is the bar for~\S\ref{sec:eval-ablate}.
+If a module cannot move \texttt{crit\_wait\_ns} or
+\texttt{score\_from\_window} in an ablation, it is removed from the
+contribution list rather than kept as decoration. An LFU hot set that
+raises hit rate and drops QPS is already in that bin.
