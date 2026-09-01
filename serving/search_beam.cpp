@@ -8,6 +8,10 @@
 //       --queries /mnt/disk0/chukexin_motivation/diskann_data/query.bin \
 //       --policy P0 --budget 262144 --beam 32 --k 10 --nprobe 50
 
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
+#endif
+
 #include "serving/dram_window.hpp"
 #include "serving/placement.hpp"
 #include "serving/prefetch.hpp"
@@ -42,6 +46,7 @@
 #include <fcntl.h>
 #include <numa.h>
 #include <numaif.h>
+#include <sched.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -88,24 +93,36 @@ static uint64_t vmem_cache_used() {
 }
 
 // /sys/block/<name>/stat field 3 is sectors read (512B). Timed-window only.
-static uint64_t nvme_read_sectors() {
-  char path[128] = "/sys/block/nvme4n1/stat";
-  FILE* nf = fopen("/sys/class/vmem/vmem0/nvme_dev", "r");
-  if (nf) {
-    char dev[128] = {};
-    if (fscanf(nf, "%127s", dev) == 1) {
-      const char* base = strrchr(dev, '/');
-      base = base ? base + 1 : dev;
-      snprintf(path, sizeof(path), "/sys/block/%s/stat", base);
-    }
-    fclose(nf);
-  }
+// Dual-disk vmem lists comma-separated names; sum every backing.
+static uint64_t one_dev_sectors(const char* name) {
+  char path[160];
+  snprintf(path, sizeof(path), "/sys/block/%s/stat", name);
   FILE* f = fopen(path, "r");
   if (!f) return 0;
   unsigned long long rio = 0, rm = 0, rsect = 0;
   if (fscanf(f, "%llu %llu %llu", &rio, &rm, &rsect) != 3) rsect = 0;
   fclose(f);
   return (uint64_t)rsect;
+}
+
+static uint64_t nvme_read_sectors() {
+  uint64_t total = 0;
+  FILE* nf = fopen("/sys/class/vmem/vmem0/nvme_dev", "r");
+  if (nf) {
+    char line[256] = {};
+    if (fgets(line, sizeof(line), nf)) {
+      char* tok = strtok(line, ", \t\n");
+      while (tok) {
+        const char* base = strrchr(tok, '/');
+        base = base ? base + 1 : tok;
+        if (base[0]) total += one_dev_sectors(base);
+        tok = strtok(nullptr, ", \t\n");
+      }
+    }
+    fclose(nf);
+    if (total) return total;
+  }
+  return one_dev_sectors("nvme2n1");
 }
 
 static void* map_vmem_ro(const char* dev, off_t offset, size_t len, int* out_fd = nullptr) {
@@ -120,7 +137,19 @@ static void* map_vmem_ro(const char* dev, off_t offset, size_t len, int* out_fd 
   return p;
 }
 
-// CXL-DRAM window via devdax (true Type-3 byte-addressable memory).
+// CXL-DRAM is the vmem BAR only (/dev/vmem, /dev/vmem0, ...). Not /dev/dax*.
+static bool is_vmem_bar_dev(const char* path) {
+  if (!path || !path[0]) return false;
+  static const char kPref[] = "/dev/vmem";
+  const size_t n = sizeof(kPref) - 1;
+  if (strncmp(path, kPref, n) != 0) return false;
+  for (const char* p = path + n; *p; ++p) {
+    if (*p < '0' || *p > '9') return false;
+  }
+  return true;
+}
+
+// Window via vmem BAR (CXL-DRAM) or legacy /dev/dax* (not CXL-DRAM on this machine).
 // Prefer this over anonymous+mbind(node1), which can land on local socket DRAM.
 static void* map_dram_dax(const char* dax_dev, off_t offset, size_t bytes) {
   if (!dax_dev || !dax_dev[0]) die("dax_dev");
@@ -138,7 +167,11 @@ static void* map_dram_dax(const char* dax_dev, off_t offset, size_t bytes) {
   // Fault-in window pages so first promote is not conflated with DAX fault cost.
   auto* b = static_cast<volatile char*>(p);
   for (size_t off = 0; off < bytes; off += 2 * 1024 * 1024) b[off] = 0;
-  printf("mapped CXL-DRAM dax %s off=%lld len=%zu\n", dax_dev, (long long)offset, bytes);
+  if (is_vmem_bar_dev(dax_dev))
+    printf("mapped CXL-DRAM vmem BAR %s off=%lld len=%zu\n", dax_dev, (long long)offset,
+           bytes);
+  else
+    printf("mapped CXL-DRAM dax %s off=%lld len=%zu\n", dax_dev, (long long)offset, bytes);
   return p;
 }
 
@@ -152,9 +185,30 @@ static void* map_dram_numa(size_t bytes, unsigned numa_node) {
     perror("mbind warn");
   auto* b = static_cast<volatile char*>(p);
   for (size_t off = 0; off < bytes; off += 2 * 1024 * 1024) b[off] = 0;
-  printf("mapped DRAM window anon+mbind node=%u len=%zu (fallback; not DAX)\n", numa_node,
+  printf("mapped HOST DRAM anon+mbind node=%u len=%zu (fallback; not DAX)\n", numa_node,
          bytes);
   return p;
+}
+
+static std::vector<int> list_cpu_ids() {
+  std::vector<int> cpus;
+  FILE* f = fopen("/proc/cpuinfo", "r");
+  if (!f) return cpus;
+  char line[256];
+  while (fgets(line, sizeof(line), f)) {
+    if (strncmp(line, "processor", 9) != 0) continue;
+    char* colon = strchr(line, ':');
+    if (colon) cpus.push_back(atoi(colon + 1));
+  }
+  fclose(f);
+  return cpus;
+}
+
+static void bind_worker_cpu(int cpu_id) {
+  cpu_set_t set;
+  CPU_ZERO(&set);
+  CPU_SET(cpu_id, &set);
+  if (sched_setaffinity(0, sizeof(set), &set) != 0) perror("affinity");
 }
 
 static EntryGraph load_entry(const char* path) {
@@ -499,6 +553,46 @@ static std::vector<uint32_t> search_one_fp(Placement& pl, DramWindow& win, Prefe
     std::vector<Pend> pending;
     std::unordered_set<uint32_t> pending_set;
 
+    std::unordered_set<uint32_t> spec_issued;
+    auto maybe_spec_beam = [&](uint32_t id) {
+      if (!pref.spec_beam_nbrs || !pl.has_bundle() || pref.freeze_fills) return;
+      if (expanded.count(id) || spec_issued.count(id)) return;
+      float myd = 0;
+      bool found = false;
+      for (const Cand& c : cand) {
+        if (c.id == id) {
+          myd = c.dist;
+          found = true;
+          break;
+        }
+      }
+      if (!found) return;
+      uint32_t better = 0;
+      for (const Cand& c : cand) {
+        if (c.id != id && c.dist < myd) better++;
+      }
+      if (better >= pref.spec_beam_nbrs) return;
+      spec_issued.insert(id);
+      uint32_t nbrs_local[64];
+      hide_read_nbrs(pl, id, nbrs_local, Rlim);
+      std::unordered_set<uint32_t> want;
+      for (uint32_t j = 0; j < Rlim; ++j) {
+        uint32_t nb = nbrs_local[j];
+        if (nb < pl.hdr->n && !seen.count(nb)) want.insert(nb);
+      }
+      if (want.empty()) return;
+      std::vector<uint64_t> now;
+      std::unordered_set<uint64_t> ps;
+      hide_collect_bundle_pages(pl, vb, pb, id, nbrs_local, Rlim, want, now, &ps, cur_met(win),
+                               pref.min_issue_use);
+      if (now.empty()) return;
+      pipe.issue(now, /*ttl=*/64, /*stall_if_full=*/false);
+      if (cur_met(win)) {
+        cur_met(win)->spec_issue_pages += now.size();
+        cur_met(win)->spec_uniq_ids += 1;
+      }
+    };
+
     auto finish_score = [&](uint32_t id, const uint8_t* vp, float d) {
       if (cur_met(win)) {
         cur_met(win)->distance_comps++;
@@ -513,6 +607,7 @@ static std::vector<uint32_t> search_one_fp(Placement& pl, DramWindow& win, Prefe
         cur_met(win)->note_pf_used(sp);
       }
       insert_cand(id, d);
+      maybe_spec_beam(id);
     };
 
     auto drain_score = [&]() {
@@ -996,6 +1091,7 @@ int main(int argc, char** argv) {
   const char* id_map_path = nullptr;
   const char* vmem_dev = nullptr;
   const char* dax_dev = getenv("CXAN_DAX_DEV") ? getenv("CXAN_DAX_DEV") : "/dev/dax0.0";
+  const char* cxl_dram_dev = getenv("CXAN_CXL_DRAM_DEV");
   off_t vmem_off = -1;
   off_t dax_off = getenv("CXAN_DAX_OFFSET") ? (off_t)strtoull(getenv("CXAN_DAX_OFFSET"), nullptr, 10)
                                             : 0;
@@ -1007,6 +1103,11 @@ int main(int argc, char** argv) {
   size_t dram_bytes = getenv("CXAN_DRAM_BYTES")
                           ? strtoull(getenv("CXAN_DRAM_BYTES"), nullptr, 10)
                           : (1ull << 30);
+  size_t host_bytes = getenv("CXAN_HOST_BYTES")
+                          ? strtoull(getenv("CXAN_HOST_BYTES"), nullptr, 10)
+                          : (2ull << 30);
+  bool require_cxl_dram = false;
+  bool cpu_affinity = false;
   uint32_t pipe_w = 16;
   uint32_t install_top = 4;
   uint32_t fetch_top = 0;
@@ -1039,6 +1140,7 @@ int main(int argc, char** argv) {
   int nthreads = 1;
   bool per_thread_window = true;  // each request thread owns a DramWindow (no shared lock)
   int min_issue_use_n = 0;       // --min-issue-use N → threshold N/100; 0=off
+  uint32_t spec_beam_nbrs = 0;
 
   for (int i = 1; i < argc; ++i) {
     std::string a = argv[i];
@@ -1055,8 +1157,12 @@ int main(int argc, char** argv) {
     else if (a == "--vmem-offset") vmem_off = (off_t)strtoull(need(a.c_str()), nullptr, 10);
     else if (a == "--vmem-len") vmem_len = strtoull(need(a.c_str()), nullptr, 10);
     else if (a == "--dax-dev") dax_dev = need(a.c_str());
+    else if (a == "--cxl-dram-dev") cxl_dram_dev = need(a.c_str());
     else if (a == "--dax-offset") dax_off = (off_t)strtoull(need(a.c_str()), nullptr, 10);
     else if (a == "--dram-backend") dram_backend = need(a.c_str());
+    else if (a == "--host-bytes") host_bytes = strtoull(need(a.c_str()), nullptr, 10);
+    else if (a == "--require-cxl-dram") require_cxl_dram = true;
+    else if (a == "--cpu-affinity") cpu_affinity = true;
     else if (a == "--dram-numa") dram_numa = (unsigned)atoi(need(a.c_str()));
     else if (a == "--policy") policy_s = need(a.c_str());
     else if (a == "--budget") budget = strtoull(need(a.c_str()), nullptr, 10);
@@ -1103,6 +1209,9 @@ int main(int argc, char** argv) {
       if (min_issue_use_n < 0) min_issue_use_n = 0;
       if (min_issue_use_n > 100) min_issue_use_n = 100;
     }
+    else if (a == "--spec-beam-nbrs") {
+      spec_beam_nbrs = (uint32_t)atoi(need(a.c_str()));
+    }
     else if (a == "--oracle-dram") oracle_dram = true;
     else if (a == "--oracle-window") oracle_window = true;
     else if (a == "--graph-file") graph_file = need(a.c_str());
@@ -1120,8 +1229,31 @@ int main(int argc, char** argv) {
     }
   }
   if (oneshot_fp) rerank = false;
-  if (dram_bytes > (1ull << 30)) {
-    fprintf(stderr, "CXL-DRAM window capped at 1GiB (got %zu)\n", dram_bytes);
+  // Three-layer roles: CXL-DRAM is the vmem BAR only. Refuse numa / dax / empty.
+  if (require_cxl_dram) {
+    if (dram_backend == "numa") {
+      fprintf(stderr, "refuse numa as CXL-DRAM: anon+mbind is HOST DRAM\n");
+      return 2;
+    }
+    if (!cxl_dram_dev || !cxl_dram_dev[0]) {
+      fprintf(stderr,
+              "--require-cxl-dram needs --cxl-dram-dev or CXAN_CXL_DRAM_DEV (/dev/vmem*)\n");
+      return 2;
+    }
+    if (!is_vmem_bar_dev(cxl_dram_dev)) {
+      fprintf(stderr, "refuse %s as CXL-DRAM: want /dev/vmem* BAR, not dax/anon\n",
+              cxl_dram_dev);
+      return 2;
+    }
+  }
+  if (require_cxl_dram || oracle_dram || oracle_window)
+    per_thread_window = false;  // shared host 2GiB + one BAR (or Oracle)
+  if (host_bytes > (2ull << 30)) {
+    fprintf(stderr, "HOST DRAM budget capped at 2GiB (got %zu)\n", host_bytes);
+    return 2;
+  }
+  if (dram_backend == "numa" && dram_bytes > host_bytes) {
+    fprintf(stderr, "HOST DRAM window %zu exceeds --host-bytes %zu\n", dram_bytes, host_bytes);
     return 2;
   }
   if ((!image && !vmem_dev) || !entry || !queries) {
@@ -1129,6 +1261,8 @@ int main(int argc, char** argv) {
             "need (--image FILE | --vmem-dev DEV --vmem-offset OFF --vmem-len LEN) "
             "--entry --queries [--gt]\n"
             "dram window: --dram-backend dax|numa [--dax-dev /dev/dax0.0] [--dax-offset N]\n"
+            "             [--cxl-dram-dev DEV] [--host-bytes N] [--require-cxl-dram] "
+            "[--cpu-affinity]\n"
             "optional: --oneshot-fp --shuffle-seed N --flush-window --max-q M\n");
     return 2;
   }
@@ -1245,7 +1379,13 @@ int main(int argc, char** argv) {
 
   Metrics metrics;
   void* dram = nullptr;
-  if (dram_backend == "dax") {
+  if (cxl_dram_dev && cxl_dram_dev[0] && dram_backend != "numa" && !require_cxl_dram)
+    dax_dev = cxl_dram_dev;
+  if (require_cxl_dram) {
+    // Validated above: cxl_dram_dev is /dev/vmem*. Never fall back to /dev/dax*.
+    dram = map_dram_dax(cxl_dram_dev, dax_off, dram_bytes);
+    metrics.window_is_cxl_dram = true;
+  } else if (dram_backend == "dax") {
     dram = map_dram_dax(dax_dev, dax_off, dram_bytes);
   } else {
     dram = map_dram_numa(dram_bytes, dram_numa);
@@ -1274,6 +1414,7 @@ int main(int argc, char** argv) {
   pref.issue_ahead = issue_ahead ? issue_ahead : 1;
   pref.score_page = pref_score_page;
   pref.min_issue_use = (float)min_issue_use_n / 100.f;
+  pref.spec_beam_nbrs = spec_beam_nbrs;
   pref.oracle_dram = oracle_dram;
   // P2v2 is cooperative single-threaded (DAX is not safe for concurrent promote).
   if (false && pref.policy == PrefetchPolicy::P2) pref.start_async(&pl, &win);
@@ -1281,11 +1422,11 @@ int main(int argc, char** argv) {
   if (pref.policy == PrefetchPolicy::P3) {
     printf("P3v2 softpin W=%u budget=%zu install_top=%u fetch_top=%u page_group_b=%d "
            "install_all=%d threads=%d per_thread_window=%d cont_batch=%d score_page=%d "
-           "expand_batch=%u issue_ahead=%u min_issue_use=%.2f\n",
+           "expand_batch=%u issue_ahead=%u min_issue_use=%.2f spec_beam_nbrs=%u\n",
            pref.pipe_w, budget, pref.install_top, pref.fetch_top, (int)page_group_b,
            (int)install_all_fetched, nthreads, (int)per_thread_window,
            (int)(!per_thread_window && nthreads > 1), (int)pref.score_page, pref.expand_batch,
-           pref.issue_ahead, pref.min_issue_use);
+           pref.issue_ahead, pref.min_issue_use, pref.spec_beam_nbrs);
   }
 
   EntryGraph eg = load_entry(entry);
@@ -1384,10 +1525,14 @@ int main(int argc, char** argv) {
 
   printf("query_select nq=%u/%u shuffle_seed=%d flush_window=%d oneshot_fp=%d "
          "oracle_dram=%d oracle_window=%d "
-         "pin_entry=%d host_used=%zu host_cap=%zu dram_bytes=%zu pin_cap=%zu\n",
+         "pin_entry=%d host_used=%zu host_cap=%zu host_bytes=%zu dram_bytes=%zu pin_cap=%zu\n",
          nq, nq_file, shuffle_seed, (int)flush_window, (int)oneshot_fp,
          (int)oracle_dram, (int)oracle_window, (int)pin_entry,
-         host_used, host_cap, dram_bytes, win.pin_bytes_cap);
+         host_used, host_cap, host_bytes, dram_bytes, win.pin_bytes_cap);
+  printf("roles host_bytes=%zu require_cxl_dram=%d cpu_affinity=%d per_thread_window=%d "
+         "cxl_dram_dev=%s\n",
+         host_bytes, (int)require_cxl_dram, (int)cpu_affinity, (int)per_thread_window,
+         (cxl_dram_dev && cxl_dram_dev[0]) ? cxl_dram_dev : "-");
   fflush(stdout);
 
   std::vector<double> lat_ms;
@@ -1497,10 +1642,15 @@ int main(int argc, char** argv) {
     if (soft > dram_bytes / 2) soft = dram_bytes / 2;
     for (int t = 0; t < nthreads; ++t) {
       auto c = std::make_unique<ThrCtx>();
+      if (require_cxl_dram) {
+        fprintf(stderr, "refuse per-thread window under --require-cxl-dram\n");
+        return 2;
+      }
       if (dram_backend == "dax")
         c->dram = map_dram_dax(dax_dev, dax_off + (off_t)t * (off_t)dram_bytes, dram_bytes);
       else
         c->dram = map_dram_numa(dram_bytes, dram_numa);
+      c->m.window_is_cxl_dram = metrics.window_is_cxl_dram;
       if (hide_warm_entry) {
         c->win.pin_bytes_cap = pin;
         c->win.soft_pin_bytes_cap = soft;
@@ -1545,6 +1695,9 @@ int main(int argc, char** argv) {
   }
 
   const uint64_t nvme_sect0 = nvme_read_sectors();
+  std::vector<int> aff_cpus;
+  if (cpu_affinity) aff_cpus = list_cpu_ids();
+  if (cpu_affinity && nthreads <= 1 && !aff_cpus.empty()) bind_worker_cpu(aff_cpus[0]);
   auto t0 = std::chrono::steady_clock::now();
   if (nthreads <= 1) {
     for (uint32_t qi = 0; qi < nq; ++qi) {
@@ -1571,6 +1724,10 @@ int main(int argc, char** argv) {
     ths.reserve((size_t)nthreads);
     for (int t = 0; t < nthreads; ++t) {
       ths.emplace_back([&, t] {
+        if (cpu_affinity) {
+          int cpu_id = aff_cpus.empty() ? t : aff_cpus[(size_t)t % aff_cpus.size()];
+          bind_worker_cpu(cpu_id);
+        }
         Prefetch lp;
         lp.policy = pref.policy;
         lp.budget_per_query = pref.budget_per_query;
@@ -1587,6 +1744,7 @@ int main(int argc, char** argv) {
         lp.issue_ahead = pref.issue_ahead;
         lp.score_page = pref.score_page;
         lp.min_issue_use = pref.min_issue_use;
+        lp.spec_beam_nbrs = pref.spec_beam_nbrs;
         lp.neighbor_k = pref.neighbor_k;
         DramWindow* tw = &win;
         PageCopyPool* pool = use_shared_pool ? &shared_pool : nullptr;
@@ -1597,8 +1755,11 @@ int main(int argc, char** argv) {
           tls_metrics = &thr_ctx[(size_t)t]->m;
         } else {
           tls_metrics = &local_m;
+          local_m.window_is_cxl_dram = metrics.window_is_cxl_dram;
         }
-        if (pref.freeze_fills && per_thread_window) {
+        // require-cxl-dram: shared host + one BAR, work-steal only (no qi%T shard).
+        if (pref.freeze_fills && per_thread_window && !require_cxl_dram && !oracle_dram &&
+            !oracle_window) {
           // Same shard as the discarded pass: this window only holds qi%T==t.
           for (uint32_t qi = (uint32_t)t; qi < nq; qi += (uint32_t)nthreads) {
             auto r = run_one_q(qi, lp, *tw, pool);
@@ -1674,7 +1835,7 @@ int main(int argc, char** argv) {
   metrics.print();
   {
     const double nvme_gbs = sec > 0 ? (double)metrics.nvme_read_bytes / 1e9 / sec : 0;
-    const double peak = 1.560;  // isolated rnd PREFETCH_BATCH, nvme stat, true-cold
+    const double peak = 1.560;  // single-disk rnd PREFETCH_BATCH; dual 256k-page peak is 1.744
     printf("nvme_real_GBps=%.3f occ_vs_rnd_peak=%.1f%% peak_GBps=%.3f page_use=%.2f "
            "slot_use=%.2f issue_use=%.2f\n",
            nvme_gbs, peak > 0 ? 100.0 * nvme_gbs / peak : 0, peak,

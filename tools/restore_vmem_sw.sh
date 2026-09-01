@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# 恢复的是软件代理，不是 CXL-DRAM。
+# This restores the software memory-semantic proxy (host cache + NVMe), NOT CXL-DRAM.
+# /dev/vmem0 = vmem_sw (host RAM map + cache + NVMe backing); not FPGA BAR / vmem.ko.
 # Restore software CXL-SSD (/dev/vmem0) without switching kernels.
 # Rebuilds vmem_sw for the *running* kernel if vermagic mismatches.
 #

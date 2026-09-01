@@ -18,7 +18,22 @@ int main() {
   m.note_score_from_bounce(7);
   m.note_fetched_pages(10);
   assert(m.score_from_window == 3);
+  assert(m.score_from_cxl_dram == 0);  // numa / HOST path must stay 0
   assert(m.score_from_bounce == 7);
+  assert(m.score_from_cxl_dram_pct() == 0.0);
+
+  Metrics cxl;
+  cxl.window_is_cxl_dram = true;
+  cxl.note_score_from_window(4);
+  cxl.note_score_from_bounce(1);
+  assert(cxl.score_from_cxl_dram == 4);
+  assert(cxl.score_from_cxl_dram_pct() > 79.9 && cxl.score_from_cxl_dram_pct() < 80.1);
+  cxl.reset();
+  assert(cxl.window_is_cxl_dram);
+  assert(cxl.score_from_window == 0);
+  assert(cxl.score_from_cxl_dram == 0);
+  cxl.note_score_from_window(2);
+  assert(cxl.score_from_cxl_dram == 2);
   double hide = m.score_from_window_pct();
   assert(hide > 29.9 && hide < 30.1);
   double prec = m.hide_precision_pct();

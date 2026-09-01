@@ -5,6 +5,9 @@
 
 本文件记录思考过程、全部真机数据，以及两道对比问题的结论。
 
+组会汇报（2026-08-31，可独立宣讲）：[`2026-08-31-组会汇报.md`](2026-08-31-组会汇报.md)。  
+FPGA 三角色改造（BAR=CXL-DRAM，双盘=CXL-SSD）：[spec](../superpowers/specs/2026-08-31-fpga-cxl-roles-design.md) · [plan](../superpowers/plans/2026-08-31-fpga-cxl-roles.md)。
+
 ---
 
 ## 0. 冻结合同与测量定义
@@ -686,3 +689,51 @@ T=4 `--issue-ahead 3` / `--expand-batch 16`：**VOID 当新默认**（CLI 仍 8/
 | T=4 hide nq=20 | **79.02** | 未替换 |
 | T=1 oracle-window | **85.8** | 未替换（95.91 不是） |
 | T=4 shard oracle（笔记分母，非 eval.tex） | **136.23** / 0.930 | 保持 |
+
+---
+
+## 17. 双盘 restage + T=4 vs 136（2026-09-01）
+
+现场：kernel `6.18.0-rc5`。单盘 layout 先恢复（`vmem_sw.ko.6.18-single` → `nvme2n1`/`d9`）：pagebin magic `0x314e415843`，host `pagebin_image.bin` header+vec0 对齐。真冷 T=1 nq=20 = **47.77 / 20.9 ms / recall 0.945 / from_win=100**（`hide_layout_restore_T1_nq20.log`）。不替换 50.25。
+
+然后 `REFUSE_DUAL_FORCE=1` restage：pagebin 9.6 GiB + 图序 bundle 267 GiB 经 `/dev/vmem0` 写入双盘 2 MiB 条带（`hide_dual_restage.log`，`DUAL_RESTAGE_OK`）。Victoryang 的 6.18 双盘 `.ko` **没有** `PREFETCH_BATCH`（ioctl `-ENOTTY`）。测量改用树内 `vmem_sw.ko.6.18-dual`（`srcversion=66204DB7…`，`nvme_devs` + batch）。
+
+**新随机峰（真冷 PREFETCH_BATCH，两盘 rios 约 1:1）：**
+
+| pages | nvme GB/s | 日志 |
+|------:|----------:|------|
+| 16k | 1.462–1.473 | 对单盘 1.560 的同口径 |
+| 64k | 1.671 | |
+| 128k | 1.711 | |
+| **256k** | **1.744** | T=4 量级 QD 分母 |
+| seq 16k | 2.037 | |
+
+fio 14.4 **仍不是** occ 分母。256k 峰 1.744 → 12 MB/q 的 cap ≈ 145，刚过 136；16k 同口径双盘 **低于** 单盘 1.560。软件条带没有把随机峰抬到接近 2×。
+
+**Hide（双盘，from_win=100，recall≥0.96，对照 136.23）：**
+
+| 行 | QPS | mean | nvme | occ vs 1.744 | 日志 |
+|----|----:|-----:|-----:|-------------:|------|
+| T=1 8/2 | 44.93 | 22.3 | 0.528 | 30.3% | `hide_dual_T1_nq20.log` |
+| T=4 8/2 | 96.36 | 39.5 | 1.264 | 72.5% | `hide_dual_T4_base_nq20.log` |
+| T=4 ahead=3 | 98.97 | 37.7 | 1.301 | 74.6% | `hide_dual_T4_ahead3_nq20.log` |
+| T=4 ebatch=16 | 100.54 | 37.4 | 1.399 | 80.2% | `hide_dual_T4_ebatch16_nq20.log` |
+| T=4 ebatch16+spec16 | **107.92** | 34.7 | 1.398 | 80.2% | `hide_dual_T4_eb16_spec16_nq20.log` |
+
+T=1 双盘低于单盘 47.77 / claim 50.25 → **双盘只作文 T=4 行**。单盘 T=4 ebatch=16 曾到 113.71，双盘宽管没有超过它。最好双盘 107.92 / 136.23 = **0.79×**。不替换 79.02 / 50.25。
+
+`--spec-beam-nbrs M`（默认 0）已接到 `finish_score`：进 beam 且距序前 M 则异步发 N(u) bundle（`stall_if_full=false`）。T=4 单独 M=8/16/32 = 91/85/82（更差）。ebatch16+M=16 相对双盘 ebatch16 到 107.92，仍远低于 136；page_use 掉、字节涨。**默认保持 0。** CLI 默认仍 ebatch=8 / ahead=2。
+
+---
+
+## FPGA HPS probe (2026-09-01)
+
+`hps_status` = `raw=0xffffffff unsupported`. `vmem.ko` was **not** loaded. `allow_hps_mmio` written back to 0. **HARD STOP**: Task 4–6 live switch is stopped.
+
+## FPGA 三角色（2026-08-31）
+- CXL-SSD = d8+d9 CD8P
+- CXL-DRAM = 15:00.0 BAR0 32 GiB via vmem.ko
+- Host DRAM = 2 GiB searcher only
+- 85.8 / 136 / node1 hide 不是本架构的 Oracle
+
+HPS probe 2026-09-01 was `raw=0xffffffff unsupported`; live vmem.ko switch and FPGA Oracle are STOPPED until HPS is 0..3.

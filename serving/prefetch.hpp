@@ -35,6 +35,7 @@ struct Prefetch {
   bool freeze_fills = false;         // timed oracle-window pass: no new SSD fills
   bool score_page = true;            // score every resident ID on a fetched page
   float min_issue_use = 0.f;         // skip bundle page if want/contained < this; 0=off
+  uint32_t spec_beam_nbrs = 0;       // prefetch N(u) when u ranks in top M of beam; 0=off
 
   struct Job {
     const uint8_t* ptr = nullptr;
