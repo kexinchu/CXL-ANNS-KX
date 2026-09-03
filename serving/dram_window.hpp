@@ -1,6 +1,8 @@
 #pragma once
 #include "metrics.hpp"
 
+inline thread_local Metrics* tls_metrics = nullptr;
+
 #include <algorithm>
 #include <cstdint>
 #include <cstring>
@@ -13,6 +15,8 @@
 struct DramWindow {
   static constexpr size_t kPage = 4096;
   static constexpr size_t kSpillSlots = 16;
+
+  Metrics* met() { return tls_metrics ? tls_metrics : metrics; }
 
   uint8_t* arena = nullptr;
   size_t capacity = 0;
@@ -119,6 +123,22 @@ struct DramWindow {
   }
 
   // Decrement soft-pin TTLs (call once per expand). Soft-pinned pages resist eviction.
+  size_t resident_bytes() {
+    std::lock_guard<std::mutex> g(mu);
+    return map.size() * page_bytes;
+  }
+
+  // Only age soft-pins when the window is nearly full. Ticking every hop
+  // expires useful pages while there is still free capacity (cross-query reuse).
+  void tick_soft_pins_if_pressure() {
+    bool pressure = false;
+    {
+      std::lock_guard<std::mutex> g(mu);
+      pressure = map.size() * page_bytes + (page_bytes * 4096) >= capacity;
+    }
+    if (pressure) tick_soft_pins();
+  }
+
   void tick_soft_pins() {
     std::lock_guard<std::mutex> g(mu);
     if (soft_pin_frames.empty()) return;
@@ -147,35 +167,34 @@ struct DramWindow {
       if (key == UINT64_MAX) return i;
       map.erase(key);
       frame_key[i] = UINT64_MAX;
-      if (metrics) metrics->evicts++;
+      if (met()) met()->evicts++;
       return i;
     }
-    // All frames hard/soft pinned — evict smallest soft-ttl (or free).
-    size_t best = n_frames;
-    uint16_t best_ttl = UINT16_MAX;
-    for (size_t i = 0; i < n_frames; ++i) {
-      if (frame_key[i] == UINT64_MAX) return i;
+    // All frames hard/soft pinned — evict the next non-hard-pin (O(1) typical).
+    // Do not scan all 256k frames for min TTL; that made nq=100 install 0.13 GB/s.
+    for (size_t t = 0; t < n_frames; ++t) {
+      size_t i = clock_hand % n_frames;
+      clock_hand++;
       if (frame_pinned[i]) continue;
-      if (frame_soft_ttl[i] < best_ttl) {
-        best_ttl = frame_soft_ttl[i];
-        best = i;
-      }
-    }
-    if (best < n_frames) {
-      uint64_t key = frame_key[best];
-      if (key != UINT64_MAX) map.erase(key);
-      frame_key[best] = UINT64_MAX;
-      clear_soft_ttl_unlocked(best);
-      if (metrics) metrics->evicts++;
-      return best;
+      uint64_t key = frame_key[i];
+      if (key == UINT64_MAX) return i;
+      map.erase(key);
+      frame_key[i] = UINT64_MAX;
+      clear_soft_ttl_unlocked(i);
+      if (met()) met()->evicts++;
+      return i;
     }
     return 0;
   }
 
+  // Clock alloc: next free frame, or evict. Do not scan all 256k frames
+  // looking for UINT64_MAX — that made every full-window install O(n_frames).
+  size_t alloc_frame_unlocked() { return evict_frame_unlocked(); }
+
   size_t promote_page_unlocked(const uint8_t* ssd_base, uint64_t page_off, bool pin) {
     auto it = map.find(page_off);
     if (it != map.end()) {
-      if (metrics) metrics->dram_hits++;
+      if (met()) met()->dram_hits++;
       size_t fr = it->second;
       if (pin && !frame_pinned[fr]) {
         if (pin_bytes_used + page_bytes <= pin_bytes_cap) {
@@ -187,14 +206,7 @@ struct DramWindow {
       return fr;
     }
     auto t0 = std::chrono::steady_clock::now();
-    size_t frame = n_frames;
-    for (size_t i = 0; i < n_frames; ++i) {
-      if (frame_key[i] == UINT64_MAX) {
-        frame = i;
-        break;
-      }
-    }
-    if (frame == n_frames) frame = evict_frame_unlocked();
+    size_t frame = alloc_frame_unlocked();
     // Byte-copy: AVX memcpy from /dev/vmem0 → DAX has SIGBUS'd under concurrency.
     {
       auto* dst = arena + frame * page_bytes;
@@ -211,11 +223,11 @@ struct DramWindow {
       pin_bytes_used += page_bytes;
     }
     auto t1 = std::chrono::steady_clock::now();
-    if (metrics) {
-      metrics->ssd_misses++;
-      metrics->promote_ns +=
+    if (met()) {
+      met()->ssd_misses++;
+      met()->promote_ns +=
           std::chrono::duration_cast<std::chrono::nanoseconds>(t1 - t0).count();
-      metrics->promote_bytes += page_bytes;
+      met()->promote_bytes += page_bytes;
     }
     return frame;
   }
@@ -258,6 +270,35 @@ struct DramWindow {
       if (!map.count(p)) return false;
     }
     return true;
+  }
+
+  // One lock: copy if every overlapping page is already in the window. No NAND.
+  bool try_copy_resident(const uint8_t* ssd_base, const uint8_t* ssd, size_t n, void* dst) {
+    std::lock_guard<std::mutex> g(mu);
+    if (n == 0) return true;
+    uint64_t off = (uint64_t)(ssd - ssd_base);
+    uint64_t end = off + n;
+    uint64_t first = off & ~(uint64_t)(page_bytes - 1);
+    uint64_t last = (end - 1) & ~(uint64_t)(page_bytes - 1);
+    for (uint64_t p = first; p <= last; p += page_bytes) {
+      if (!map.count(p)) return false;
+    }
+    auto* out = static_cast<uint8_t*>(dst);
+    size_t copied = 0;
+    while (copied < n) {
+      uint64_t cur = off + copied;
+      uint64_t po = cur & ~(uint64_t)(page_bytes - 1);
+      size_t fr = map[po];
+      size_t in_page = (size_t)(cur - po);
+      size_t k = std::min(n - copied, page_bytes - in_page);
+      std::memcpy(out + copied, arena + fr * page_bytes + in_page, k);
+      copied += k;
+    }
+    return true;
+  }
+
+  bool copy_if_resident(const uint8_t* ssd_base, const uint8_t* ssd, size_t n, void* dst) {
+    return try_copy_resident(ssd_base, ssd, n, dst);
   }
 
   // Promote as needed and copy [ptr,ptr+len) into dst under the window lock
@@ -335,19 +376,12 @@ struct DramWindow {
 
       auto it = map.find(p);
       if (it != map.end()) {
-        if (metrics) metrics->dram_hits++;
+        if (met()) met()->dram_hits++;
         // Merge into existing frame (shared pages across vectors).
         std::memcpy(arena + it->second * page_bytes + dst_off, host + src_off, n);
         continue;
       }
-      size_t frame = n_frames;
-      for (size_t i = 0; i < n_frames; ++i) {
-        if (frame_key[i] == UINT64_MAX) {
-          frame = i;
-          break;
-        }
-      }
-      if (frame == n_frames) frame = evict_frame_unlocked();
+      size_t frame = alloc_frame_unlocked();
       auto* dst = arena + frame * page_bytes;
       std::memset(dst, 0, page_bytes);
       std::memcpy(dst + dst_off, host + src_off, n);
@@ -369,31 +403,23 @@ struct DramWindow {
   // Install one full SSD page already fetched into host (CXL-SSD→host done by caller).
   // Search thread only: host → CXL-DRAM window.
   // soft_ttl>0: resist eviction for that many expands (soft-pin; respects soft_pin_bytes_cap).
-  void install_full_page(uint64_t page_off, const uint8_t* host_page, uint16_t soft_ttl = 0) {
-    std::lock_guard<std::mutex> g(mu);
+  void install_full_page_unlocked(uint64_t page_off, const uint8_t* host_page,
+                                 uint16_t soft_ttl = 0) {
     if (!host_page) return;
     auto it = map.find(page_off);
     if (it != map.end()) {
-      if (metrics) metrics->dram_hits++;
+      if (met()) met()->dram_hits++;
       set_soft_ttl_unlocked(it->second, soft_ttl);
       return;
     }
     auto t0 = std::chrono::steady_clock::now();
-    size_t frame = n_frames;
-    for (size_t i = 0; i < n_frames; ++i) {
-      if (frame_key[i] == UINT64_MAX) {
-        frame = i;
-        break;
-      }
-    }
-    if (frame == n_frames) frame = evict_frame_unlocked();
+    size_t frame = alloc_frame_unlocked();
     std::memcpy(arena + frame * page_bytes, host_page, page_bytes);
     frame_key[frame] = page_off;
     frame_pinned[frame] = 0;
     clear_soft_ttl_unlocked(frame);
     map[page_off] = frame;
     set_soft_ttl_unlocked(frame, soft_ttl);
-    // B: neighboring page_offs often hold packed siblings of a 2-page fetch.
     if (soft_ttl && soft_pin_neighbors) {
       if (page_off >= page_bytes) {
         auto jt = map.find(page_off - page_bytes);
@@ -403,13 +429,25 @@ struct DramWindow {
       if (jt2 != map.end()) set_soft_ttl_unlocked(jt2->second, soft_ttl);
     }
     auto t1 = std::chrono::steady_clock::now();
-    if (metrics) {
-      metrics->ssd_misses++;
-      metrics->promote_ns +=
+    if (met()) {
+      met()->ssd_misses++;
+      met()->promote_ns +=
           std::chrono::duration_cast<std::chrono::nanoseconds>(t1 - t0).count();
-      metrics->promote_bytes += page_bytes;
-      metrics->prefetch_pages++;
+      met()->promote_bytes += page_bytes;
+      met()->prefetch_pages++;
     }
+  }
+
+  void install_full_page(uint64_t page_off, const uint8_t* host_page, uint16_t soft_ttl = 0) {
+    std::lock_guard<std::mutex> g(mu);
+    install_full_page_unlocked(page_off, host_page, soft_ttl);
+  }
+
+  void install_full_pages(const uint64_t* offs, uint8_t* const* hosts, size_t n,
+                         uint16_t soft_ttl = 0) {
+    if (!offs || !hosts || n == 0) return;
+    std::lock_guard<std::mutex> g(mu);
+    for (size_t i = 0; i < n; ++i) install_full_page_unlocked(offs[i], hosts[i], soft_ttl);
   }
 
   // Promote [ssd_ptr,len) into the CXL-DRAM window.
@@ -426,7 +464,7 @@ struct DramWindow {
       {
         std::lock_guard<std::mutex> g(mu);
         if (map.count(p)) {
-          if (metrics) metrics->dram_hits++;
+          if (met()) met()->dram_hits++;
           continue;
         }
       }
@@ -448,27 +486,20 @@ struct DramWindow {
       {
         std::lock_guard<std::mutex> g(mu);
         if (map.count(p)) {
-          if (metrics) metrics->dram_hits++;
+          if (met()) met()->dram_hits++;
           continue;
         }
-        size_t frame = n_frames;
-        for (size_t i = 0; i < n_frames; ++i) {
-          if (frame_key[i] == UINT64_MAX) {
-            frame = i;
-            break;
-          }
-        }
-        if (frame == n_frames) frame = evict_frame_unlocked();
+        size_t frame = alloc_frame_unlocked();
         std::memcpy(arena + frame * page_bytes, host_page, page_bytes);
         frame_key[frame] = p;
         frame_pinned[frame] = 0;
         map[p] = frame;
-        if (metrics) {
-          metrics->ssd_misses++;
-          metrics->promote_ns +=
+        if (met()) {
+          met()->ssd_misses++;
+          met()->promote_ns +=
               std::chrono::duration_cast<std::chrono::nanoseconds>(t1 - t0).count();
-          metrics->promote_bytes += page_bytes;
-          metrics->prefetch_pages++;
+          met()->promote_bytes += page_bytes;
+          met()->prefetch_pages++;
         }
       }
     }
@@ -492,7 +523,7 @@ struct DramWindow {
     if (need == 0) return true;
     if (*budget < need) return false;
     lookup_or_promote(ssd_base, ssd_ptr, len);
-    if (metrics) metrics->prefetch_pages += need / page_bytes;
+    if (met()) met()->prefetch_pages += need / page_bytes;
     *budget -= need;
     return true;
   }

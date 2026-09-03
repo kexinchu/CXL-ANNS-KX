@@ -1,6 +1,6 @@
 // Beam search over CXAN layout via 1GiB DRAM window + prefetch policies.
 // Build:
-//   g++ -O2 -std=c++17 -pthread -I. serving/search_beam.cpp -o serving/search_beam -lnuma
+//   g++ -O3 -mavx2 -mfma -std=c++17 -pthread -I. serving/search_beam.cpp -o serving/search_beam -lnuma
 //
 // Example:
 //   source tools/cap_enforce.sh
@@ -15,7 +15,7 @@
 #include "serving/page_copy_pool.hpp"
 #include "serving/metrics.hpp"
 #include "serving/vmem_prefetch.hpp"
-#include "serving/hot_set.hpp"
+#include "serving/hide_fill.hpp"
 
 #include <algorithm>
 #include <atomic>
@@ -38,6 +38,7 @@
 #include <unordered_set>
 #include <vector>
 
+#include <immintrin.h>
 #include <fcntl.h>
 #include <numa.h>
 #include <numaif.h>
@@ -57,16 +58,54 @@ static void die(const char* s) {
   std::exit(2);
 }
 
-static void* map_file_ro(const char* path, size_t* out_len) {
+static void* map_file_ro(const char* path, size_t* out_len, bool populate = false) {
   int fd = open(path, O_RDONLY);
   if (fd < 0) die("open image");
   struct stat st {};
   if (fstat(fd, &st) != 0) die("fstat");
-  void* p = mmap(nullptr, st.st_size, PROT_READ, MAP_PRIVATE, fd, 0);
+  int flags = MAP_PRIVATE;
+  if (populate) flags |= MAP_POPULATE;
+  void* p = mmap(nullptr, st.st_size, PROT_READ, flags, fd, 0);
   if (p == MAP_FAILED) die("mmap image");
   close(fd);
   *out_len = (size_t)st.st_size;
+  if (populate) {
+    auto* b = static_cast<volatile const char*>(p);
+    size_t step = 2ull * 1024 * 1024;
+    for (size_t off = 0; off < (size_t)st.st_size; off += step) (void)b[off];
+    printf("populated host layout %s len=%zu (DRAM oracle)\n", path, (size_t)st.st_size);
+  }
   return p;
+}
+
+static uint64_t vmem_cache_used() {
+  FILE* f = fopen("/sys/class/vmem/vmem0/cache_used", "r");
+  if (!f) return UINT64_MAX;
+  unsigned long long v = 0;
+  if (fscanf(f, "%llu", &v) != 1) v = UINT64_MAX;
+  fclose(f);
+  return (uint64_t)v;
+}
+
+// /sys/block/<name>/stat field 3 is sectors read (512B). Timed-window only.
+static uint64_t nvme_read_sectors() {
+  char path[128] = "/sys/block/nvme4n1/stat";
+  FILE* nf = fopen("/sys/class/vmem/vmem0/nvme_dev", "r");
+  if (nf) {
+    char dev[128] = {};
+    if (fscanf(nf, "%127s", dev) == 1) {
+      const char* base = strrchr(dev, '/');
+      base = base ? base + 1 : dev;
+      snprintf(path, sizeof(path), "/sys/block/%s/stat", base);
+    }
+    fclose(nf);
+  }
+  FILE* f = fopen(path, "r");
+  if (!f) return 0;
+  unsigned long long rio = 0, rm = 0, rsect = 0;
+  if (fscanf(f, "%llu %llu %llu", &rio, &rm, &rsect) != 3) rsect = 0;
+  fclose(f);
+  return (uint64_t)rsect;
 }
 
 static void* map_vmem_ro(const char* dev, off_t offset, size_t len, int* out_fd = nullptr) {
@@ -185,15 +224,27 @@ static float vec_l2(const uint8_t* raw, const float* q, uint32_t dim, uint32_t v
 
 static float vec_mips_neg(const uint8_t* raw, const float* q, uint32_t dim, uint32_t vec_bytes) {
   // Return -IP so ascending sort keeps higher IP first (MIPS).
-  double s = 0;
   if (vec_bytes == 4) {
     auto* v = reinterpret_cast<const float*>(raw);
-    for (uint32_t i = 0; i < dim; ++i) s += (double)v[i] * (double)q[i];
-  } else {
-    auto* v = reinterpret_cast<const uint16_t*>(raw);
-    for (uint32_t i = 0; i < dim; ++i) s += (double)f16_to_f32(v[i]) * (double)q[i];
+    __m256 acc = _mm256_setzero_ps();
+    uint32_t i = 0;
+    for (; i + 8 <= dim; i += 8) {
+      acc = _mm256_fmadd_ps(_mm256_loadu_ps(v + i), _mm256_loadu_ps(q + i), acc);
+    }
+    alignas(32) float tmp[8];
+    _mm256_store_ps(tmp, acc);
+    float s = tmp[0] + tmp[1] + tmp[2] + tmp[3] + tmp[4] + tmp[5] + tmp[6] + tmp[7];
+    for (; i < dim; ++i) s += v[i] * q[i];
+    return -s;
   }
-  return (float)(-s);
+  auto* v = reinterpret_cast<const uint16_t*>(raw);
+  float s = 0;
+  for (uint32_t i = 0; i < dim; ++i) s += f16_to_f32(v[i]) * q[i];
+  return -s;
+}
+
+static Metrics* cur_met(DramWindow& win) {
+  return tls_metrics ? tls_metrics : win.metrics;
 }
 
 struct Cand {
@@ -207,46 +258,21 @@ struct Cand {
 // P2 uses expand/score decoupling (P2v2): discover nbrs into pending, score when resident;
 // lookahead sync-prefetches non-cur future hops (no second thread on DAX).
 // lookahead prefetches future candidates only (excludes current expand).
-struct SearchCtrl {
-  HotSet* hotset = nullptr;
-  uint32_t early_stop_patience = 0;
-  float early_stop_eps = 1e-6f;
-  uint32_t* hops_out = nullptr;
-};
-
 static std::vector<uint32_t> search_one_fp(Placement& pl, DramWindow& win, Prefetch& pref,
                                            PromotePipe* pipe, const EntryGraph& eg,
                                            const float* qf, uint32_t beam, uint32_t k,
                                            uint32_t iters, PageCopyPool* ext_pool = nullptr,
-                                           VmemIo* vio = nullptr, SearchCtrl ctrl = {}) {
+                                           VmemIo* vio = nullptr) {
   pref.on_query_begin(pl, win, eg.nodes, eg.entry_id);
 
   const size_t vb = (size_t)pl.hdr->dim * pl.hdr->vec_bytes;
-  std::unordered_set<uint64_t> q_promoted;
-  std::unordered_set<uint64_t> q_used;
-  auto mark_promote = [&](uint64_t p) {
-    if (q_promoted.insert(p).second && win.metrics) win.metrics->note_promote_pages(1);
+  auto get_vec = [&](uint32_t id) {
+    return win.lookup_or_promote(pl.ssd_base, pl.vec(id), vb);
   };
-  auto mark_used = [&](uint64_t p) {
-    if (q_used.insert(p).second && win.metrics) win.metrics->note_promote_used(1);
-  };
-  auto touch = [&](uint32_t id) {
-    if (ctrl.hotset) ctrl.hotset->on_touch(id);
-  };
-  auto vec_page_span = [&](uint32_t id, std::vector<uint64_t>* out) {
-    uint64_t off = (uint64_t)(pl.vec(id) - pl.ssd_base);
-    uint64_t end = off + vb;
-    uint64_t first = off & ~(uint64_t)(win.page_bytes - 1);
-    uint64_t last = (end - 1) & ~(uint64_t)(win.page_bytes - 1);
-    for (uint64_t p = first; p <= last; p += win.page_bytes) out->push_back(p);
-  };
-  auto read_nbrs = [&](uint32_t id, uint32_t* dst, uint32_t R) {
-    if (pl.graph_host) {
-      std::memcpy(dst, pl.nbrs(id), (size_t)R * 4);
-      return;
-    }
-    win.copy_through(pl.ssd_base, reinterpret_cast<const uint8_t*>(pl.nbrs(id)),
-                     (size_t)R * 4, reinterpret_cast<uint8_t*>(dst));
+  auto get_nbr = [&](uint32_t id) {
+    const uint8_t* s = reinterpret_cast<const uint8_t*>(pl.nbrs(id));
+    return reinterpret_cast<const uint32_t*>(
+        win.lookup_or_promote(pl.ssd_base, s, (size_t)pl.hdr->R * 4));
   };
 
   const uint32_t L = beam ? beam : k;
@@ -272,362 +298,51 @@ static std::vector<uint32_t> search_one_fp(Placement& pl, DramWindow& win, Prefe
       fprintf(stderr, "vec too large for score buf\n");
       std::exit(2);
     }
-    bool hit = win.is_resident(pl.ssd_base, pl.vec(id), vb);
-    if (!hit) {
-      std::vector<uint64_t> pages;
-      vec_page_span(id, &pages);
-      for (uint64_t p : pages) {
-        mark_promote(p);
-        mark_used(p);
-      }
-    }
     win.copy_through(pl.ssd_base, pl.vec(id), vb, buf);
     float d = vec_mips_neg(buf, qf, pl.hdr->dim, pl.hdr->vec_bytes);
-    if (win.metrics) win.metrics->distance_comps++;
+    if (cur_met(win)) cur_met(win)->distance_comps++;
     insert_cand(id, d);
-    touch(id);
-  };
-
-  auto kth_dist = [&]() -> float {
-    if (cand.empty()) return 0.f;
-    std::vector<float> ds;
-    ds.reserve(cand.size());
-    for (const auto& c : cand) ds.push_back(c.dist);
-    std::sort(ds.begin(), ds.end());
-    size_t i = std::min((size_t)std::max(k, 1u) - 1, ds.size() - 1);
-    return ds[i];
-  };
-  float prev_kth = 0.f;
-  uint32_t stall_hops = 0;
-  uint32_t hops_done = 0;
-  auto maybe_early_stop = [&]() -> bool {
-    hops_done++;
-    if (!ctrl.early_stop_patience) return false;
-    float cur_k = kth_dist();
-    if (hops_done == 1) {
-      prev_kth = cur_k;
-      return false;
-    }
-    if (std::fabs(cur_k - prev_kth) < ctrl.early_stop_eps) stall_hops++;
-    else stall_hops = 0;
-    prev_kth = cur_k;
-    return stall_hops >= ctrl.early_stop_patience;
   };
 
   {
     seen.insert(eg.entry_id);
-    score_id(eg.entry_id);
+    if (pref.oracle_dram) {
+      float d = vec_mips_neg(pl.vec(eg.entry_id), qf, pl.hdr->dim, pl.hdr->vec_bytes);
+      if (cur_met(win)) {
+        cur_met(win)->distance_comps++;
+        cur_met(win)->note_score_from_window(1);
+        cur_met(win)->note_pf_scored_id(eg.entry_id);
+      }
+      insert_cand(eg.entry_id, d);
+    } else if (pref.policy == PrefetchPolicy::P3) {
+      alignas(64) uint8_t buf[4096];
+      bool hit = win.copy_if_resident(pl.ssd_base, pl.vec(eg.entry_id), vb, buf);
+      if (!hit) win.copy_through(pl.ssd_base, pl.vec(eg.entry_id), vb, buf);
+      if (cur_met(win)) {
+        if (hit) cur_met(win)->note_score_from_window(1);
+        else cur_met(win)->note_score_from_bounce(1);
+        cur_met(win)->distance_comps++;
+      }
+      insert_cand(eg.entry_id, vec_mips_neg(buf, qf, pl.hdr->dim, pl.hdr->vec_bytes));
+    } else {
+      score_id(eg.entry_id);
+    }
   }
 
-  // ---- P3v2: persistent page pool + score∥install pipeline ----
-  // Workers: SSD→host only. Search: score as pages land; DAX install overlapped with
-  // the next hop's fetches. Install prefers pages of likely-next expands + high cover.
-  if (pref.policy == PrefetchPolicy::P3) {
-    const uint32_t W = pref.pipe_w ? pref.pipe_w : 4;
-    const uint32_t install_top = pref.install_top ? pref.install_top : 4;
-    const uint32_t fetch_top = pref.fetch_top;  // 0 = no per-hop page cap
+  // ---- Oracle: full corpus already in host DRAM (stand-in for large CXL-DRAM) ----
+  if (pref.oracle_dram) {
+    auto score_dram = [&](uint32_t id) {
+      float d = vec_mips_neg(pl.vec(id), qf, pl.hdr->dim, pl.hdr->vec_bytes);
+      if (cur_met(win)) {
+        cur_met(win)->distance_comps++;
+        cur_met(win)->note_score_from_window(1);
+        cur_met(win)->note_pf_scored_id(id);
+      }
+      insert_cand(id, d);
+    };
+    uint32_t Rlim = pl.hdr->R;
+    if (Rlim > 64) Rlim = 64;
     uint32_t expands = 0;
-    const size_t pb = win.page_bytes;
-
-    PageCopyPool local_pool;
-    PageCopyPool* pool = ext_pool ? ext_pool : &local_pool;
-    if (pool->nworkers == 0) pool->start(W);
-
-    struct PendingInstall {
-      uint64_t page_off = 0;
-      std::vector<uint8_t> data;
-      uint16_t soft_ttl = 0;
-    };
-    std::deque<PendingInstall> pending_install;
-
-    auto drain_installs = [&](size_t max_n) {
-      size_t n = 0;
-      while (n < max_n && !pending_install.empty()) {
-        auto& pi = pending_install.front();
-        win.install_full_page(pi.page_off, pi.data.data(), pi.soft_ttl);
-        pending_install.pop_front();
-        ++n;
-      }
-      return n;
-    };
-
-    auto hop_parallel_score = [&](std::vector<uint32_t>& ids) {
-      if (ids.empty()) {
-        drain_installs(pending_install.size());
-        return;
-      }
-
-      // Opportunistically drain prior installs before submitting this hop's fetches.
-      if (!pending_install.empty()) drain_installs(std::min(pending_install.size(), (size_t)4));
-
-      std::unordered_map<uint32_t, std::vector<uint64_t>> id_pages;
-      id_pages.reserve(ids.size() * 2);
-      std::vector<uint64_t> pages;
-      pages.reserve(ids.size() * 2);
-      std::unordered_set<uint64_t> page_set;
-      page_set.reserve(ids.size() * 4);
-
-      for (uint32_t id : ids) {
-        if (win.is_resident(pl.ssd_base, pl.vec(id), vb)) continue;
-        uint64_t off = (uint64_t)(pl.vec(id) - pl.ssd_base);
-        uint64_t end = off + vb;
-        uint64_t first = off & ~(uint64_t)(pb - 1);
-        uint64_t last = (end - 1) & ~(uint64_t)(pb - 1);
-        auto& ips = id_pages[id];
-        for (uint64_t p = first; p <= last; p += pb) {
-          ips.push_back(p);
-          if (page_set.insert(p).second) pages.push_back(p);
-        }
-      }
-
-      // Rank miss pages by cover; optionally cap with fetch_top (rest → demand score).
-      std::unordered_map<uint64_t, uint32_t> cover;
-      cover.reserve(page_set.size() * 2);
-      for (uint32_t id : ids) {
-        auto it = id_pages.find(id);
-        if (it == id_pages.end()) continue;
-        for (uint64_t p : it->second) cover[p]++;
-      }
-      std::vector<std::pair<uint32_t, uint64_t>> ranked_fetch;
-      ranked_fetch.reserve(cover.size());
-      for (const auto& kv : cover) ranked_fetch.push_back({kv.second, kv.first});
-      std::sort(ranked_fetch.begin(), ranked_fetch.end(),
-                [](const auto& a, const auto& b) {
-                  if (a.first != b.first) return a.first > b.first;
-                  return a.second < b.second;
-                });
-
-      std::vector<uint64_t> fetch;
-      fetch.reserve(ranked_fetch.size());
-      std::unordered_set<uint64_t> fetch_set;
-      for (const auto& rf : ranked_fetch) {
-        if (pref.budget_left < pb) break;
-        if (fetch_top && fetch.size() >= (size_t)fetch_top) break;
-        uint64_t p = rf.second;
-        if (win.is_resident(pl.ssd_base, pl.ssd_base + p, 1)) continue;
-        fetch.push_back(p);
-        fetch_set.insert(p);
-        pref.budget_left -= pb;
-      }
-
-      std::unordered_map<uint64_t, size_t> page_idx;
-      std::vector<std::vector<uint8_t>> host;
-      std::unique_ptr<std::atomic<uint8_t>[]> ready;
-      std::vector<uint8_t> consumed;  // observed ready by search thread
-      if (!fetch.empty()) {
-        host.resize(fetch.size());
-        ready.reset(new std::atomic<uint8_t>[fetch.size()]);
-        consumed.assign(fetch.size(), 0);
-        if (vio) vmem_prefetch_pages(*vio, fetch.data(), (int)fetch.size(), pb);
-        for (size_t i = 0; i < fetch.size(); ++i) {
-          host[i].resize(pb);
-          page_idx[fetch[i]] = i;
-          ready[i].store(0, std::memory_order_relaxed);
-          pool->submit(pl.ssd_base + fetch[i], host[i].data(), pb, &ready[i]);
-        }
-        if (win.metrics) {
-          win.metrics->promote_bytes += fetch.size() * pb;
-          win.metrics->prefetch_pages += fetch.size();
-        }
-        for (uint64_t p : fetch) mark_promote(p);
-      }
-
-      std::unordered_set<uint64_t> host_ready;
-      host_ready.reserve(fetch.size() * 2);
-      std::vector<Cand> scored_local;
-      scored_local.reserve(ids.size());
-      std::unordered_set<uint32_t> done;
-      done.reserve(ids.size() * 2);
-
-      auto assemble_from_host = [&](uint32_t id, uint8_t* buf) -> bool {
-        auto it = id_pages.find(id);
-        if (it == id_pages.end()) return false;
-        for (uint64_t p : it->second) {
-          if (!fetch_set.count(p) && !win.is_resident(pl.ssd_base, pl.ssd_base + p, 1))
-            return false;
-          if (fetch_set.count(p) && !host_ready.count(p)) return false;
-        }
-        uint64_t off = (uint64_t)(pl.vec(id) - pl.ssd_base);
-        size_t copied = 0;
-        while (copied < vb) {
-          uint64_t cur = off + copied;
-          uint64_t po = cur & ~(uint64_t)(pb - 1);
-          size_t in_page = (size_t)(cur - po);
-          size_t n = std::min(vb - copied, pb - in_page);
-          auto pit = page_idx.find(po);
-          if (pit != page_idx.end() && host_ready.count(po)) {
-            std::memcpy(buf + copied, host[pit->second].data() + in_page, n);
-          } else {
-            win.copy_through(pl.ssd_base, pl.ssd_base + cur, n, buf + copied);
-          }
-          if (fetch_set.count(po)) mark_used(po);
-          copied += n;
-        }
-        return true;
-      };
-
-      auto try_score_ready = [&]() {
-        for (uint32_t id : ids) {
-          if (done.count(id)) continue;
-          alignas(64) uint8_t buf[4096];
-          if (vb > sizeof(buf)) {
-            fprintf(stderr, "vec too large\n");
-            std::exit(2);
-          }
-          if (!assemble_from_host(id, buf)) continue;
-          float d = vec_mips_neg(buf, qf, pl.hdr->dim, pl.hdr->vec_bytes);
-          if (win.metrics) win.metrics->distance_comps++;
-          insert_cand(id, d);
-          scored_local.push_back({d, id});
-          done.insert(id);
-          touch(id);
-        }
-      };
-
-      // Score ids already fully in the window (no fetch needed).
-      for (uint32_t id : ids) {
-        if (id_pages.count(id)) continue;
-        score_id(id);
-        done.insert(id);
-        for (const auto& c : cand) {
-          if (c.id == id) {
-            scored_local.push_back(c);
-            break;
-          }
-        }
-      }
-
-      size_t ready_n = 0;
-      while (ready_n < fetch.size()) {
-        bool progress = false;
-        for (size_t i = 0; i < fetch.size(); ++i) {
-          if (consumed[i]) continue;
-          if (!ready[i].load(std::memory_order_acquire)) continue;
-          consumed[i] = 1;
-          host_ready.insert(fetch[i]);
-          ++ready_n;
-          progress = true;
-        }
-        if (progress) {
-          try_score_ready();
-        } else if (!pending_install.empty()) {
-          // Overlap prior-hop DAX install with in-flight SSD→host copies.
-          drain_installs(1);
-        } else {
-          std::this_thread::yield();
-        }
-      }
-      pool->wait_idle();
-      try_score_ready();
-
-      for (uint32_t id : ids) {
-        if (done.count(id)) continue;
-        score_id(id);
-        for (const auto& c : cand) {
-          if (c.id == id) {
-            scored_local.push_back(c);
-            break;
-          }
-        }
-      }
-
-      // Smart install: prefer pages of likely-next expands among this hop's host pages.
-      std::unordered_map<uint32_t, float> id_weight;
-      id_weight.reserve(ids.size() * 2);
-      for (const auto& c : scored_local) id_weight[c.id] = 1.f / (1.f + std::max(c.dist, 0.f));
-
-      std::vector<Cand> unexp;
-      unexp.reserve(cand.size());
-      for (const auto& c : cand) {
-        if (expanded.count(c.id)) continue;
-        unexp.push_back(c);
-      }
-      std::sort(unexp.begin(), unexp.end(),
-                [](const Cand& a, const Cand& b) { return a.dist < b.dist; });
-      const uint32_t next_n =
-          std::min<uint32_t>(install_top, (uint32_t)unexp.size());
-      for (uint32_t i = 0; i < next_n; ++i) {
-        // Only boost if this hop actually holds the id's pages in host.
-        if (!id_pages.count(unexp[i].id)) continue;
-        id_weight[unexp[i].id] += 1000.f - (float)i;
-      }
-
-      struct PageUtil {
-        uint64_t page;
-        float util;
-        size_t idx;
-      };
-      std::unordered_map<uint64_t, float> page_util;
-      page_util.reserve(page_idx.size() * 2);
-      for (uint32_t id : ids) {
-        auto it = id_pages.find(id);
-        if (it == id_pages.end()) continue;
-        float w = 1.f;
-        auto wit = id_weight.find(id);
-        if (wit != id_weight.end()) w = wit->second;
-        for (uint64_t p : it->second) {
-          if (!page_idx.count(p)) continue;
-          page_util[p] += w;
-        }
-      }
-
-      std::vector<PageUtil> ranked;
-      ranked.reserve(page_util.size());
-      for (const auto& kv : page_util) {
-        auto pit = page_idx.find(kv.first);
-        if (pit == page_idx.end()) continue;
-        if (host[pit->second].empty()) continue;
-        ranked.push_back({kv.first, kv.second, pit->second});
-      }
-      std::sort(ranked.begin(), ranked.end(), [](const PageUtil& a, const PageUtil& b) {
-        if (a.util != b.util) return a.util > b.util;
-        return a.page < b.page;
-      });
-
-      // Default: keep only install_top pages. --install-all-fetched keeps every
-      // page this hop already paid for (useful CXL-DRAM residency → hit%).
-      const size_t max_pages =
-          pref.install_all_fetched ? ranked.size() : (size_t)install_top;
-      std::unordered_set<uint64_t> queued_pages;
-      auto queue_host_page = [&](uint64_t p, uint16_t ttl) {
-        auto pit = page_idx.find(p);
-        if (pit == page_idx.end()) return;
-        if (host[pit->second].empty()) return;
-        if (!queued_pages.insert(p).second) return;
-        PendingInstall pi;
-        pi.page_off = p;
-        pi.data = std::move(host[pit->second]);
-        pi.soft_ttl = ttl;
-        pending_install.push_back(std::move(pi));
-      };
-      size_t queued_n = 0;
-      for (const auto& pu : ranked) {
-        if (queued_n >= max_pages) break;
-        uint16_t ttl = 16;
-        if (pu.util >= 500.f) ttl = 64;
-        else if (pu.util >= 1.f) ttl = 32;
-        queue_host_page(pu.page, ttl);
-        // B: install the 2-page group together (siblings already paid for on host).
-        if (pref.page_group_b) {
-          if (pu.page >= pb) queue_host_page(pu.page - pb, ttl);
-          queue_host_page(pu.page + pb, ttl);
-        }
-        ++queued_n;
-      }
-
-      // B: soft-pin page-group mates already in the window (packed co-location).
-      if (pref.page_group_b) {
-        for (uint32_t id : ids) {
-          uint64_t off = (uint64_t)(pl.vec(id) - pl.ssd_base);
-          uint64_t first = off & ~(uint64_t)(pb - 1);
-          uint64_t last = (off + vb - 1) & ~(uint64_t)(pb - 1);
-          for (uint64_t p = first; p <= last; p += pb) win.touch_soft_pin(p, 32);
-          if (first >= pb) win.touch_soft_pin(first - pb, 16);
-          win.touch_soft_pin(last + pb, 16);
-        }
-      }
-    };
-
     while (true) {
       int best_i = -1;
       float best_d = 0;
@@ -640,32 +355,366 @@ static std::vector<uint32_t> search_one_fp(Placement& pl, DramWindow& win, Prefe
       }
       if (best_i < 0) break;
       if (iters != 0 && expands >= iters) break;
-
       uint32_t cur = cand[(size_t)best_i].id;
       expanded.insert(cur);
       expands++;
-
       uint32_t nbrs_local[64];
-      uint32_t R = pl.hdr->R;
-      if (R > 64) R = 64;
-      read_nbrs(cur, nbrs_local, R);
-
-      std::vector<uint32_t> to_score;
-      to_score.reserve(R);
-      for (uint32_t j = 0; j < R; ++j) {
+      hide_read_nbrs(pl, cur, nbrs_local, Rlim);
+      for (uint32_t j = 0; j < Rlim; ++j) {
         uint32_t nb = nbrs_local[j];
         if (nb >= pl.hdr->n || seen.count(nb)) continue;
         seen.insert(nb);
-        to_score.push_back(nb);
+        score_dram(nb);
       }
-      hop_parallel_score(to_score);
-      win.tick_soft_pins();
-      if (maybe_early_stop()) break;
+    }
+    std::sort(cand.begin(), cand.end(),
+              [](const Cand& a, const Cand& b) { return a.dist < b.dist; });
+    std::vector<uint32_t> out;
+    for (size_t i = 0; i < cand.size() && out.size() < k; ++i) out.push_back(cand[i].id);
+    return out;
+  }
+
+  // ---- P3 hide: score only from DramWindow; fills are lookahead / miss recovery ----
+  if (pref.policy == PrefetchPolicy::P3) {
+    const uint32_t W = pref.pipe_w ? pref.pipe_w : 8;
+    uint32_t expands = 0;
+    const size_t pb = win.page_bytes;
+    const uint32_t look_k = pref.lookahead_k;
+    uint32_t Rlim = pl.hdr->R;
+    if (Rlim > 64) Rlim = 64;
+
+    PageCopyPool local_pool;
+    PageCopyPool* pool = ext_pool ? ext_pool : &local_pool;
+    if (pool->nworkers == 0) pool->start(W);
+
+    HidePipe pipe;
+    pipe.pool = pool;
+    pipe.win = &win;
+    pipe.pl = &pl;
+    pipe.vio = vio;
+    pipe.m = cur_met(win);
+
+    auto vec_ptr = [&](uint32_t id, uint32_t src, uint32_t slotk) -> const uint8_t* {
+      if (pl.has_bundle()) return pl.bundle_slot(src, slotk);
+      (void)src;
+      (void)slotk;
+      return pl.vec(id);
+    };
+
+    auto score_resident = [&](uint32_t id, uint32_t src, uint32_t slotk, bool before_ioctl) {
+      alignas(64) uint8_t buf[4096];
+      if (vb > sizeof(buf)) {
+        fprintf(stderr, "vec too large for score buf\n");
+        std::exit(2);
+      }
+      const uint8_t* vp = vec_ptr(id, src, slotk);
+      if (!win.copy_if_resident(pl.ssd_base, vp, vb, buf)) {
+        win.copy_through(pl.ssd_base, vp, vb, buf);
+        if (cur_met(win)) cur_met(win)->note_score_from_bounce(1);
+      } else if (cur_met(win)) {
+        if (before_ioctl) cur_met(win)->note_score_from_window(1);
+        else cur_met(win)->note_score_from_bounce(1);
+      }
+      float d = vec_mips_neg(buf, qf, pl.hdr->dim, pl.hdr->vec_bytes);
+      if (cur_met(win)) {
+        cur_met(win)->distance_comps++;
+        cur_met(win)->note_pf_score_vec(vb);
+        cur_met(win)->note_pf_scored_id(id);
+        std::vector<uint64_t> sp;
+        std::unordered_set<uint64_t> ss;
+        uint64_t off = (uint64_t)(vp - pl.ssd_base);
+        uint64_t end = off + vb;
+        uint64_t first = off & ~(uint64_t)(pb - 1);
+        uint64_t last = (end - 1) & ~(uint64_t)(pb - 1);
+        for (uint64_t p = first; p <= last; p += pb) {
+          if (ss.insert(p).second) sp.push_back(p);
+        }
+        cur_met(win)->note_pf_used(sp);
+      }
+      insert_cand(id, d);
+    };
+
+    // After a page is in the window, access+compute every resident vector on it
+    // (5×800B in 4KiB → slot_use 100% only if all five are scored).
+    auto score_page_occupants = [&](uint32_t id) {
+      if (!pref.score_page) return;
+      std::vector<uint64_t> pages;
+      std::unordered_set<uint64_t> ps;
+      hide_collect_vec_pages(pl, vb, pb, id, pages, &ps);
+      for (uint64_t p : pages) {
+        pl.for_ids_contained_in_page(p, pb, [&](uint32_t sib) {
+          if (sib >= pl.hdr->n || seen.count(sib)) return;
+          if (!win.is_resident(pl.ssd_base, pl.vec(sib), vb)) return;
+          seen.insert(sib);
+          score_resident(sib, sib, 0, true);
+        });
+      }
+    };
+
+    auto collect_nbr_pages = [&](uint32_t node, std::vector<uint64_t>& pages,
+                                 std::unordered_set<uint64_t>& pseen,
+                                 const std::unordered_set<uint32_t>& skip) {
+      uint32_t nbrs_local[64];
+      hide_read_nbrs(pl, node, nbrs_local, Rlim);
+      uint32_t lim = pref.neighbor_k && pref.neighbor_k < Rlim ? pref.neighbor_k : Rlim;
+      if (pl.has_bundle()) {
+        std::unordered_set<uint32_t> want;
+        for (uint32_t j = 0; j < lim; ++j) {
+          uint32_t nb = nbrs_local[j];
+          if (nb >= pl.hdr->n || skip.count(nb)) continue;
+          want.insert(nb);
+        }
+        hide_collect_bundle_pages(pl, vb, pb, node, nbrs_local, lim, want, pages, &pseen,
+                                 cur_met(win), pref.min_issue_use);
+        return;
+      }
+      for (uint32_t j = 0; j < lim; ++j) {
+        uint32_t nb = nbrs_local[j];
+        if (nb >= pl.hdr->n || skip.count(nb)) continue;
+        hide_collect_vec_pages(pl, vb, pb, nb, pages, &pseen);
+      }
+    };
+
+    auto collect_lookahead_pages = [&]() {
+      std::vector<Cand> unexp;
+      unexp.reserve(cand.size());
+      for (const auto& c : cand) {
+        if (!expanded.count(c.id)) unexp.push_back(c);
+      }
+      std::sort(unexp.begin(), unexp.end(),
+                [](const Cand& a, const Cand& b) { return a.dist < b.dist; });
+      uint32_t n = look_k < (uint32_t)unexp.size() ? look_k : (uint32_t)unexp.size();
+      std::vector<uint64_t> pages;
+      std::unordered_set<uint64_t> pseen;
+      pages.reserve((size_t)n * 8);
+      for (uint32_t i = 0; i < n; ++i) {
+        collect_nbr_pages(unexp[i].id, pages, pseen, seen);
+      }
+      return pages;
+    };
+
+    struct Pend {
+      uint32_t id, src, k;
+    };
+    std::vector<Pend> pending;
+    std::unordered_set<uint32_t> pending_set;
+
+    auto finish_score = [&](uint32_t id, const uint8_t* vp, float d) {
+      if (cur_met(win)) {
+        cur_met(win)->distance_comps++;
+        cur_met(win)->note_score_from_window(1);
+        cur_met(win)->note_pf_score_vec(vb);
+        cur_met(win)->note_pf_scored_id(id);
+        std::vector<uint64_t> sp;
+        uint64_t off = (uint64_t)(vp - pl.ssd_base);
+        uint64_t first = off & ~(uint64_t)(pb - 1);
+        uint64_t last = (off + vb - 1) & ~(uint64_t)(pb - 1);
+        for (uint64_t p = first; p <= last; p += pb) sp.push_back(p);
+        cur_met(win)->note_pf_used(sp);
+      }
+      insert_cand(id, d);
+    };
+
+    auto drain_score = [&]() {
+      if (pending.empty()) return;
+      std::vector<Pend> still;
+      still.reserve(pending.size());
+      for (const Pend& e : pending) {
+        const uint8_t* vp = vec_ptr(e.id, e.src, e.k);
+        alignas(64) uint8_t buf[4096];
+        if (vb > sizeof(buf)) {
+          fprintf(stderr, "vec too large for score buf\n");
+          std::exit(2);
+        }
+        if (!win.try_copy_resident(pl.ssd_base, vp, vb, buf)) {
+          still.push_back(e);
+          continue;
+        }
+        pending_set.erase(e.id);
+        finish_score(e.id, vp, vec_mips_neg(buf, qf, pl.hdr->dim, pl.hdr->vec_bytes));
+        if (!pl.has_bundle()) score_page_occupants(e.id);
+      }
+      pending.swap(still);
+    };
+    auto drain_pending = [&]() {
+      pipe.pump();
+      drain_score();
+    };
+    // after_pump during hide_wait raised nq=20 QPS but nq=100 evicts (44.60 < 49.25).
+
+    auto hop_hide_score = [&](uint32_t src, const uint32_t* nbrs_all, uint32_t n_nbr,
+                              std::vector<uint32_t>& ids) {
+      pipe.pump();
+      std::unordered_map<uint32_t, uint32_t> id_to_k;
+      if (pl.has_bundle()) {
+        for (uint32_t k = 0; k < n_nbr; ++k) id_to_k[nbrs_all[k]] = k;
+      }
+      auto slotk = [&](uint32_t id) -> uint32_t {
+        if (!pl.has_bundle()) return 0;
+        auto it = id_to_k.find(id);
+        return it == id_to_k.end() ? 0 : it->second;
+      };
+      std::vector<uint32_t> hit, miss;
+      hit.reserve(ids.size());
+      miss.reserve(ids.size());
+      for (uint32_t id : ids) {
+        uint32_t k = slotk(id);
+        if (win.is_resident(pl.ssd_base, vec_ptr(id, src, k), vb))
+          hit.push_back(id);
+        else
+          miss.push_back(id);
+      }
+      if (!pref.freeze_fills && !miss.empty()) {
+        std::vector<uint64_t> now;
+        std::unordered_set<uint64_t> ps;
+        if (pl.has_bundle()) {
+          std::unordered_set<uint32_t> want(miss.begin(), miss.end());
+          hide_collect_bundle_pages(pl, vb, pb, src, nbrs_all, n_nbr, want, now, &ps,
+                                   cur_met(win), pref.min_issue_use);
+        } else {
+          for (uint32_t id : miss) hide_collect_vec_pages(pl, vb, pb, id, now, &ps);
+        }
+        pipe.issue(now, /*ttl=*/128, /*stall_if_full=*/true);
+        for (uint32_t id : miss) {
+          if (pending_set.insert(id).second)
+            pending.push_back(Pend{id, src, slotk(id)});
+        }
+        if (look_k && win.resident_bytes() + (32ull << 20) < win.capacity)
+          pipe.issue(collect_lookahead_pages(), /*ttl=*/64, false, true);
+      } else if (!pref.freeze_fills && look_k &&
+                 win.resident_bytes() + (32ull << 20) < win.capacity) {
+        pipe.issue(collect_lookahead_pages(), /*ttl=*/64, false, true);
+      }
+      for (uint32_t id : hit) {
+        score_resident(id, src, slotk(id), true);
+        if (!pl.has_bundle()) score_page_occupants(id);
+        pipe.pump();
+      }
+      drain_pending();
+    };
+
+    const uint32_t ebatch = pref.expand_batch ? pref.expand_batch : 1;
+    const uint32_t ahead = pref.issue_ahead ? pref.issue_ahead : 1;
+
+    auto pick_batch = [&]() -> std::vector<uint32_t> {
+      std::vector<uint32_t> batch;
+      batch.reserve(ebatch);
+      for (uint32_t t = 0; t < ebatch; ++t) {
+        int bi = -1;
+        float bd = 0;
+        for (size_t i = 0; i < cand.size(); ++i) {
+          if (expanded.count(cand[i].id)) continue;
+          if (bi < 0 || cand[i].dist < bd) {
+            bi = (int)i;
+            bd = cand[i].dist;
+          }
+        }
+        if (bi < 0) break;
+        if (iters != 0 && expands >= iters) break;
+        uint32_t id = cand[(size_t)bi].id;
+        expanded.insert(id);
+        expands++;
+        batch.push_back(id);
+      }
+      return batch;
+    };
+
+    std::vector<uint64_t> issued_pages;
+    auto issue_bundle_batch = [&](const std::vector<uint32_t>& batch) {
+      if (batch.empty()) return;
+      if (ebatch == 1 || !pl.has_bundle()) {
+        for (uint32_t cur : batch) {
+          uint32_t nbrs_local[64];
+          hide_read_nbrs(pl, cur, nbrs_local, Rlim);
+          std::vector<uint32_t> to_score;
+          to_score.reserve(Rlim);
+          for (uint32_t j = 0; j < Rlim; ++j) {
+            uint32_t nb = nbrs_local[j];
+            if (nb >= pl.hdr->n || seen.count(nb)) continue;
+            seen.insert(nb);
+            to_score.push_back(nb);
+          }
+          hop_hide_score(cur, nbrs_local, Rlim, to_score);
+        }
+        return;
+      }
+      std::vector<uint64_t> now;
+      std::unordered_set<uint64_t> ps;
+      now.reserve(batch.size() * 8);
+      for (uint32_t cur : batch) {
+        uint32_t nbrs_local[64];
+        hide_read_nbrs(pl, cur, nbrs_local, Rlim);
+        std::vector<uint32_t> to_score;
+        to_score.reserve(Rlim);
+        for (uint32_t j = 0; j < Rlim; ++j) {
+          uint32_t nb = nbrs_local[j];
+          if (nb >= pl.hdr->n || seen.count(nb)) continue;
+          seen.insert(nb);
+          to_score.push_back(nb);
+        }
+        std::unordered_set<uint32_t> want(to_score.begin(), to_score.end());
+        hide_collect_bundle_pages(pl, vb, pb, cur, nbrs_local, Rlim, want, now, &ps,
+                                 cur_met(win), pref.min_issue_use);
+        for (uint32_t j = 0; j < Rlim; ++j) {
+          uint32_t nb = nbrs_local[j];
+          if (!want.count(nb)) continue;
+          if (pending_set.insert(nb).second) pending.push_back(Pend{nb, cur, j});
+        }
+      }
+      issued_pages.swap(now);
+    };
+
+    if (!pref.freeze_fills && look_k)
+      pipe.issue(collect_lookahead_pages(), /*ttl=*/64, false, true);
+    while (true) {
+      if (iters != 0 && expands >= iters) break;
+      uint32_t issued_waves = 0;
+      for (uint32_t w = 0; w < ahead; ++w) {
+        auto batch = pick_batch();
+        if (batch.empty()) break;
+        issued_pages.clear();
+        issue_bundle_batch(batch);
+        if (!issued_pages.empty())
+          pipe.issue(issued_pages, /*ttl=*/128, /*stall_if_full=*/true);
+        pipe.pump();
+        issued_waves++;
+      }
+      if (issued_waves == 0) {
+        if (pending.empty() || pref.freeze_fills) break;
+        std::vector<uint64_t> need;
+        std::unordered_set<uint64_t> nps;
+        for (const Pend& e : pending) {
+          if (pl.has_bundle()) {
+            uint64_t off = pl.bundle_off + (uint64_t)e.src * pl.bundle_stride +
+                           (uint64_t)e.k * pl.packed_vec_bytes();
+            uint64_t end = off + vb;
+            uint64_t first = off & ~(uint64_t)(pb - 1);
+            uint64_t last = (end - 1) & ~(uint64_t)(pb - 1);
+            for (uint64_t p = first; p <= last; p += pb)
+              if (nps.insert(p).second) need.push_back(p);
+          } else {
+            hide_collect_vec_pages(pl, vb, pb, e.id, need, &nps);
+          }
+        }
+        pipe.issue(need, /*ttl=*/128, /*stall_if_full=*/true);
+        uint64_t wns = pipe.wait_covering(need);
+        if (!wns && !pending.empty()) wns = pipe.wait_all();
+        if (cur_met(win)) {
+          cur_met(win)->device_fill_ns += wns;
+          cur_met(win)->crit_wait_ns += wns;
+        }
+        drain_pending();
+        continue;
+      }
+      drain_pending();
     }
 
-    drain_installs(pending_install.size());
+    {
+      uint64_t wns = pipe.wait_all();
+      if (cur_met(win)) cur_met(win)->device_fill_ns += wns;
+    }
+    drain_pending();
     if (!ext_pool) pool->stop_join();
-    if (ctrl.hops_out) *ctrl.hops_out = hops_done;
 
     std::sort(cand.begin(), cand.end(),
               [](const Cand& a, const Cand& b) { return a.dist < b.dist; });
@@ -737,7 +786,10 @@ static std::vector<uint32_t> search_one_fp(Placement& pl, DramWindow& win, Prefe
         uint32_t nbrs_local[64];
         uint32_t R = pl.hdr->R;
         if (R > 64) R = 64;
-        read_nbrs(cur, nbrs_local, R);
+        alignas(64) uint8_t nbuf[64 * 4];
+        win.copy_through(pl.ssd_base, reinterpret_cast<const uint8_t*>(pl.nbrs(cur)),
+                         (size_t)R * 4, nbuf);
+        std::memcpy(nbrs_local, nbuf, (size_t)R * 4);
         for (uint32_t j = 0; j < R; ++j) {
           uint32_t nb = nbrs_local[j];
           if (nb >= pl.hdr->n || seen.count(nb)) continue;
@@ -774,10 +826,8 @@ static std::vector<uint32_t> search_one_fp(Placement& pl, DramWindow& win, Prefe
         }
         if (!any_unexp && !pending.empty()) force_one_pending();
       }
-      if (maybe_early_stop()) break;
     }
 
-    if (ctrl.hops_out) *ctrl.hops_out = hops_done;
     std::sort(cand.begin(), cand.end(),
               [](const Cand& a, const Cand& b) { return a.dist < b.dist; });
     std::vector<uint32_t> out;
@@ -810,20 +860,19 @@ static std::vector<uint32_t> search_one_fp(Placement& pl, DramWindow& win, Prefe
       pref.prefetch_by_cand_distance(pl, win, unexp, seen);
     }
 
+    const uint32_t* nbrs_ptr = get_nbr(cur);
     uint32_t nbrs_local[64];
     uint32_t R = pl.hdr->R;
     if (R > 64) R = 64;
-    read_nbrs(cur, nbrs_local, R);
+    std::memcpy(nbrs_local, nbrs_ptr, R * sizeof(uint32_t));
     for (uint32_t j = 0; j < R; ++j) {
       uint32_t nb = nbrs_local[j];
       if (nb >= pl.hdr->n || seen.count(nb)) continue;
       seen.insert(nb);
       score_id(nb);
     }
-    if (maybe_early_stop()) break;
   }
 
-  if (ctrl.hops_out) *ctrl.hops_out = hops_done;
   std::sort(cand.begin(), cand.end(),
             [](const Cand& a, const Cand& b) { return a.dist < b.dist; });
   std::vector<uint32_t> out;
@@ -835,10 +884,9 @@ static std::vector<uint32_t> search_one(Placement& pl, DramWindow& win, Prefetch
                                         PromotePipe* pipe, const EntryGraph& eg, const float* qf,
                                         const uint8_t* qpq, uint32_t beam, uint32_t k,
                                         uint32_t iters, bool rerank, bool oneshot_fp,
-                                        PageCopyPool* ext_pool = nullptr, VmemIo* vio = nullptr,
-                                        SearchCtrl ctrl = {}) {
+                                        PageCopyPool* ext_pool = nullptr, VmemIo* vio = nullptr) {
   if (oneshot_fp)
-    return search_one_fp(pl, win, pref, pipe, eg, qf, beam, k, iters, ext_pool, vio, ctrl);
+    return search_one_fp(pl, win, pref, pipe, eg, qf, beam, k, iters, ext_pool, vio);
 
   pref.on_query_begin(pl, win, eg.nodes, eg.entry_id);
   std::vector<Cand> beam_v;
@@ -850,7 +898,6 @@ static std::vector<uint32_t> search_one(Placement& pl, DramWindow& win, Prefetch
     return win.lookup_or_promote(pl.ssd_base, s, pl.hdr->pq_bytes);
   };
   auto get_nbr = [&](uint32_t id) {
-    if (pl.graph_host) return pl.nbrs(id);
     const uint8_t* s = reinterpret_cast<const uint8_t*>(pl.nbrs(id));
     return reinterpret_cast<const uint32_t*>(
         win.lookup_or_promote(pl.ssd_base, s, pl.hdr->R * 4));
@@ -873,7 +920,7 @@ static std::vector<uint32_t> search_one(Placement& pl, DramWindow& win, Prefetch
         if (nb >= pl.hdr->n || visited.count(nb)) continue;
         const uint8_t* code = get_pq(nb);
         float d = pq_l2(qpq, code, pl.hdr->pq_bytes);
-        if (win.metrics) win.metrics->distance_comps++;
+        if (cur_met(win)) cur_met(win)->distance_comps++;
         next.push_back({d, nb});
       }
     }
@@ -894,7 +941,7 @@ static std::vector<uint32_t> search_one(Placement& pl, DramWindow& win, Prefetch
       const uint8_t* raw = win.lookup_or_promote(pl.ssd_base, pl.vec(c.id),
                                                  (size_t)pl.hdr->dim * pl.hdr->vec_bytes);
       c.dist = vec_l2(raw, qf, pl.hdr->dim, pl.hdr->vec_bytes);
-      if (win.metrics) win.metrics->distance_comps++;
+      if (cur_met(win)) cur_met(win)->distance_comps++;
     }
     std::sort(pool.begin(), pool.end(),
               [](const Cand& a, const Cand& b) { return a.dist < b.dist; });
@@ -956,11 +1003,11 @@ int main(int argc, char** argv) {
   std::string policy_s = "P0";
   std::string dram_backend = getenv("CXAN_DRAM_BACKEND") ? getenv("CXAN_DRAM_BACKEND") : "dax";
   // dax | numa
-  size_t budget = 256 * 1024;
+  size_t budget = 64ull << 20;  // hide: 64 MiB lookahead budget default
   size_t dram_bytes = getenv("CXAN_DRAM_BYTES")
                           ? strtoull(getenv("CXAN_DRAM_BYTES"), nullptr, 10)
                           : (1ull << 30);
-  uint32_t pipe_w = 4;
+  uint32_t pipe_w = 16;
   uint32_t install_top = 4;
   uint32_t fetch_top = 0;
   uint32_t beam = 32, k = 10, iters = 64;
@@ -975,13 +1022,23 @@ int main(int argc, char** argv) {
   bool page_group_b = false;
   bool install_all_fetched = false;
   bool vmem_prefetch = true;
+  bool graph_in_dram = true;
+  bool hide_warm_entry = true;
+  uint32_t lookahead_k = 0;
+  uint32_t expand_batch = 1;
+  uint32_t issue_ahead = 1;
+  bool issue_ahead_explicit = false;
+  bool pref_score_page = true;
+  bool use_nbr_bundle = false;
+  bool lookahead_explicit = false;
+  bool expand_batch_explicit = false;
+  bool oracle_dram = false;
+  bool oracle_window = false;
+  const char* graph_file = nullptr;
+  const char* dump_scored = nullptr;
   int nthreads = 1;
   bool per_thread_window = true;  // each request thread owns a DramWindow (no shared lock)
-  bool graph_in_dram = false;
-  size_t hotset_bytes = 0;
-  uint32_t hotset_aging = 32;
-  uint32_t early_stop_patience = 0;
-  float early_stop_eps = 1e-6f;
+  int min_issue_use_n = 0;       // --min-issue-use N → threshold N/100; 0=off
 
   for (int i = 1; i < argc; ++i) {
     std::string a = argv[i];
@@ -1022,17 +1079,41 @@ int main(int argc, char** argv) {
     else if (a == "--no-page-group") page_group_b = false;
     else if (a == "--install-all-fetched") install_all_fetched = true;
     else if (a == "--no-vmem-prefetch") vmem_prefetch = false;
+    else if (a == "--graph-in-dram") graph_in_dram = true;
+    else if (a == "--no-graph-in-dram") graph_in_dram = false;
+    else if (a == "--hide-warm-entry") hide_warm_entry = true;
+    else if (a == "--no-hide-warm-entry") hide_warm_entry = false;
+    else if (a == "--lookahead-k") {
+      lookahead_k = (uint32_t)atoi(need(a.c_str()));
+      lookahead_explicit = true;
+    }
+    else if (a == "--nbr-bundle") use_nbr_bundle = true;
+    else if (a == "--expand-batch") {
+      expand_batch = (uint32_t)atoi(need(a.c_str()));
+      expand_batch_explicit = true;
+    }
+    else if (a == "--issue-ahead") {
+      issue_ahead = (uint32_t)atoi(need(a.c_str()));
+      issue_ahead_explicit = true;
+    }
+    else if (a == "--score-page") pref_score_page = true;
+    else if (a == "--no-score-page") pref_score_page = false;
+    else if (a == "--min-issue-use") {
+      min_issue_use_n = atoi(need(a.c_str()));
+      if (min_issue_use_n < 0) min_issue_use_n = 0;
+      if (min_issue_use_n > 100) min_issue_use_n = 100;
+    }
+    else if (a == "--oracle-dram") oracle_dram = true;
+    else if (a == "--oracle-window") oracle_window = true;
+    else if (a == "--graph-file") graph_file = need(a.c_str());
+    else if (a == "--dump-scored") dump_scored = need(a.c_str());
+    else if (a == "--cont-batch") {
+      nthreads = atoi(need(a.c_str()));
+      per_thread_window = false;  // shared window + overlapped NAND waits
+    }
     else if (a == "--threads") nthreads = atoi(need(a.c_str()));
     else if (a == "--per-thread-window") per_thread_window = true;
     else if (a == "--shared-window") per_thread_window = false;
-    else if (a == "--graph-in-dram") graph_in_dram = true;
-    else if (a == "--hotset-bytes") hotset_bytes = strtoull(need(a.c_str()), nullptr, 10);
-    else if (a == "--hotset-aging") hotset_aging = (uint32_t)atoi(need(a.c_str()));
-    else if (a == "--no-hotset") hotset_bytes = 0;
-    else if (a == "--early-stop-patience")
-      early_stop_patience = (uint32_t)atoi(need(a.c_str()));
-    else if (a == "--early-stop-eps") early_stop_eps = (float)atof(need(a.c_str()));
-    else if (a == "--no-promote") policy_s = "P0";
     else {
       fprintf(stderr, "unknown %s\n", a.c_str());
       return 2;
@@ -1059,6 +1140,14 @@ int main(int argc, char** argv) {
     fprintf(stderr, "numa required for --dram-backend numa\n");
     return 2;
   }
+  if (oracle_dram && !image) {
+    fprintf(stderr, "--oracle-dram needs --image (host layout in DRAM)\n");
+    return 2;
+  }
+  if (oracle_dram) {
+    vmem_dev = nullptr;  // score from host mmap, not CXL-SSD
+    hide_warm_entry = false;
+  }
 
   size_t img_len = 0;
   void* img = nullptr;
@@ -1070,10 +1159,11 @@ int main(int argc, char** argv) {
     }
     img = map_vmem_ro(vmem_dev, vmem_off, vmem_len, &vmem_fd);
     img_len = vmem_len;
-    printf("mapped vmem %s off=%lld len=%zu fd=%d prefetch=%d\n", vmem_dev,
-           (long long)vmem_off, vmem_len, vmem_fd, (int)vmem_prefetch);
+    printf("mapped vmem %s off=%lld len=%zu fd=%d prefetch=%d cache_used=%llu\n", vmem_dev,
+           (long long)vmem_off, vmem_len, vmem_fd, (int)vmem_prefetch,
+           (unsigned long long)vmem_cache_used());
   } else {
-    img = map_file_ro(image, &img_len);
+    img = map_file_ro(image, &img_len, oracle_dram);
   }
   auto* hdr = reinterpret_cast<CxanLayoutHeader*>(img);
   if (hdr->magic != kCxanMagic) {
@@ -1085,15 +1175,73 @@ int main(int argc, char** argv) {
   pl.set_header(hdr);
   pl.ssd_base = static_cast<const uint8_t*>(img);
   pl.ssd_bytes = img_len;
-  std::vector<uint8_t> graph_host_buf;
-  if (graph_in_dram) {
-    graph_host_buf.assign(pl.ssd_base + hdr->off_graph,
-                          pl.ssd_base + hdr->off_graph + hdr->len_graph);
-    pl.set_graph_host(graph_host_buf.data(), graph_host_buf.size());
-    printf("graph_in_dram bytes=%zu\n", graph_host_buf.size());
+  if (use_nbr_bundle) {
+    const uint64_t packed = (uint64_t)hdr->dim * hdr->vec_bytes;
+    const uint64_t stride = (hdr->R * packed + 4095ull) & ~4095ull;
+    const uint64_t bbytes = (uint64_t)hdr->n * stride;
+    const uint64_t layout_len = vmem_len ? vmem_len : img_len;
+    if (vmem_dev && vmem_fd >= 0 && layout_len + bbytes > img_len) {
+      munmap(img, img_len);
+      img = mmap(nullptr, layout_len + bbytes, PROT_READ | PROT_WRITE, MAP_SHARED, vmem_fd,
+                 vmem_off);
+      if (img == MAP_FAILED) die("mmap vmem layout+bundle");
+      img_len = layout_len + bbytes;
+      hdr = reinterpret_cast<CxanLayoutHeader*>(img);
+      pl.set_header(hdr);
+      pl.ssd_base = static_cast<const uint8_t*>(img);
+    }
+    pl.ssd_bytes = img_len;
+    pl.bundle_off = layout_len;
+    pl.bundle_stride = stride;
+    pl.bundle_bytes = bbytes;
+    pref_score_page = false;
+    if (!expand_batch_explicit) expand_batch = 8;
+    if (!issue_ahead_explicit) issue_ahead = 2;
+    printf("nbr-bundle off=%llu stride=%llu bytes=%.2f GiB score_page=0 look_k=%u\n",
+           (unsigned long long)pl.bundle_off, (unsigned long long)pl.bundle_stride,
+           pl.bundle_bytes / (1024.0 * 1024 * 1024), lookahead_k);
   }
-  printf("vec_stride=%zu (packed=%zu)\n", pl.vec_stride,
-         (size_t)hdr->dim * hdr->vec_bytes);
+  std::vector<uint8_t> graph_host_buf;
+  if (graph_in_dram && hdr->len_graph) {
+    graph_host_buf.resize((size_t)hdr->len_graph);
+    bool ok = false;
+    if (graph_file && graph_file[0]) {
+      FILE* gf = fopen(graph_file, "rb");
+      if (gf && fread(graph_host_buf.data(), 1, graph_host_buf.size(), gf) ==
+                    graph_host_buf.size())
+        ok = true;
+      if (gf) fclose(gf);
+      if (ok) printf("graph-file %s\n", graph_file);
+    }
+    const char* host_layout = getenv("CXAN_HOST_LAYOUT");
+    if (!ok && host_layout && host_layout[0]) {
+      FILE* hf = fopen(host_layout, "rb");
+      if (hf) {
+        CxanLayoutHeader hh{};
+        if (fread(&hh, 1, sizeof(hh), hf) == sizeof(hh) && hh.magic == kCxanMagic &&
+            hh.n == hdr->n && hh.R == hdr->R && hh.len_graph == hdr->len_graph &&
+            fseeko(hf, (off_t)hh.off_graph, SEEK_SET) == 0 &&
+            fread(graph_host_buf.data(), 1, graph_host_buf.size(), hf) ==
+                graph_host_buf.size())
+          ok = true;
+        fclose(hf);
+        if (ok && memcmp(graph_host_buf.data(), pl.ssd_base + hdr->off_graph,
+                         std::min<size_t>(64, graph_host_buf.size())) != 0) {
+          fprintf(stderr, "WARN CXAN_HOST_LAYOUT graph != mapped image; using mmap\n");
+          ok = false;
+        }
+      }
+    }
+    if (!ok) {
+      memcpy(graph_host_buf.data(), pl.ssd_base + hdr->off_graph, graph_host_buf.size());
+      fprintf(stderr, "WARN graph-in-dram copied from mmap (may warm vmem cache)\n");
+    }
+    pl.set_graph_host(graph_host_buf.data(), graph_host_buf.size());
+    printf("graph-in-dram bytes=%zu src=%s\n", graph_host_buf.size(),
+           graph_file && ok ? "graph-file" : (ok ? "CXAN_HOST_LAYOUT" : "mmap"));
+  }
+  printf("vec_stride=%zu (packed=%zu) graph_in_dram=%d\n", pl.vec_stride,
+         (size_t)hdr->dim * hdr->vec_bytes, (int)graph_in_dram);
 
   Metrics metrics;
   void* dram = nullptr;
@@ -1103,6 +1251,12 @@ int main(int argc, char** argv) {
     dram = map_dram_numa(dram_bytes, dram_numa);
   }
   DramWindow win;
+  if (hide_warm_entry) {
+    win.pin_bytes_cap = 256ull << 20;
+    // Leave ≥256MiB unpinned so clock eviction stays O(1). pin 256 + soft 768
+    // filled the whole 1GiB window; every evict scanned 256k frames (nq=100).
+    win.soft_pin_bytes_cap = 512ull << 20;
+  }
   win.init(dram, dram_bytes, &metrics);
   win.soft_pin_neighbors = page_group_b;
 
@@ -1115,14 +1269,23 @@ int main(int argc, char** argv) {
   pref.fetch_top = fetch_top;
   pref.page_group_b = page_group_b;
   pref.install_all_fetched = install_all_fetched;
+  pref.lookahead_k = lookahead_k;
+  pref.expand_batch = expand_batch ? expand_batch : 1;
+  pref.issue_ahead = issue_ahead ? issue_ahead : 1;
+  pref.score_page = pref_score_page;
+  pref.min_issue_use = (float)min_issue_use_n / 100.f;
+  pref.oracle_dram = oracle_dram;
   // P2v2 is cooperative single-threaded (DAX is not safe for concurrent promote).
   if (false && pref.policy == PrefetchPolicy::P2) pref.start_async(&pl, &win);
 
   if (pref.policy == PrefetchPolicy::P3) {
     printf("P3v2 softpin W=%u budget=%zu install_top=%u fetch_top=%u page_group_b=%d "
-           "install_all=%d threads=%d per_thread_window=%d\n",
+           "install_all=%d threads=%d per_thread_window=%d cont_batch=%d score_page=%d "
+           "expand_batch=%u issue_ahead=%u min_issue_use=%.2f\n",
            pref.pipe_w, budget, pref.install_top, pref.fetch_top, (int)page_group_b,
-           (int)install_all_fetched, nthreads, (int)per_thread_window);
+           (int)install_all_fetched, nthreads, (int)per_thread_window,
+           (int)(!per_thread_window && nthreads > 1), (int)pref.score_page, pref.expand_batch,
+           pref.issue_ahead, pref.min_issue_use);
   }
 
   EntryGraph eg = load_entry(entry);
@@ -1220,8 +1383,10 @@ int main(int argc, char** argv) {
   }
 
   printf("query_select nq=%u/%u shuffle_seed=%d flush_window=%d oneshot_fp=%d "
+         "oracle_dram=%d oracle_window=%d "
          "pin_entry=%d host_used=%zu host_cap=%zu dram_bytes=%zu pin_cap=%zu\n",
-         nq, nq_file, shuffle_seed, (int)flush_window, (int)oneshot_fp, (int)pin_entry,
+         nq, nq_file, shuffle_seed, (int)flush_window, (int)oneshot_fp,
+         (int)oracle_dram, (int)oracle_window, (int)pin_entry,
          host_used, host_cap, dram_bytes, win.pin_bytes_cap);
   fflush(stdout);
 
@@ -1239,13 +1404,27 @@ int main(int argc, char** argv) {
   vio.image_off = vmem_off >= 0 ? vmem_off : 0;
   vio.prefetch = vmem_prefetch && vmem_fd >= 0;
 
-  if (nthreads > 1 && hotset_bytes > 0) {
-    fprintf(stderr, "warn: --hotset-bytes ignored when --threads>1 (single-thread only)\n");
-    hotset_bytes = 0;
+  if (hide_warm_entry && pref.policy == PrefetchPolicy::P3 && !oracle_dram) {
+    PageCopyPool* wp = use_shared_pool ? &shared_pool : nullptr;
+    PageCopyPool warm_pool;
+    if (!wp) {
+      warm_pool.start(pref.pipe_w);
+      wp = &warm_pool;
+    }
+    size_t nw = hide_warm_entry_ball(pl, win, *wp, &vio, eg.nodes, eg.entry_id);
+    pref.entry_pinned = true;
+    printf("hide_warm_entry ids=%zu pin_bytes=%zu/%zu\n", nw, win.pin_bytes_used,
+           win.pin_bytes_cap);
+    fflush(stdout);
+    metrics.pf_issued.clear();
+    metrics.pf_used.clear();
+    metrics.pf_look.clear();
+    metrics.pf_scored_vec_bytes = 0;
+    metrics.pf_ids_on_issued.clear();
+    metrics.pf_ids_scored.clear();
+    metrics.pf_issue_slots = 0;
+    metrics.pf_issue_want_slots = 0;
   }
-  HotSet hotset;
-  hotset.aging_period = hotset_aging;
-  std::atomic<uint64_t> hops_sum{0};
 
   auto run_one_q = [&](uint32_t qi, Prefetch& lp, DramWindow& w, PageCopyPool* pool) {
     if (flush_window) w.flush();
@@ -1261,19 +1440,8 @@ int main(int argc, char** argv) {
       }
     }
     auto tq0 = std::chrono::steady_clock::now();
-    SearchCtrl ctrl;
-    uint32_t hops = 0;
-    ctrl.hotset = hotset_bytes > 0 ? &hotset : nullptr;
-    ctrl.early_stop_patience = early_stop_patience;
-    ctrl.early_stop_eps = early_stop_eps;
-    ctrl.hops_out = &hops;
     auto ids = search_one(pl, w, lp, nullptr, eg, qf, qpq.data(), beam, k, iters, rerank,
-                          oneshot_fp, pool, &vio, ctrl);
-    hops_sum.fetch_add(hops, std::memory_order_relaxed);
-    if (ctrl.hotset) hotset.on_query_end();
-    if (hotset_bytes > 0 && !flush_window) {
-      w.pin_vec_ids(pl, hotset.top_ids(hotset_bytes, pl.packed_vec_bytes()), w.metrics);
-    }
+                          oneshot_fp, pool, &vio);
     auto tq1 = std::chrono::steady_clock::now();
     double ms = std::chrono::duration<double, std::milli>(tq1 - tq0).count();
     double rec = -1;
@@ -1289,10 +1457,104 @@ int main(int argc, char** argv) {
     return std::make_pair(ms, rec);
   };
 
+  // Shared / T=1: pin eval WS into the window that the timed loop actually uses.
+  // Per-thread windows are created below — warming the unused main window would
+  // freeze_fills before those windows exist (empty 512MiB, bogus T-way oracle).
+  if (oracle_window && !(nthreads > 1 && per_thread_window)) {
+    printf("oracle-window discarded pass nq=%u (pin WS into shared window)\n", nq);
+    fflush(stdout);
+    for (uint32_t qi = 0; qi < nq; ++qi)
+      (void)run_one_q(qi, pref, win, use_shared_pool ? &shared_pool : nullptr);
+    metrics.reset();
+    pref.freeze_fills = true;
+    vio.prefetch = false;
+    printf("oracle-window timed pass freeze_fills=1 pin_bytes=%zu\n", win.pin_bytes_used);
+    fflush(stdout);
+  }
+
+  FILE* scored_fp = nullptr;
+  if (dump_scored) {
+    if (nthreads > 1) die("--dump-scored needs --threads 1");
+    scored_fp = fopen(dump_scored, "wb");
+    if (!scored_fp) die("open --dump-scored");
+    uint32_t mag = 0x44524353u, z = nq;
+    fwrite(&mag, 4, 1, scored_fp);
+    fwrite(&z, 4, 1, scored_fp);
+    printf("dump-scored %s nq=%u\n", dump_scored, nq);
+  }
+
+  struct ThrCtx {
+    void* dram = nullptr;
+    DramWindow win;
+    PageCopyPool pool;
+    Metrics m;
+  };
+  std::vector<std::unique_ptr<ThrCtx>> thr_ctx;
+  if (nthreads > 1 && per_thread_window) {
+    auto pin = 256ull << 20;
+    auto soft = 512ull << 20;
+    if (pin > dram_bytes / 4) pin = dram_bytes / 4;
+    if (soft > dram_bytes / 2) soft = dram_bytes / 2;
+    for (int t = 0; t < nthreads; ++t) {
+      auto c = std::make_unique<ThrCtx>();
+      if (dram_backend == "dax")
+        c->dram = map_dram_dax(dax_dev, dax_off + (off_t)t * (off_t)dram_bytes, dram_bytes);
+      else
+        c->dram = map_dram_numa(dram_bytes, dram_numa);
+      if (hide_warm_entry) {
+        c->win.pin_bytes_cap = pin;
+        c->win.soft_pin_bytes_cap = soft;
+      }
+      c->win.init(c->dram, dram_bytes, &c->m);
+      c->win.soft_pin_neighbors = page_group_b;
+      if (pref.policy == PrefetchPolicy::P3) {
+        c->pool.start(pref.pipe_w);
+        if (hide_warm_entry && !oracle_dram) {
+          hide_warm_entry_ball(pl, c->win, c->pool, &vio, eg.nodes, eg.entry_id);
+          c->m.pf_issued.clear();
+          c->m.pf_used.clear();
+          c->m.pf_look.clear();
+          c->m.pf_ids_on_issued.clear();
+          c->m.pf_ids_scored.clear();
+          c->m.pf_scored_vec_bytes = 0;
+          c->m.pf_issue_slots = 0;
+          c->m.pf_issue_want_slots = 0;
+        }
+      }
+      thr_ctx.push_back(std::move(c));
+    }
+    printf("per-thread windows=%d dram_bytes=%zu warm_before_timed=1\n", nthreads, dram_bytes);
+    fflush(stdout);
+  }
+
+  if (oracle_window && nthreads > 1 && per_thread_window) {
+    printf("oracle-window discarded pass nq=%u threads=%d (pin each thread's own queries)\n",
+           nq, nthreads);
+    fflush(stdout);
+    for (int t = 0; t < nthreads; ++t) {
+      for (uint32_t qi = (uint32_t)t; qi < nq; qi += (uint32_t)nthreads)
+        (void)run_one_q(qi, pref, thr_ctx[(size_t)t]->win, &thr_ctx[(size_t)t]->pool);
+    }
+    metrics.reset();
+    for (auto& c : thr_ctx) c->m.reset();
+    pref.freeze_fills = true;
+    vio.prefetch = false;
+    printf("oracle-window timed pass freeze_fills=1 pin_bytes=%zu\n",
+           thr_ctx.empty() ? 0 : thr_ctx[0]->win.pin_bytes_used);
+    fflush(stdout);
+  }
+
+  const uint64_t nvme_sect0 = nvme_read_sectors();
   auto t0 = std::chrono::steady_clock::now();
   if (nthreads <= 1) {
     for (uint32_t qi = 0; qi < nq; ++qi) {
       auto r = run_one_q(qi, pref, win, use_shared_pool ? &shared_pool : nullptr);
+      if (scored_fp) {
+        uint32_t ns = (uint32_t)metrics.pf_ids_scored.size();
+        fwrite(&ns, 4, 1, scored_fp);
+        for (uint32_t id : metrics.pf_ids_scored) fwrite(&id, 4, 1, scored_fp);
+        metrics.pf_ids_scored.clear();
+      }
       lat_ms.push_back(r.first);
       if (r.second >= 0) {
         recall_sum += r.second;
@@ -1318,38 +1580,45 @@ int main(int argc, char** argv) {
         lp.fetch_top = pref.fetch_top;
         lp.page_group_b = pref.page_group_b;
         lp.install_all_fetched = pref.install_all_fetched;
-
-        Metrics local_m;
+        lp.oracle_dram = pref.oracle_dram;
+        lp.freeze_fills = pref.freeze_fills;
+        lp.lookahead_k = pref.lookahead_k;
+        lp.expand_batch = pref.expand_batch;
+        lp.issue_ahead = pref.issue_ahead;
+        lp.score_page = pref.score_page;
+        lp.min_issue_use = pref.min_issue_use;
+        lp.neighbor_k = pref.neighbor_k;
         DramWindow* tw = &win;
-        void* local_dram = nullptr;
-        DramWindow local_win;
-        PageCopyPool local_pool;
         PageCopyPool* pool = use_shared_pool ? &shared_pool : nullptr;
+        Metrics local_m;
         if (per_thread_window) {
-          if (dram_backend == "dax")
-            local_dram = map_dram_dax(dax_dev, dax_off + (off_t)t * (off_t)dram_bytes, dram_bytes);
-          else
-            local_dram = map_dram_numa(dram_bytes, dram_numa);
-          local_win.init(local_dram, dram_bytes, &local_m);
-          local_win.soft_pin_neighbors = page_group_b;
-          tw = &local_win;
-          if (pref.policy == PrefetchPolicy::P3) {
-            local_pool.start(pref.pipe_w);
-            pool = &local_pool;
+          tw = &thr_ctx[(size_t)t]->win;
+          pool = &thr_ctx[(size_t)t]->pool;
+          tls_metrics = &thr_ctx[(size_t)t]->m;
+        } else {
+          tls_metrics = &local_m;
+        }
+        if (pref.freeze_fills && per_thread_window) {
+          // Same shard as the discarded pass: this window only holds qi%T==t.
+          for (uint32_t qi = (uint32_t)t; qi < nq; qi += (uint32_t)nthreads) {
+            auto r = run_one_q(qi, lp, *tw, pool);
+            lat_ms[qi] = r.first;
+            recs[qi] = r.second;
+          }
+        } else {
+          for (;;) {
+            uint32_t qi = next_q.fetch_add(1, std::memory_order_relaxed);
+            if (qi >= nq) break;
+            auto r = run_one_q(qi, lp, *tw, pool);
+            lat_ms[qi] = r.first;
+            recs[qi] = r.second;
           }
         }
-        for (;;) {
-          uint32_t qi = next_q.fetch_add(1, std::memory_order_relaxed);
-          if (qi >= nq) break;
-          auto r = run_one_q(qi, lp, *tw, pool);
-          lat_ms[qi] = r.first;
-          recs[qi] = r.second;
-        }
-        if (per_thread_window) {
+        tls_metrics = nullptr;
+        if (!per_thread_window) {
           std::lock_guard<std::mutex> g(merge_mu);
           metrics.add_from(local_m);
         }
-        if (local_dram) munmap(local_dram, dram_bytes);
       });
     }
     for (auto& th : ths) th.join();
@@ -1361,9 +1630,24 @@ int main(int argc, char** argv) {
       metrics.queries++;
     }
   }
-  if (use_shared_pool) shared_pool.stop_join();
   auto t1 = std::chrono::steady_clock::now();
+  if (nthreads > 1) {
+    for (auto& c : thr_ctx) {
+      metrics.add_from(c->m);
+      if (pref.policy == PrefetchPolicy::P3) c->pool.stop_join();
+      if (c->dram) munmap(c->dram, dram_bytes);
+    }
+  }
+  if (use_shared_pool) shared_pool.stop_join();
+  const uint64_t nvme_sect1 = nvme_read_sectors();
+  metrics.nvme_read_bytes =
+      nvme_sect1 >= nvme_sect0 ? (nvme_sect1 - nvme_sect0) * 512ull : 0;
+  if (scored_fp) {
+    fclose(scored_fp);
+    scored_fp = nullptr;
+  }
   double sec = std::chrono::duration<double>(t1 - t0).count();
+  metrics.wall_ns = (uint64_t)(sec * 1e9);
   double qps = nq / sec;
   double mean_lat = 0;
   for (double x : lat_ms) mean_lat += x;
@@ -1377,10 +1661,9 @@ int main(int argc, char** argv) {
   if (acc) hit_pct = 100.0 * (double)metrics.dram_hits / (double)acc;
 
   printf("policy=%s budget=%zu dram_bytes=%zu nq=%u beam=%u k=%u iters=%u oneshot_fp=%d "
-         "pin_bytes=%zu/%zu graph_in_dram=%d hotset_bytes=%zu early_stop_patience=%u\n",
+         "pin_bytes=%zu/%zu\n",
          policy_s.c_str(), budget, dram_bytes, nq, beam, k, iters, (int)oneshot_fp,
-         win.pin_bytes_used, win.pin_bytes_cap, (int)graph_in_dram, hotset_bytes,
-         early_stop_patience);
+         win.pin_bytes_used, win.pin_bytes_cap);
   double promote_gbs = sec > 0 ? (double)metrics.promote_bytes / 1e9 / sec : 0;
   printf("wall_s=%.3f throughput_QPS=%.2f\n", sec, qps);
   printf("cxl_ssd_to_dram_promote_GBps=%.3f promote_bytes=%llu target=12.0\n", promote_gbs,
@@ -1388,17 +1671,23 @@ int main(int argc, char** argv) {
   printf("latency_ms mean=%.3f p50=%.3f p90=%.3f p99=%.3f\n", mean_lat, p50, p90, p99);
   if (recall_n) printf("recall@%u=%.4f\n", k, recall);
   printf("cxl_dram_hit_pct=%.2f\n", hit_pct);
-  double hops_avg = nq ? (double)hops_sum.load() / (double)nq : 0;
-  printf("early_stop_hops_avg=%.2f precision_pct=%.1f\n", hops_avg, metrics.precision_pct());
   metrics.print();
+  {
+    const double nvme_gbs = sec > 0 ? (double)metrics.nvme_read_bytes / 1e9 / sec : 0;
+    const double peak = 1.560;  // isolated rnd PREFETCH_BATCH, nvme stat, true-cold
+    printf("nvme_real_GBps=%.3f occ_vs_rnd_peak=%.1f%% peak_GBps=%.3f page_use=%.2f "
+           "slot_use=%.2f issue_use=%.2f\n",
+           nvme_gbs, peak > 0 ? 100.0 * nvme_gbs / peak : 0, peak,
+           metrics.prefetch_page_use_pct(), metrics.prefetch_slot_use_pct(),
+           metrics.prefetch_issue_use_pct());
+  }
   printf("CSV,%s,%zu,%zu,%u,%u,%u,%.2f,%.3f,%.3f,%.3f,%.3f,%.4f,%.2f,%llu,%llu,"
-         "%.1f,%llu,%llu,%llu,%d,%zu,%u\n",
+         "%.2f,%.2f,%llu,%.2f\n",
          policy_s.c_str(), budget, dram_bytes, nq, beam, iters, qps, mean_lat, p50, p90, p99,
          recall, hit_pct, (unsigned long long)metrics.dram_hits,
-         (unsigned long long)metrics.ssd_misses, metrics.precision_pct(),
-         (unsigned long long)metrics.promote_pages, (unsigned long long)metrics.promote_used,
-         (unsigned long long)metrics.hotset_pins, (int)graph_in_dram, hotset_bytes,
-         early_stop_patience);
+         (unsigned long long)metrics.ssd_misses, metrics.score_from_window_pct(),
+         metrics.hide_precision_pct(), (unsigned long long)metrics.crit_wait_ns,
+         metrics.overlap_ratio());
 
   if (pref.policy == PrefetchPolicy::P2) pref.stop_async();
   munmap(dram, dram_bytes);

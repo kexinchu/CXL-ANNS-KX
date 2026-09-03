@@ -31,7 +31,7 @@
 
 \begin{document}
 
-\title{FlashANNS: Stall-Aware Graph Search on Flash-Backed CXL Memory}
+\title{FlashANNS: Hiding NAND from Graph Search on Flash-Backed CXL Memory}
 
 \begin{abstract}
 Billion-scale approximate nearest neighbor search (ANNS) must scale
@@ -39,26 +39,29 @@ corpus capacity and query throughput independently. Replicated block-SSD
 systems such as DiskANN pay a storage-replication tax as query hosts
 grow; full-in-memory CXL-DRAM systems such as CXL-ANNS and Cosmos pay a
 DRAM-capacity tax on the cold tail. Flash-backed CXL memory (CXL-SSD)
-is the third deployment point: a flash-priced corpus with a
-memory-semantic hot window and, under Shared FAM, a path to one-copy
-serving. It does not make NAND as fast as DRAM. Naive load/store search
-on this tier hits a two-order miss cliff, admits the wrong objects
-through page caches, pollutes the small DRAM window with low-precision
-prefetch, and collapses device parallelism to a blocking queue depth of
-one.
+is the third deployment point: a flash-priced corpus behind a small
+memory-semantic window. The service we want is stronger than ``slightly
+faster mmap'': from the host, scoring should look as if the working set
+already lived in CXL-DRAM, while most of $D$ stays on CXL-SSD because
+that window cannot hold the corpus. Prefetch, page admission, bandwidth
+caps, and continuous batching exist to finish NAND fills
+\emph{before} a hop scores---not to make a blocking miss cheaper.
 
-We present \sys{}, a graph-ANNS runtime that jointly manages residency
-and stalls on flash-backed CXL memory. \sys{} places the graph and PQ
-codes in host DRAM, promotes only high-precision frontier and hub
-records into a bounded window, shares that hot set across queries,
-controls search width under an iso-recall objective, and issues
-asynchronous memory-semantic fills with continuous fetch-level batching.
-On \num{datasets}, at iso-recall@\num{$k$}, \sys{} achieves
-\num{X$\times$} the throughput of naive CXL-SSD and comes within
-\num{Y} of a same-machine DiskANN/PipeANN block path, without lifting
-the corpus into CXL-DRAM. We evaluate a software CXL-SSD proxy, do not
-claim a measured 160\,GB/s device-internal path, and treat multi-host
-one-copy as a conditioned deployment model rather than a result.
+We present \sys{}, a graph-ANNS runtime that treats a window miss on
+the scoring path as a hide failure. Graph and PQ codes belong in host
+DRAM so the window is 100\% vectors; only high-precision frontier pages
+are admitted; search width is chosen at an iso-recall floor; fills are
+issued asynchronously and batched across queries so one pointer-chasing
+walk does not collapse device depth to one. The contract is 100\% of full-precision scores from the window and
+DRAM-class critical-path wait: entry 2-hop is warmed off the timed
+path, lookahead fills the next hop, and a miss while scoring is a
+failure we close. Prior hop-ranked P3 on true-cold Text2Image-10M
+(recall@10 $\ge 0.92$) was $3.3\times$ demand (5.35 vs.\ 1.64 QPS) with
+only 3--34\% window hits---the gap the hide engine exists to remove.
+A same-machine PipeANN block path remains the named residual. We evaluate an FPGA-attached
+NVMe plus a software memory-semantic proxy (\texttt{vmem\_sw}), do not
+claim a product CXL.mem SSD or a measured 160\,GB/s device-internal
+path, and treat multi-host one-copy as a conditioned deployment model.
 \end{abstract}
 
 \begin{CCSXML}

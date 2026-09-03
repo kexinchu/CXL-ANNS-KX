@@ -16,10 +16,10 @@ the finding it answers (Table~\ref{tab:findings}).
 \label{sec:mot-cliff}
 
 A full-precision load that misses the CXL-SSD window costs
-\num{CXL-SSD cold $\mu$s}; a hit in the software/device cache with a cold
-PTE costs \num{soft $\mu$s}; a warm PTE hit costs \num{warm $\mu$s}
-(Figure~\ref{fig:mot-cliff}). The ratio of the first to the last is
-\num{$\sim$100--140$\times$}. Graph search multiplies this tax by hops
+tens of microseconds on the measured path (true-cold mean promote
+24--72\,$\mu$s; Figure~\ref{fig:mot-cliff}). A hit that is already in
+the 1\,GiB window is a host memcpy (sub-microsecond). The ratio is two
+orders of magnitude. Graph search multiplies this tax by hops
 $\times$ degree. Once a modest fraction of loads miss, wall-clock time is
 spent in the NAND path, not in distance arithmetic. DiskANN already knew
 this for block I/O; the new fact is that \emph{memory-semantic} access does

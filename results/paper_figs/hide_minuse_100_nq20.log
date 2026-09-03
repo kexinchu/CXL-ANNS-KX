@@ -1,0 +1,22 @@
+mapped vmem /dev/vmem0 off=450971566080 len=9600069632 fd=5 prefetch=1 cache_used=0
+nbr-bundle off=9600069632 stride=28672 bytes=267.03 GiB score_page=0 look_k=0
+graph-file /mnt/disk0/chukexin_motivation/serving_t2i_10m/pagebin_graph.bin
+graph-in-dram bytes=1280000000 src=graph-file
+vec_stride=800 (packed=800) graph_in_dram=1
+mapped DRAM window anon+mbind node=1 len=1073741824 (fallback; not DAX)
+P3v2 softpin W=16 budget=67108864 install_top=4 fetch_top=0 page_group_b=0 install_all=0 threads=1 per_thread_window=1 cont_batch=0 score_page=0 expand_batch=8 issue_ahead=2 min_issue_use=1.00
+loaded id-map new→old n=10000000 from /mnt/disk0/chukexin_motivation/serving_t2i_10m/new_to_old_pagebin.bin
+query_select nq=20/10000 shuffle_seed=42 flush_window=0 oneshot_fp=1 oracle_dram=0 oracle_window=0 pin_entry=1 host_used=1098156 host_cap=33554432 dram_bytes=1073741824 pin_cap=268435456
+hide_warm_entry ids=8192 pin_bytes=6553600/268435456
+policy=P3 budget=67108864 dram_bytes=1073741824 nq=20 beam=400 k=10 iters=0 oneshot_fp=1 pin_bytes=6553600/268435456
+wall_s=1.292 throughput_QPS=15.48
+cxl_ssd_to_dram_promote_GBps=1.223 promote_bytes=1580007424 target=12.0
+latency_ms mean=64.596 p50=65.932 p90=75.860 p99=83.406
+recall@10=0.9600
+cxl_dram_hit_pct=4.80
+metrics queries=20 dram_hits=9728 ssd_misses=192872 hit_pct=4.80 promote_bytes=1580007424 avg_promote_ns=2289.4 prefetch_pages=385744 evicts=0 dist=261452
+hide from_win=261452 from_bounce=0 from_win_pct=100.00 hide_prec=135.56 crit_wait_ns=196282145 device_fill_ns=202027081 overlap=0.16
+prefetch_use issued=191041 used=87178 page_use_pct=45.63 look_issued=0 look_used=0 look_use_pct=0.00 miss_use_pct=45.63 byte_use_pct=26.73 slot_use_pct=42.74 issue_use_pct=100.00 slots_on_pages=498220 slots_scored=212940 issue_slots=93268 issue_want=93268 scored_vec_B=209145600 nvme_read_B=772153344
+issue_use_hist=[0,.2):0 [.2,.4):0 [.4,.6):0 [.6,.8):0 [.8,1]:28704
+nvme_real_GBps=0.598 occ_vs_rnd_peak=38.3% peak_GBps=1.560 page_use=45.63 slot_use=42.74 issue_use=100.00
+CSV,P3,67108864,1073741824,20,400,0,15.48,64.596,65.932,75.860,83.406,0.9600,4.80,9728,192872,100.00,135.56,196282145,0.16

@@ -1,0 +1,82 @@
+# hide_matrix.csv — 2026-08-30 gpu01 kernel 6.18.0-rc5
+# /dev/vmem0=vmem_sw nvmex 0000:d9:00.0 nvme4n1 DAX absent
+# T2I-10M oneshot-fp L=400 k=10 seed=42 recall@10>=0.92
+# True-cold = rmmod+insmod until cache_used=0. Graph from host file (not vmem).
+# CSV columns match search_beam tail + label
+label,nq,QPS,mean_ms,p99_ms,recall,from_win_pct,crit_wait_ns,cache_used_start,note
+oracle_dram_host,20,66.52,14.823,47.561,0.9500,100.00,0,n/a,full 9.6GiB layout MAP_POPULATE host DRAM (CXL-DRAM-capacity stand-in)
+oracle_window_1GiB,20,85.78,11.446,15.484,0.9250,100.00,0,666MB,discarded pass then freeze_fills; 0 SSD; DramWindow=mbind node1
+hide_P3_truecold_packed_old,20,2.83,353.682,601.924,0.9250,100.00,1087973079,0,pre-fix: sync PREFETCH_BATCH on search thread
+hide_P3_vmemcache_warm,20,4.15,240.945,447.423,0.9250,100.00,722994961,668MB,same process image; window cold; vmem 4GiB cache dirty
+hide_P3_packed_async_truecold,20,3.03,329.799,643.053,0.9300,100.00,5049409933,0,async issue+wait_needed; fill 0.213GB/s
+hide_P3_pagebin_pre_async,20,3.99,250.474,446.391,0.9550,100.00,658242905,0,pagebin+graph-file; sync ioctl; 919MB promote
+hide_P3_pagebin_unlockio,20,6.45,154.957,324.097,0.9550,100.00,2062921608,0,vmem_sw drops cache_lock during NAND; fill 0.296GB/s
+hide_P3_packed_chunkqd,20,3.52,283.933,594.303,0.9300,100.00,4067626461,0,current runtime; 64-page parallel prefetch; fill 0.248GB/s
+hide_P3_pagebin_lock,20,6.08,164.532,364.937,0.9550,100.00,2175888173,0,LOCKED current runtime+ko; graph-file; fill 0.278GB/s; 916MB promote
+hide_P3_pagebin_cont4,20,6.80,546.323,1004.513,0.9550,100.00,1764196238,0,cont-batch 4; QPS +0.7; mean lat 3.3x worse; fill 0.312GB/s
+hide_P3_pagebin_nq100,100,2.79,358.222,851.034,0.9320,100.00,26314038358,0,1GiB window thrash; 4.15GiB unique; evicts=244664; WS disjoint
+hide_P3_pagebin_coalesce_look8,20,6.39,156.456,333.454,0.9550,100.00,1918899897,0,merged bios+batch256; look_k=8; fill 0.293
+hide_P3_pagebin_defer,20,7.60,131.423,298.893,0.9550,100.00,46689854,0,LOCKED: score hits now; miss pending; wait only if frontier empty; fill 0.356
+hide_P3_packed_defer,20,3.81,262.619,563.181,0.9300,100.00,84317806,0,same defer; bounce=0; fill 0.277
+raw_prefetch_fill_probe,16384,n/a,n/a,n/a,n/a,n/a,0,0,PREFETCH_BATCH 256-wide on pagebin off; 2.07-2.33 GB/s
+hide_P3_pagebin_L200,20,16.26,61.328,119.315,0.8750,100.00,25383068,0,VOID iso-recall: below 0.92
+hide_P3_pagebin_L220,20,15.70,63.543,126.181,0.8800,100.00,27130877,0,VOID iso-recall: below 0.92
+hide_P3_pagebin_L250,20,13.13,76.008,176.537,0.9450,100.00,33992891,0,nq=20 only; nq=100 recall 0.891 FAIL
+hide_P3_pagebin_L250_nq100,100,4.61,217.011,543.744,0.8910,100.00,334569540,0,VOID: recall 0.891<0.92; evicts=116281
+hide_P3_pagebin_L300,20,10.28,97.139,233.573,0.9450,100.00,43510807,0,nq=20 only; nq=100 recall 0.913 FAIL
+hide_P3_pagebin_L300_nq100,100,3.91,255.820,863.658,0.9130,100.00,448120993,0,VOID: recall 0.913<0.92
+hide_P3_pagebin_L400,20,7.79,128.216,291.239,0.9550,100.00,37581619,0,LOCKED nq=20 L=400 defer+lookahead; fill 0.363
+hide_P3_pagebin_L400_nq100,100,2.96,337.453,834.984,0.9320,100.00,310948770,0,LOCKED nq=100 L=400 recall 0.932; evicts=243761
+hide_P3_packed_L300,20,5.24,190.756,420.933,0.9250,100.00,79158739,0,packed L=300 nq=20; 0.925
+oracle_window_pagebin_L250,20,169.78,5.783,9.763,0.9300,100.00,0,warm,pagebin oracle-window L=250; 0 SSD
+mmap_after_prefetch_probe,16384,n/a,n/a,n/a,n/a,n/a,0,0,prefetch 2.33GB/s then mmap memcpy 4.16GB/s; not hide bottleneck
+hide_P3_pagebin_readbatch,20,7.67,130.257,296.520,0.9550,100.00,49538912,0,VOID as win: VMEM_IOC_READ_BATCH vs mmap; noise vs 7.79
+hide_P3_pagebin_readbatch_nq100,100,3.01,332.719,959.555,0.9340,100.00,4278856962,0,VOID as win: READ_BATCH does not move 0.12GB/s
+hide_P3_pagebin_clockalloc,20,23.43,42.576,64.872,0.9550,100.00,12254490,0,LOCKED: clock frame alloc (no 256k free-scan); fill 1.10GB/s; bounce=0
+hide_P3_pagebin_clockalloc_nq100,100,26.94,37.117,78.813,0.9360,100.00,186618415,0,LOCKED nq=100 clock alloc; fill 1.14GB/s; evicts=254800; bounce=0
+hide_P3_packed_clockalloc,20,19.46,51.372,75.417,0.9300,100.00,13513357,0,clock alloc look=8; page_use  not measured
+hide_P3_pagebin_look8_pfuse,20,20.81,47.994,79.046,0.9550,100.00,12046494,0,look=8 page_use=93.27 look_use=92.70 nvme=0.47GB/s
+hide_P3_pagebin_missonly,20,22.96,43.488,62.477,0.9550,100.00,67113904,0,LOCKED look=0 page_use=100 nvme=0.523GB/s vs rnd peak 1.56=33.6%
+hide_P3_pagebin_missonly_nq100,100,26.40,37.874,69.683,0.9350,100.00,286517969,0,LOCKED look=0 page_use=100 nvme=0.523GB/s occ=33.6%
+hide_P3_packed_missonly,20,18.23,54.799,76.539,0.9350,100.00,104115558,0,LOCKED packed look=0 page_use=100 nvme=0.634GB/s occ=40.6%
+raw_prefetch_nvme_stat_seq,16384,n/a,n/a,n/a,n/a,n/a,0,0,PREFETCH_BATCH seq nvme_stat 1.950GB/s issued 2.013
+raw_prefetch_nvme_stat_rnd_cold,16384,n/a,n/a,n/a,n/a,n/a,0,0,PREFETCH_BATCH rnd true-cold nvme_stat 1.560GB/s
+hide_P3_pagebin_missonly_c256,20,21.88,45.667,66.684,0.9550,100.00,95564150,0,VOID as win: chunk256 look=0 21.88<22.96
+hide_P3_pagebin_stall32,20,31.40,31.809,54.056,0.9550,100.00,17932644,0,LOCKED look=0 stall-miss 32slots page_use=100 nvme=0.686 occ=43.9%
+hide_P3_pagebin_stall32_nq100,100,33.49,29.848,67.847,0.9430,100.00,114641643,0,LOCKED nq=100 stall-miss page_use=100 nvme=0.633 occ=40.6%
+hide_P3_packed_stall32,20,24.67,40.497,57.385,0.9300,100.00,27714800,0,LOCKED packed stall-miss page_use=100 nvme=0.766 occ=49.1%
+hide_P3_pagebin_stall32_cont2,20,n/a,n/a,n/a,n/a,n/a,n/a,0,VOID: SIGSEGV shared-window T=2
+hide_P3_pagebin_slot_nosib,20,26.34,37.918,76.571,0.9550,100.00,20284480,0,page_use=100 slot_use=25.39 (1-of-5); not utilization-correct
+hide_P3_pagebin_slot_sibs,20,14.94,66.906,110.800,0.9650,100.00,17339544,0,LOCKED slot_use=100 score-page; recall 0.965 nvme=0.319 occ=20.4%
+hide_P3_pagebin_slot_sibs_nq100,100,15.30,65.331,182.333,0.9530,100.00,84361881,0,score-page scalar; slot=100 QPS 15.3
+hide_P3_pagebin_issuefirst_sibs,20,15.27,65.452,102.621,0.9650,100.00,17987914,0,issue-first then score; slot=100 occ 20.9% no win
+hide_P3_pagebin_avx2_sibs,20,21.30,46.914,75.622,0.9650,100.00,20030284,0,LOCKED AVX2+FMA score-page slot=100 nvme=0.456 occ=29.2%
+hide_P3_pagebin_avx2_sibs_nq100,100,21.32,46.880,121.671,0.9530,100.00,73029220,0,LOCKED nq=100 AVX2 slot=100 nvme=0.399 occ=25.6%
+hide_P3_pagebin_parscore,20,11.34,88.100,121.591,0.9650,100.00,8038693,0,VOID: score on fill pool 11.34 QPS occ 15%; NAND starved
+hide_P3_pagebin_avx2_restore,20,20.65,48.394,80.385,0.9650,100.00,18544863,0,serial AVX2 after revert; slot=100 noise vs 21.30
+hide_P3_pagebin_nbrbundle,20,42.17,23.672,31.858,0.9400,100.00,25627840,0,LOCKED expand-bundle no extra score; slot=100 nvme=0.440 occ=28.2%
+hide_P3_pagebin_nbrbundle_nq100,100,42.93,23.284,45.318,0.9240,100.00,110797961,0,bundle look=0 ebatch=1; slot=100 nvme=0.450 occ=28.9%
+hide_P3_pagebin_bundle_look8,20,31.04,32.185,47.134,0.9450,100.00,14413789,0,VOID look=8 unused future bundles; slot=88.95 page_use=86 QPS 31
+hide_P3_pagebin_bundle_ebatch8,20,47.24,21.115,28.525,0.9450,100.00,31630889,0,LOCKED commit 8 expands/issue; slot=100 page_use=96.9 nvme=0.561 occ=36.0%
+hide_P3_pagebin_bundle_ebatch16,20,46.06,21.657,28.761,0.9500,100.00,30443524,0,ebatch=16 slot=100 occ=36.8% QPS 46
+hide_P3_pagebin_bundle_ebatch32,20,39.70,25.150,34.458,0.9500,100.00,32462232,0,ebatch=32 more work lower QPS
+hide_P3_pagebin_bundle_ebatch8_nq100,100,47.53,21.026,40.724,0.9420,100.00,144109335,0,ebatch=8 ahead=1 nq=100 slot=100 occ=34.4%
+hide_P3_pagebin_bundle_ahead1,20,49.69,20.080,27.644,0.9450,100.00,31661485,0,issue then drain ebatch=8; slot=100 nvme=0.589 occ=37.7%
+hide_P3_pagebin_bundle_ahead2,20,50.25,19.844,26.592,0.9400,100.00,24715420,0,LOCKED 2 committed waves then score; slot=100 nvme=0.600 occ=38.5%
+hide_P3_pagebin_bundle_ahead3,20,45.64,21.843,28.371,0.9350,100.00,28673739,0,ahead=3 more work lower QPS
+hide_P3_pagebin_bundle_ahead2_nq100,100,49.25,20.298,35.551,0.9330,100.00,119073510,0,LOCKED nq=100 ahead=2 slot=100 nvme=0.561 occ=36.0% recall 0.933
+hide_P3_pagebin_bundle_scoreth,20,2.37,421.317,1307.880,0.9500,100.00,18694198,0,VOID score thread holds work_mu; QPS 2.37
+hide_P3_pagebin_bundle_slimwarm,20,47.54,20.965,27.519,0.9450,100.00,22696462,0,VOID slim warm 47.54 < 50.25; hit 0
+hide_P3_pagebin_bundle_pipe32,20,46.47,21.445,28.944,0.9450,100.00,29200244,0,VOID pipe_w=32 no win
+hide_P3_pagebin_bundle_thr2_512m,20,60.35,25.511,35.052,0.9500,100.00,35257703,0,2x512MiB private win; slot=100 nvme=0.761 occ=48.8%
+hide_P3_pagebin_bundle_thr3_512m,20,71.15,30.466,54.110,0.9450,100.00,35683529,0,3x512MiB; slot=100 nvme=0.881 occ=56.5%
+hide_P3_pagebin_bundle_thr4_512m,20,79.02,34.372,70.153,0.9500,100.00,58602032,0,4x512MiB; slot=100 nvme=0.969 occ=62.1%
+hide_P3_pagebin_bundle_shared4_1g,20,50.71,70.319,109.810,0.9400,100.00,18739944,0,VOID occ: 1GiB shared win lock convoy; nvme=0.563 occ=36.1%
+hide_P3_pagebin_bundle_thr2_512m_nq100,100,63.85,23.489,41.563,0.9280,100.00,167599309,0,2x512MiB nq=100 slot=100 nvme=0.748 occ=48.0% evicts=36341
+hide_P3_pagebin_bundle_thr4_512m_nq100,100,87.21,29.272,45.765,0.9410,100.00,221487619,0,LOCKED multi-q occ: 4x512MiB slot=100 nvme=1.027 occ=65.8% evicts=0
+hide_P3_pagebin_bundle_thr8_512m_nq100,100,69.14,75.517,153.905,0.9450,100.00,1680177889,0,VOID 8t oversub; QPS 69 occ=52.3%
+hide_P3_pagebin_bundle_t1tax_waitdrain,20,52.39,19.031,25.521,0.9450,100.00,34094881,0,VOID lock: nq=20 +2 QPS but nq=100 44.60
+hide_P3_pagebin_bundle_t1tax_waitdrain_nq100,100,44.60,22.410,47.175,0.9410,100.00,160335100,0,VOID nq=100 < 49.25
+hide_P3_pagebin_bundle_t1tax_sortchunk,20,46.25,21.6,0,0.9500,100.00,26787059,0,VOID sort+1chunk READ_BATCH
+hide_P3_pagebin_bundle_t1tax_insert,20,52.71,18.929,24.994,0.9500,100.00,26846302,0,VOID lock: nq=20 52.71 but nq=100 47.14
+hide_P3_pagebin_bundle_t1tax_insert_nq100,100,47.14,21.203,40.163,0.9350,100.00,152821959,0,VOID nq=100 < 49.25; insert_cand reverted

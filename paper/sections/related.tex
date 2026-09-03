@@ -16,8 +16,8 @@ DiskANN, FreshDiskANN, PipeANN, and SPANN~\cite{diskann,freshdiskann,pipeann,spa
 optimize sector layout, PQ navigation, and I/O overlap on a block device.
 DistributedANN~\cite{distributedann} serves one logical graph from a KV
 store. \sys{} is not ``a better \texttt{io\_uring} scheduler.'' Its
-first-class objects are residency, promotion precision, and
-memory-semantic miss depth. NVMe-oF and KV sharing still present a
+first-class objects are a CXL-DRAM-shaped window and the fills that
+must finish before a hop scores. NVMe-oF and KV sharing still present a
 block/KV slow path and a per-host cache.
 
 \paragraph{CXL-DRAM and near-memory ANNS.}
