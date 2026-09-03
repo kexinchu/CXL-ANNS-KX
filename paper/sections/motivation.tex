@@ -1,161 +1,181 @@
 % =============================================================================
-% §3 Motivation  — Target: 1.4--1.6 pages. Every finding is (A) exists (B) hurts.
-% 4.5/5 bar: negative results become design constraints, not embarrassment.
-% 填写: 换 Fig.~3--5 和 Table~1 的实测；caption 里的定性结论不要改，除非 finding 变了。
+% §3 Motivation  — Target: 1.4--1.6 pages. Intro stated C1--C3; this section
+% measures them. Every finding is (A) exists (B) hurts. No hide QPS, no Design
+% preview, no F7/LFU module. Figures: captions are the contract; fill bodies
+% later. Corpus on current bars is LAION-200k (see captions).
 % =============================================================================
-\section{Why Naive CXL-SSD ANNS Fails}
+\section{Motivation}
 \label{sec:motivation}
 
-A unified VA does not make graph ANNS fast. This section records the
-pathologies that a runtime must treat as first-class. Each finding answers
-two questions: \emph{does the effect exist in the numbers?} and \emph{how
-much does being wrong cost?} We later require every design module to name
-the finding it answers (Table~\ref{tab:findings}).
+Section~\ref{sec:background} defined the walk and the fill.
+This section measures what happens if that fill is treated as a slightly
+slow DRAM load or as a DiskANN sector read.
+Each measurement answers two questions: does the effect exist, and how
+much does the default cost?
+The three results are the constraints Intro named C1--C3
+(Table~\ref{tab:findings}).
 
-\subsection{F1: A two-order miss cliff}
+\subsection{The miss cliff}
 \label{sec:mot-cliff}
 
-A full-precision load that misses the CXL-SSD window costs
-tens of microseconds on the measured path (true-cold mean promote
-24--72\,$\mu$s; Figure~\ref{fig:mot-cliff}). A hit that is already in
-the 1\,GiB window is a host memcpy (sub-microsecond). The ratio is two
-orders of magnitude. Graph search multiplies this tax by hops
-$\times$ degree. Once a modest fraction of loads miss, wall-clock time is
-spent in the NAND path, not in distance arithmetic. DiskANN already knew
-this for block I/O; the new fact is that \emph{memory-semantic} access does
-not remove the cliff --- it only changes how a miss is issued
+A host \texttt{load} of one vector from CXL-DRAM is a few hundred
+nanoseconds.
+The same load after a CXL-SSD window miss is a NAND fill
+(Figure~\ref{fig:mot-cliff}).
+On Text2Image-10M ($800$\,B) the $p_{50}$ is $0.28\,\mu$s versus
+$89\,\mu$s ($\sim$320$\times$).
+On a 10M-item LAION slice ($2048$\,B) it is $0.67\,\mu$s versus
+$89\,\mu$s ($\sim$130$\times$).
+The miss is a 4\,KB fill, so record size barely moves it; the
+CXL-DRAM hit scales with bytes.
+
+Graph search multiplies the tax by hops $\times$ degree.
+Once a modest fraction of scores miss, wall-clock time is in the NAND
+path, not in distance arithmetic.
+DiskANN already knew the cliff for block I/O.
+The new fact is that a memory-semantic interface does not remove it:
+\texttt{load}/\texttt{store} only changes \emph{how} a miss is issued
 (\S\ref{sec:mot-qd}).
+Treating CXL-SSD as mmap'd DRAM therefore makes search miss-bound.
+The runtime contract that follows is not ``make NAND faster''; it is
+that the scoring instruction must not wait on a fill.
 
 \begin{figure}[t]
   \centering
-  \phbox{0.98\columnwidth}{3.3cm}{%
-    Fig.~3 placeholder --- three bars or a CDF:\\
-    cold NAND / soft-cache$+$PTE-cold / PTE-warm.\\
-    Optional stacked bar: fraction of a full search in each tier.}
-  \caption{Miss cliff on flash-backed CXL memory. Soft-cache hits are
-    \emph{not} PTE hits; reporting only \texttt{mincore}/PTE occupancy
-    hides the middle step. \textbf{Fill-in:} per-vector latency and a
-    whole-search breakdown on the same index.}
-  \Description{Bar chart of vector-load latency at three residency tiers.}
+  \includegraphics[width=0.98\columnwidth]{figs/mot-cliff.pdf}
+  \caption{One-item host load: CXL-DRAM hit versus CXL-SSD cache miss.
+    CXL-DRAM is Montage \texttt{/dev/dax0.0} (\texttt{clflush} then load).
+    CXL-SSD is a \texttt{vmem\_sw} window miss.
+    T2I-10M uses the staged 800\,B vectors.
+    LAION-10M is the first $10$M items of the 25M dump ($d{=}512$);
+    the miss bar matches that item size on the same SSD path.}
+  \Description{Grouped bars of one-item latency on two corpora,
+    CXL-DRAM versus CXL-SSD miss, log scale.}
   \label{fig:mot-cliff}
 \end{figure}
 
-\subsection{F2: Page admission mismatches the graph}
+\subsection{Prefetch must be wise}
 \label{sec:mot-page}
 
-Neighbor IDs are not sequential in the address space. Admitting 16\,KB OS
-pages (or CXL-SSD cachelines grouped as pages) therefore brings vectors the
-search will not score. On a high-dimensional corpus where a vector is
-already close to a page, page admission versus per-record admission
-splits QPS by \num{$\sim$3.6$\times$} and NAND reads by
-\num{$\sim$3.7$\times$} (Figure~\ref{fig:mot-pathology}a). The claim is
-scoped: at small dimensions several records share a page and the gap
-narrows. Default page-cache thinking is still the wrong default for this
-workload.
+Neighbor IDs are not sequential in the address space, so the next
+vector page is not the next byte.
+Admitting 16\,KB pages (or cachelines grouped as pages) therefore
+brings siblings the walk will not score.
+On a high-dimensional corpus where a record already fills most of a
+page, per-record admission versus page admission splits QPS by
+$\sim$3.6$\times$ and NAND reads by $\sim$3.7$\times$
+(Figure~\ref{fig:mot-pathology}a).
+At small dimensions several records share a page and the gap
+narrows; page-cache thinking is still the wrong default here.
 
-\subsection{F3: Promotion volume without precision is harmful}
 \label{sec:mot-pref}
+Synchronous logical prefetch of a 1-, 2-, or 8-hop neighborhood does
+not fix the cliff.
+Hit rate is almost unchanged, NAND reads multiply, and QPS drops by
+$\sim$4--5$\times$ at the widest setting
+(Figure~\ref{fig:mot-pathology}b).
+Precision (\emph{used$/$promoted}) falls as coverage grows; leftover
+pages evict useful ones from a small window.
+Wrong pages cost more than a missed page.
+The useful policy is a bounded ensure of the nodes the search is
+about to expand---not ``prefetch harder.''
 
-Synchronous logical prefetch of 1-, 2-, or 8-hop neighborhoods leaves
-hit rate almost unchanged, multiplies NAND reads, and drops QPS by
-\num{$\sim$4--5$\times$} at the widest setting
-(Figure~\ref{fig:mot-pathology}b). Precision (\emph{used$/$promoted})
-falls as coverage grows; leftover pages evict useful ones from a
-few-gigabyte window. \emph{Wrong promotion costs more than a missed
-promotion.} The useful policy is a bounded, high-precision ensure of the
-nodes the search is about to expand --- not ``prefetch harder.''
-
-\subsection{F4: Search width is a stall knob}
 \label{sec:mot-beam}
-
-Raising \texttt{efSearch} / beam grows the unique IDs touched per query,
-cools the window, and raises NAND reads faster than it raises recall
-(Figure~\ref{fig:mot-pathology}c). Recall itself saturates once a hop
-budget is spent. A shared hot set at a \emph{small} beam beats a cold
-cache at a \emph{large} beam. A controller that chops beam on instantaneous
-miss rate does not, by itself, win at iso-recall: it has no recall
-constraint and no IO budget. Quality and stall must be controlled jointly.
+Widening the beam is the same mistake with a quality knob.
+Raising $L$ grows the unique IDs touched per query, cools the
+window, and raises NAND reads faster than it raises recall
+(Figure~\ref{fig:mot-pathology}c).
+Recall saturates once a hop budget is spent; further width is only
+stall.
+A controller that chops $L$ on instantaneous miss rate does not, by
+itself, win at iso-recall: it has no recall constraint and no IO
+budget.
+Quality and stall must be read together.
+That is a measurement discipline, not a third design module.
 
 \begin{figure*}[t]
   \centering
-  \phbox{0.98\textwidth}{3.5cm}{%
-    Fig.~4 placeholder --- three panels, same y-family (QPS or normalized):\\
-    (a)~record vs.\ 16\,KB page admission;\\
-    (b)~demand vs.\ 1-/2-/8-hop sync prefetch (precision annotated);\\
-    (c)~efSearch / beam sweep: QPS, hit\%, recall@10, NAND reads.}
-  \caption{Three default usages that amplify stall. (a)~Page admission.
-    (b)~Blind graph prefetch. (c)~Widening search. Each panel must keep
-    recall visible so raw QPS cannot be misread.
-    \textbf{Fill-in:} one protocol (dataset, $L$, cache bytes) across
-    panels if possible.}
-  \Description{Three-panel figure of page admission, prefetch precision,
-    and search-width coupling.}
+  \includegraphics[width=0.98\textwidth]{figs/mot-pathology.pdf}
+  \caption{Unwise admission amplifies the cliff
+    (LAION-200k, $d{=}1024$, hops${=}32$).
+    (a)~Page vs.\ record.
+    (b)~Blind synchronous graph prefetch.
+    (c)~Widening $L$ (coverage as another form of unwise).
+    Absolute recall in (c) is low because of the hop cap; the
+    32$\rightarrow$64 plateau is the claim.}
+  \Description{Three-panel figure of page admission, prefetch
+    precision, and search-width coupling.}
   \label{fig:mot-pathology}
 \end{figure*}
 
-\subsection{F5: A single query cannot fill the miss pipeline}
+\subsection{One query cannot fill the device}
 \label{sec:mot-qd}
 
-Graph search is pointer-chasing. Even an excellent single-query pipeline
-leaves device-queue bubbles: the next hop is unknown until the current
-page is scored, the beam ramps slowly, and the query drains at the end
-(Figure~\ref{fig:mot-bubbles}). On NVMe, interleaving independent queries
-raises occupancy; a \emph{continuous}, fetch-level scheduler that admits
-work at read granularity can hold a target depth $D$.
+Best-first search is pointer-chasing: hop $i$ must score before the
+walk knows which vector pages hop $i{+}1$ needs.
+A single query therefore leaves device-queue bubbles---the beam
+ramps slowly, the next fill is unknown, and the walk drains at the
+end (Figure~\ref{fig:mot-bubbles}).
+On a block device, interleaving independent queries raises
+occupancy because the first-class object is already an I/O queue.
+On CXL-SSD the programming model is a faulting address space.
+A blocking \texttt{load}/\texttt{store} (or a blocking
+\texttt{memcpy} from the mapping) is a synchronous NAND fault:
+effective queue depth collapses to $\approx 1$ per thread.
+Issuing speculative fills to keep the device busy, then scoring
+those pages on the critical path, pays the cliff again.
 
-On CXL-SSD the same idea is necessary and insufficient. A blocking
-\texttt{memcpy} from a mapping is a synchronous NAND fault (effective
-QD$\approx 1$ per thread). A depth-oriented scheduler that issues
-\emph{speculative} fills then pays their latency on the critical path and
-can lose to a narrower pipeline. Continuous batching pays off on this tier
-only after memory-semantic fills are asynchronous
-(Figure~\ref{fig:design-pipe}, \S\ref{sec:d4}).
+The idle device is a pipeline problem, not a bandwidth wall.
+Continuous issue across queries is what can hold depth; it does
+not, by itself, make one walk as fast as an in-window oracle, and
+it does not change which nodes the walk visits.
+The implementation of that issue belongs in~\S\ref{sec:design}.
 
 \begin{figure}[t]
   \centering
-  \phbox{0.98\columnwidth}{3.4cm}{%
-    Fig.~5 placeholder --- in-flight depth vs.\ time:\\
-    (a)~single-query pipeline; (b)~static batch; (c)~continuous fetch batching.\\
-    (Existing TikZ in sections/fig\_bubbles.tex can replace this box.)}
-  \caption{Pipeline bubbles. $y$ is in-flight device reads; $D$ is the
-    depth needed to exercise NAND parallelism. A single query cannot hold
-    $D$; a static batch drains at the barrier; continuous fetch-level
-    admission targets $D$ at unchanged recall.
-    \textbf{Fill-in:} swap in the measured schematic; add a CXL-SSD panel
-    that shows blocking load/store stuck at QD$\approx 1$.}
-  \Description{Three timelines of device queue occupancy under different
-    schedulers.}
+  \input{sections/fig_mot_bubbles}
+  \caption{Pipeline bubbles on a faulting CXL address space
+    (schematic).
+    $y$ is in-flight fills; $D$ is the depth NAND parallelism needs.
+    A single walk cannot hold $D$; a blocking load/store is stuck at
+    QD$\approx 1$; a static batch drains at the barrier.
+    How the runtime issues across queries is~\S\ref{sec:design}.}
+  \Description{Three timelines of device queue occupancy under
+    naive single-query and static-batch issue.}
   \label{fig:mot-bubbles}
 \end{figure}
 
-\subsection{From findings to design constraints}
+\subsection{From measurements to constraints}
 \label{sec:mot-map}
 
-Table~\ref{tab:findings} is the contract for~\S\ref{sec:design}. We do not
-treat CXL-SSD as uniform memory (C1). We place the graph and PQ off the
-SSD window (C2). We promote few, precise records (C3) and share them
-across queries (C4). We control beam under iso-recall or an IO budget
-(C5), and we issue misses asynchronously at a target depth. Evaluation
-must compare against a block-SSD path on the same corpus and recall
-(C6).
+Table~\ref{tab:findings} is the contract for~\S\ref{sec:design}.
+We do not treat CXL-SSD as uniform memory (C1): scoring must not
+touch NAND.
+Prefetch must be wise (C2): only the soon-to-expand frontier, packed
+so a fill carries co-scored neighbors, under a byte budget.
+One walk cannot fill the device (C3): issue must be asynchronous and
+cross-query so pointer-chasing bubbles do not collapse queue
+depth.\footnote{A small shared pin of entry vertices helps a narrow
+beam more than deepening one walk. That is an admission hint, not a
+positive LFU-hot-set module, and not a fourth challenge.}
+Placement of neighbor IDs in host DRAM is a premise for C2, not a
+separate challenge: without it the prefetcher misses once just to
+learn whom to fetch.
 
 \begin{table}[t]
-  \caption{Findings become challenges become knobs.
-    \textbf{Fill-in:} replace \ph\ with the headline measured delta
-    (e.g., QPS $\times$, IO $\times$).}
+  \caption{Measured pathologies become the three constraints
+    Intro named.
+    Deltas are from LAION-200k on the software CXL path; the
+    qualitative claims are what Design must answer.}
   \label{tab:findings}
   \small
-  \begin{tabular}{@{}p{0.07\columnwidth}p{0.28\columnwidth}p{0.26\columnwidth}p{0.27\columnwidth}@{}}
+  \begin{tabular}{@{}p{0.08\columnwidth}p{0.34\columnwidth}p{0.24\columnwidth}p{0.22\columnwidth}@{}}
     \toprule
-    ID & Finding (exists $+$ hurts) & Challenge & \sys{} knob \\
+    ID & Exists $+$ hurts & Constraint & \sys{} answers \\
     \midrule
-    F1 & Miss cliff \ph$\times$ & C1 visibility of tiers & counters, cost model \\
-    F2 & Page $\neq$ record \ph$\times$ & C2 placement & record / hub admission \\
-    F3 & Low-precision promote \ph$\times$ & C3 bounded promote & top-$M$, byte budget \\
-    F4 & Beam cools the set \ph & C5 iso-recall & beam / early stop \\
-    F5 & Bubbles; mmap QD$\approx 1$ & C4/C5 pipeline & async fill $+$ \texttt{cont} \\
-    F7 & Shared hot set $>$ deep beam & C4 shared cache & cross-query pin \\
+    C1 & Miss cliff $\sim$130--320$\times$ & Scoring must not wait on NAND & Score-hide contract \\
+    C2 & Page $\sim$3.6$\times$; blind prefetch $\sim$4--5$\times$ & Prefetch only the expand frontier & Wise prefetcher \\
+    C3 & Pointer-chasing; blocking fill $\Rightarrow$ QD$\approx 1$ & Hold depth across walks & Continuous batching \\
     \bottomrule
-  \end{tabular}\\[2pt]
-  {\footnotesize \phnote}
+  \end{tabular}
 \end{table}

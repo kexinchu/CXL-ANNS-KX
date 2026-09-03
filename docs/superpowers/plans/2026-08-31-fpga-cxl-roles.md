@@ -1,10 +1,12 @@
-# FPGA CXL-SSD + CXL-DRAM Roles Implementation Plan
+# FPGA CXL-SSD + host scoring window Implementation Plan
+
+> **2026-09-02 修订：** 打分窗留在 host；`search_beam` 仍是唯一搜索逻辑。BAR / HPS / `vmem.ko` / `--switch` **停放**。下面原文里「BAR=CXL-DRAM」的 Goal 作废；以 [spec](../specs/2026-08-31-fpga-cxl-roles-design.md) 修订稿为准。
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans (or subagent-driven-development) task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** 把运行时和测量栈改成：FPGA 两块 NVMe = CXL-SSD，FPGA BAR0 32 GiB = CXL-DRAM，host DRAM 只当 host DRAM；并用脚本做身份检查 / 门控探针 / 切栈，按新口径重测 Oracle。
+**Goal（修订）：** CXL-SSD = `vmem_sw` 单盘 d9（pagebin）；打分窗 = host 2 GiB 共享；T=1/T=4 只差线程数。不要 `insmod vmem.ko`。
 
-**Architecture:** 三层地址空间在代码和日志里必须分开。CXL-SSD 仍是 `nvmex` 下的 d8+d9。CXL-DRAM 只允许来自 `mem2nvme`+`vmem.ko` 暴露的 BAR 窗口（`/dev/vmem0` 在切栈之后）。Host 固定 2 GiB，T=1 与 T=4 相同。HPS 不是 `0..3` 则数据面停在探针，不装 `vmem.ko`、不报 CXL-DRAM 数。
+**Architecture（修订）：** CXL-SSD = `/dev/vmem0` via `vmem_sw`（pagebin 在 d9）。打分窗 = host 2 GiB numa。BAR/`vmem.ko` 不是数据面。下面 Task 4–7 的 live switch **不要做**。
 
 **Tech Stack:** Linux 6.18.0-rc5（按 `uname -r` 编模块）、`mem2nvme` / `vmem.ko`、`search_beam`、bash bring-up 脚本。
 

@@ -1,0 +1,21 @@
+# dual peak PREFETCH_BATCH 2026-09-01T02:36:23+00:00 kernel=6.18.0-rc5
+# ko=/root/chukexin/mem2nvme/host/vmem_sw.ko.6.18-dual src=66204DB7054F960129C8164
+# nvme=/dev/nvme1n1,/dev/nvme2n1 cache=4096 backing=2
+===== rnd 16384 true-cold =====
+probe mode=rnd pages=16384 issued_B=67108864 nvme_B=66580480 wall_s=0.0452 issued_GBps=1.485 nvme_GBps=1.473
+===== seq 16384 true-cold =====
+# cache=0
+probe mode=seq pages=16384 issued_B=67108864 nvme_B=67108864 wall_s=0.0329 issued_GBps=2.037 nvme_GBps=2.037
+# dual peak sweep 2026-09-01T02:36:31+00:00
+===== rnd 16384 true-cold cache=0 =====
+probe mode=rnd pages=16384 issued_B=67108864 nvme_B=66580480 wall_s=0.0455 issued_GBps=1.473 nvme_GBps=1.462
+  d_backing0_rios=8119 d_backing1_rios=8136
+===== rnd 65536 true-cold cache=0 =====
+probe mode=rnd pages=65536 issued_B=268435456 nvme_B=266321920 wall_s=0.1593 issued_GBps=1.685 nvme_GBps=1.671
+  d_backing0_rios=32505 d_backing1_rios=32515
+===== rnd 131072 true-cold cache=0 =====
+probe mode=rnd pages=131072 issued_B=536870912 nvme_B=532664320 wall_s=0.3114 issued_GBps=1.724 nvme_GBps=1.711
+  d_backing0_rios=65021 d_backing1_rios=65024
+===== rnd 262144 true-cold cache=0 =====
+probe mode=rnd pages=262144 issued_B=1073741824 nvme_B=1065336832 wall_s=0.6110 issued_GBps=1.757 nvme_GBps=1.744
+  d_backing0_rios=130047 d_backing1_rios=130045

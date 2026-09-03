@@ -1,0 +1,44 @@
+% Schematic: in-flight fills vs time. Pathology only --- no hide runtime.
+% Blue = in-flight; red hatch = idle capacity up to D.
+\resizebox{0.95\columnwidth}{!}{%
+\begin{tikzpicture}[x=0.95cm, y=0.16cm]
+  \def\Tmax{7}
+  \def\D{8}
+
+  \newcommand{\panel}[3]{%
+    \begin{scope}[yshift=#1]
+      \fill[pattern=north east lines, pattern color=red!50] (0,0) rectangle (\Tmax,\D);
+      \fill[blue!30] plot coordinates {#3} -- cycle;
+      \draw[blue!70!black, very thick] plot coordinates {#3};
+      \draw[densely dashed] (0,\D) -- (\Tmax,\D);
+      \node[anchor=west, font=\scriptsize] at (\Tmax+0.1,\D) {$D$};
+      \draw[->] (0,0) -- (\Tmax+0.2,0);
+      \draw[->] (0,0) -- (0,\D+1.4);
+      \node[anchor=south west, font=\footnotesize\bfseries] at (0,\D+0.55) {#2};
+    \end{scope}}
+
+  % (c) static batch: fills a group, barrier drains, repeat
+  \panel{6.1cm}{(c) Static batch (group barrier)}{%
+    (0,0) (0.25,6) (0.85,6) (1.0,0.4) (1.25,6) (1.85,6) (2.0,0.4)
+    (2.25,6) (2.85,6) (3.0,0.4) (3.25,6) (3.85,6) (4.0,0.4)
+    (4.25,5) (4.85,5) (5.0,0.4) (5.4,4) (6.0,2) (6.5,0.6) (7,0)}
+
+  % (b) blocking load/store stuck at QD=1
+  \panel{3.05cm}{(b) Blocking load/store}{%
+    (0,0) (0.15,1) (6.7,1) (7,0)}
+
+  % (a) single walk: pointer-chasing sawtooth, then drain
+  \panel{0cm}{(a) Single walk}{%
+    (0,0) (0.25,2) (0.9,3) (1.4,2) (1.9,1) (2.5,3) (3.2,2.5)
+    (3.8,1) (4.4,3) (5.1,2) (5.7,3) (6.2,1.5) (6.7,0.6) (7,0)}
+
+  \node[font=\scriptsize, anchor=north] at (1.9,0.55) {hop stall};
+  \node[font=\scriptsize, anchor=north] at (6.55,1.7) {drain};
+
+  \begin{scope}[yshift=-1.85cm]
+    \fill[blue!30] (0,0) rectangle (0.45,0.8);
+    \node[anchor=west, font=\scriptsize] at (0.5,0.4) {in-flight fills};
+    \fill[pattern=north east lines, pattern color=red!50] (3.15,0) rectangle (3.6,0.8);
+    \node[anchor=west, font=\scriptsize] at (3.65,0.4) {idle queue (bubble)};
+  \end{scope}
+\end{tikzpicture}}

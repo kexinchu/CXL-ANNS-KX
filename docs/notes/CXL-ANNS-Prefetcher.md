@@ -6,7 +6,7 @@
 本文件记录思考过程、全部真机数据，以及两道对比问题的结论。
 
 组会汇报（2026-08-31，可独立宣讲）：[`2026-08-31-组会汇报.md`](2026-08-31-组会汇报.md)。  
-FPGA 三角色改造（BAR=CXL-DRAM，双盘=CXL-SSD）：[spec](../superpowers/specs/2026-08-31-fpga-cxl-roles-design.md) · [plan](../superpowers/plans/2026-08-31-fpga-cxl-roles.md)。
+FPGA 角色（2026-09-02 修订：打分窗留 host，BAR/HPS 停放）：[spec](../superpowers/specs/2026-08-31-fpga-cxl-roles-design.md) · [plan](../superpowers/plans/2026-08-31-fpga-cxl-roles.md)。
 
 ---
 
@@ -731,9 +731,28 @@ T=1 双盘低于单盘 47.77 / claim 50.25 → **双盘只作文 T=4 行**。单
 `hps_status` = `raw=0xffffffff unsupported`. `vmem.ko` was **not** loaded. `allow_hps_mmio` written back to 0. **HARD STOP**: Task 4–6 live switch is stopped.
 
 ## FPGA 三角色（2026-08-31）
-- CXL-SSD = d8+d9 CD8P
-- CXL-DRAM = 15:00.0 BAR0 32 GiB via vmem.ko
-- Host DRAM = 2 GiB searcher only
-- 85.8 / 136 / node1 hide 不是本架构的 Oracle
+- 原计划：CXL-SSD = d8+d9；CXL-DRAM = BAR0 via `vmem.ko`；Host = 2 GiB searcher
+- **2026-09-02 修订：** 打分窗继续在 host；逻辑继续在 `search_beam`。不下放 FPGA，因此不依赖 HPS。
 
-HPS probe 2026-09-01 was `raw=0xffffffff unsupported`; live vmem.ko switch and FPGA Oracle are STOPPED until HPS is 0..3.
+HPS probe 2026-09-01 was `raw=0xffffffff unsupported`；`vmem.ko` / `--switch` / mmap `resource0` 仍停放。
+
+## Host-window 公平 Oracle（2026-09-02）
+
+规则：T=1 与 T=4 **同一份** host 2 GiB DramWindow（`--dram-backend numa`，`--shared-window`，`--cpu-affinity`，work-steal）。CXL-SSD = 单盘 `vmem_sw` on d9（pagebin `CXAN1` @ 420 GiB）。不计 BAR。脚本：`tools/run_oracle_host_window.sh`。
+
+| T | 窗 | QPS | mean | recall@10 | from_win | NAND | 日志 |
+|--:|----|----:|-----:|----------:|---------:|------|------|
+| 1 | 2 GiB host 共享 | **96.59** | **10.351** | **0.925** | 100 | 0 | `oracle_host2g_T1_nq20.log` |
+| 4 | 2 GiB host 共享 | 132.16 | 26.689 | 0.900 | 100 | 0 | `oracle_host2g_T4_nq20.log` |
+| 4 rerun | 同上 | 128.41 | 27.893 | 0.925 | 100 | 0 | `oracle_host2g_T4_nq20_rerun.log` |
+| 8 | 同上 | 128.22 | 54.943 | 0.900 | 100 | 0 | 首跑（后被复跑覆盖） |
+| 8 复跑 | 同上 | 114–131 | 53–62 | 0.910–0.920 | 100 | 0 | `oracle_host2g_T8_nq20.log` / `_rerun.log` |
+| 16 | 同上 | 125.46 | 110.715 | 0.885 | 100 | 0 | 首跑（后被复跑覆盖） |
+| 16 复跑 | 同上 | 117 | 120 | 0.910–0.920 | 100 | 0 | `oracle_host2g_T16_nq20.log` / `_rerun.log` |
+| 32 | 同上 | 103.46 | 163.500 | 0.930 | 100 | 0 | `oracle_host2g_T32_nq20.log` |
+
+T≥4 共享窗 recall 会抖（0.885–0.930），**T=8/16/32 都不锁成 claim**。QPS 在 T=4 附近封顶（~128–132），再加核 mean 近似线性涨、吞吐掉：T=8 ~114–131 / ~55 ms；T=16 ~117–125 / ~111–120 ms；T=32 **103.46 / 164 ms**。nq=20 时 T=32 有空闲线程，墙钟仍被共享窗锁拉长。`4×` / `8×` / `32×` 96.59 都不是上界。
+
+**不替换：** T=1 hide **50.25** / **49.25**；T=1 oracle 1 GiB **85.8**；T=4 shard 4×512 MiB **136.23**。新行是「同 2 GiB + 加核」的附加对照，不是 85.8 的替代。`4×96.59` 也不是四路上界。
+
+`cxl_dram_hit_pct` 打印名是旧字段（窗口 hit），不是 FPGA CXL-DRAM。真计数：`from_cxl_dram=0`，`mapped HOST DRAM`。

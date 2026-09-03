@@ -1,65 +1,81 @@
 # FPGA CXL roles — design
 
-**Status:** Design for review — do not implement until the plan is approved  
-**Date:** 2026-08-31  
+**Status:** Accepted 2026-09-02 — 打分窗留在 host；HPS / BAR 不作数据面  
+**Date:** 2026-08-31（修订 2026-09-02）  
 **Repos:** `CXL-ANNS-KX` (search / claim) + `mem2nvme` (data plane)
 
 ## Goal
 
-把测量栈改成和产品图一致的三层，禁止再用 host DRAM 冒充 CXL-DRAM。
+三层角色。**打分窗口在 host DRAM**（`search_beam` + `mbind`），容量在 FPGA 侧两块 NVMe。不把窗口下放到 FPGA BAR，因此 **不依赖 HPS**。
 
 | 角色 | 硬件 | 软件入口 | 禁止当成 |
 |------|------|----------|----------|
-| **CXL-SSD** | FPGA 侧两块 CD8P：`0000:d8:00.0` + `0000:d9:00.0` | `nvmex` 块设备；容量 backing | 本机 Lexar / PM1733 |
-| **CXL-DRAM** | FPGA `1172:0000` @ `15:00.0` **BAR0 32 GiB** | `mem2nvme` + `vmem.ko` → `/dev/vmem0` 的 BAR 窗口 | NUMA node 1、`vmem_sw` 的 28+4 GiB host cache、`/dev/dax*`（现场没有） |
-| **Host DRAM** | 插座内存 | 搜索器堆、beam、2 GiB 软件预算 | CXL-DRAM、`from_win` 来源 |
+| **CXL-SSD** | FPGA 侧两块 CD8P：`0000:d8:00.0` + `0000:d9:00.0` | `vmem_sw` → `/dev/vmem0`（逻辑地址） | 本机 Lexar / PM1733 |
+| **打分窗** | Host DRAM，T=1 与 T=4 **都是 2 GiB 共享一份** | `search_beam --dram-backend numa` | FPGA BAR、`vmem.ko`、`/dev/dax*` |
+| **Host 其余** | 插座内存 | 图、beam、cand | CXL-SSD 容量 |
 
-## Why the current stack is wrong
+`--require-cxl-dram` 仍表示「窗口在 FPGA BAR」，HPS 未活时 **不要开**。默认路径是 host 窗。
 
-`vmem_sw` 已经打在两块真 CD8P 上，但 **窗口在 host DRAM**。`search_beam` 默认 `mbind` node 1，却把分数记成 `from_win`。`--oracle-window` 85.8 / 136 和 `--oracle-dram` 66.5 都是 host 内存上界，**不能**当「CXL-DRAM Oracle」。
+## Why the old BAR plan stopped
 
-`mem2nvme`（驱动名 `ntcx`）已经 bind 了 `15:00.0`，但 `vmem.ko` 没装；userspace `mmap resource0` 会 PCI timeout；HPS 历史上读 `0xff`。
+把打分窗下放到 FPGA BAR 依赖 HPS。2026-09-01 `hps_status=raw=0xffffffff unsupported`。userspace `mmap resource0` 会挂。7.0 上 `15:00.0` 是 Intel `8086:0ddb` / `cxl_type2_accel`，不是 Altera `1172:0000`。**BAR / `vmem.ko` / `--require-cxl-dram` 停放。**
+
+现在的正确栈：打分窗 = host 2 GiB；容量 = 单盘 `vmem_sw` on d9（pagebin）。双盘条带会打散 420/460 GiB 布局，禁止装回当前镜像。旧 85.8（1 GiB T=1）和 136（4×512 shard）是历史行，不是「同 2 GiB + 加核」的公平对照。
 
 ## Data path (target)
 
 ```
-CPU load/store ──► CXL-DRAM (BAR0 32 GiB via vmem.ko)
-                      ▲
-                      │ HPS_PAGE_FETCH（或经证明等价的 device DMA）
-                      │
-                 CXL-SSD (d8+d9 NAND)
+CPU 打分 ──► Host DramWindow（2 GiB，T=1/T=4 同一份）
+                ▲
+                │ vmem_sw ioctl / PREFETCH（软件 memory-semantic）
+                │
+           CXL-SSD (vmem_sw 单盘 d9 pagebin；双盘条带停放)
 
-Host DRAM 2 GiB：只放搜索状态（beam / cand / scratch）。图和向量不在这里。
+search_beam 仍是唯一搜索逻辑。图从 host 文件进 DRAM。
+FPGA BAR / HPS / vmem.ko 不在这条路上。
 ```
 
-T2I-10M 向量 9.6 GiB + 图 1.28 GiB **装得进** 32 GiB BAR。Oracle = 语料已在 BAR，计时冻结 NAND。Hide = 缺页时 HPS 从 CXL-SSD 填进 BAR，打分只读 BAR。
+Oracle = discarded pass 把本轮 eval WS pin 进 **host 2 GiB 窗**，计时 `freeze_fills`，NAND=0。Hide = 边走边从 CXL-SSD 填同一 host 窗。
 
-## Oracle protocol (replaces 85.8 / 136)
+## Oracle protocol（公平 T=1 vs T=4）
 
 两边 **只有** thread 数不同：
 
-- Host 本地内存 **都是 2 GiB**，共享一份，禁止 `4 × 512 MiB`。
-- 图 + 向量在 CXL-DRAM（BAR）。
-- T=4：4 worker，`sched_setaffinity` 一人一核；**work-steal**，禁止 `qi % T`。
-- 计时 `nvme_read_B=0`，`from_cxl_dram=100`，bounce=0。
-- 旧行 VOID：85.8、136、66.5、node1 窗口 hide 50.25（那是另一套数据面）。
+- Host 打分窗 **都是 2 GiB**，共享一份，禁止 `4 × 512 MiB`。
+- `--dram-backend numa`，`--cpu-affinity`，work-steal，禁止 `qi % T`。
+- 计时 `nvme_read_B=0`，`from_win=100`，bounce=0。
+- 旧 85.8（1 GiB T=1）和 136（4×512 MiB shard）仍是历史行；新公平行另记，不自动替换 claim。
 
 ## Hard gates (fail closed)
 
 1. `fuser /dev/vmem0` 非空（现在的 `pack_nbr_bundle`）→ 脚本退出，不 `rmmod`。
 2. `hps_status` 不是 `0..3` → **不准** `insmod vmem.ko`，不准 mmap BAR，不准报 CXL-DRAM 数。
 3. 禁止 userspace `mmap` `/sys/bus/pci/devices/0000:15:00.0/resource0`。
-4. `search_beam --require-cxl-dram` 在 backend=numa / node1 时 `exit 2`。
-5. 不把 `vmem_sw` 的 `ram_size` 写成 CXL-DRAM。
+4. 默认 **不要** `--require-cxl-dram`。该 flag 仍拒 numa（BAR 路径）；host 窗 Oracle/hide 走 numa。
+5. 不把 `vmem_sw` 的 `ram_size` 写成 CXL-DRAM；它是 CXL-SSD 前面的 host cache。
 6. 重载 `mem2nvme` 时若 `vmem_sw` 正在做盘 I/O → 禁止（probe 会写 FPGA `REG_CTRL`）。
 
 ## Non-goals
 
 - 不刷 FPGA 比特流（HPS 死了就停，不在本计划里修固件）。
 - 不把 Linux `cxl list` / `/dev/dax*` 当作成功条件（class `ff00`，走 `vmem.ko`）。
-- 不在本计划里 restage 267 GiB hide bundle（Oracle 从 host 文件 stage 进 BAR；hide restage 另开）。
-- 不恢复「node1 替身」作为 claim 路径。
+- 不在本计划里 restage 267 GiB hide bundle。
+- 不把 node1 说成 CXL-DRAM；numa 窗记 `from_win`，`from_cxl_dram=0`。
+
+## Measured（2026-09-02，host 2 GiB 公平 Oracle）
+
+nq=20 L=400 seed=42 oneshot-fp P3 ebatch=8 ahead=2 `--no-score-page` `--nbr-bundle` pagebin `CXAN1`。
+
+| T | QPS | mean | recall@10 | NAND | 日志 |
+|--:|----:|-----:|----------:|------|------|
+| 1 | 96.59 | 10.351 | 0.925 | 0 | `oracle_host2g_T1_nq20.log` |
+| 4 | 128–132 | ~27 ms | 0.900–0.925 | 0 | `oracle_host2g_T4_nq20*.log` |
+| 8 | 114–131 | ~53–62 ms | 0.900–0.920 | 0 | `oracle_host2g_T8_nq20*.log` |
+| 16 | 117–125 | ~111–120 ms | 0.885–0.920 | 0 | `oracle_host2g_T16_nq20*.log` |
+| 32 | 103.46 | 163.5 ms | 0.930 | 0 | `oracle_host2g_T32_nq20.log` |
+
+T≥4 不锁。QPS 在 T=4 封顶后回落。不替换 50.25 / 85.8 / 136.23。
 
 ## Approval
 
-先批这份角色划分，再执行 `docs/superpowers/plans/2026-08-31-fpga-cxl-roles.md`。
+角色划分已批。执行口径以本修订为准；plan 里 BAR 切栈 Task 停放。

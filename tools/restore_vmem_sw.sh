@@ -8,6 +8,11 @@
 # Identity (Dell CD8P @ d8): serial 7EU0A01P0XK1, 1920383410176 bytes.
 # Namespace name may drift (was nvme3n1 / nvme3n2; currently nvme1n1).
 # Serving 25M layout requires ram_size_gib=28 (stripe map).
+#
+# WARNING: locked T2I-10M pagebin (CXAN1 @ 420 GiB) lives on d9 SN 2F50A1360XK3.
+# This script binds d8 and will NOT see that image. For pagebin Oracle/hide use
+# tools/run_oracle_host_window.sh (single-disk vmem_sw on d9). Never dual-stripe
+# onto the live pagebin.
 set -euo pipefail
 
 SRC_KO_DIR=${SRC_KO_DIR:-/root/chukexin/mem2nvme/host}

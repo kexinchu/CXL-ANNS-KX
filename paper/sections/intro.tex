@@ -1,154 +1,132 @@
 % =============================================================================
-% §1 Introduction  — Rapid Review lives or dies here (first two pages).
-% Target: 1.8--2.0 pages including Fig.~1 and the contribution list.
-% 4.5/5 bar: problem is ASPLOS (OS residency + memory/storage hierarchy),
-% novelty is scoped, contributions are falsifiable, first two pages self-contained.
-% 填写: 把 \num{...} 换成终表数字；替换 Fig.~1 框图；不要改贡献句的范围。
+% §1 Introduction --- five-block Rapid Review (ASPLOS).
+% P1 why graph ANNS + new tier + scoped first
+% P2 DiskANN vs CXL-ANNS (two taxes) + why this service
+% P3 C1 cliff / C2 unwise prefetch / C3 single-query QD
+% P4 D0 placement + wise prefetcher + continuous batching
+% P5 contributions
 % =============================================================================
 \section{Introduction}
 \label{sec:intro}
 
-Billion-scale approximate nearest neighbor search (ANNS) must scale two
-\emph{independent} dimensions: \emph{corpus capacity} and \emph{query
-throughput}. Adding query hosts does not, by itself, shrink the full-precision
-graph and embedding store; growing that store does not, by itself, create more
-CPU and I/O. Production serving therefore faces a deployment question that
-neither ``use a better graph'' nor ``buy a faster SSD'' answers:
+Graph-based approximate nearest neighbor search (ANNS) is a production serving primitive: a query walks a proximity graph and scores neighbors until a beam budget is spent.
+At billions of vectors the graph plus full-precision embeddings no longer fit in host DRAM, so the corpus must live behind another tier.
+CXL makes that tier addressable with \texttt{load}/\texttt{store}.
+When the whole corpus fits in CXL-DRAM, prior systems already offer a usable service---CXL-ANNS and Cosmos~\cite{cxlanns,cxlanns-tocs,cosmos} never stall on flash.
+This paper is about the next device.
+Flash-backed CXL memory (CXL-SSD) exposes NAND capacity and only a small DRAM-fast window on a CXL.mem address space~\cite{skybyte,fromblocktobyte,cmm-h,cxl30}.
+A unified VA does not make graph search usable: a window miss costs tens of microseconds.
+To our knowledge, \sys{} is the first \emph{graph-ANNS serving runtime} that operates directly over an SSD-backed CXL address space and makes \emph{scoring} usable---the host computes full-precision distances from bytes that already sit in that window.
+We do not claim the first CXL-DRAM ANNS, the first CXL-SSD attached to a vector database, or a product CXL.mem SSD.
 
-\begin{quote}
-\emph{When query load grows, can we add compute without replicating the cold
-corpus, and without lifting that corpus into DRAM-priced memory?}
-\end{quote}
-
-Two published deployment points dominate the literature, and each taxes one
-of those dimensions. Block-SSD graph systems such as
-DiskANN~\cite{diskann,freshdiskann} and its pipelined descendants~\cite{pipeann}
-are excellent at hiding NAND latency behind asynchronous block I/O, product
-quantization (PQ) navigation, and a per-host node cache. Their common serving
-unit, however, is still \emph{CPU $+$ DRAM working set $+$ a local SSD index}.
-Scaling throughput by $R$ query workers therefore typically
-replicates provisioned flash ($\propto R\cdot D$) or shards the graph and pays
-cross-shard fan-out. Remote block access (NVMe-oF) moves the cable, not the
-tax: each host still maintains its own page/buffer cache. Distributed
-serving~\cite{distributedann} shows that a single logical DiskANN graph can
-live behind a shared KV store, but the interface remains block/KV, not a
-unified load/store address space.
-
-The complementary point is full-in-memory CXL-DRAM ANNS.
-CXL-ANNS~\cite{cxlanns,cxlanns-tocs} and Cosmos~\cite{cosmos} put the graph
-and embeddings in a CXL memory pool so that search never stalls on flash.
-That design eliminates NAND misses, and a pooled HDM \emph{can} be one copy
---- but it prices the \emph{cold tail} at DRAM. For a corpus of size $D$ whose
-hot working set $H$ satisfies $H\ll D$, the stranded-capacity problem is
-structural~\cite{bauhaus,secondtier}: most vectors are rarely touched and
-still occupy a DRAM-class device.
-
-Flash-backed CXL memory (CXL-SSD) is the missing third point
-(Figure~\ref{fig:intro-position}). A Type-3 memory-semantic SSD exposes NAND
-capacity and a small device/host DRAM window through \texttt{load}/\texttt{store}
-on a CXL.mem address space~\cite{skybyte,fromblocktobyte,cmm-h,cxl30}. Relative
-to replicated DiskANN, the opportunity is to stop copying $D$ with every added
-query host; relative to CXL-ANNS/Cosmos, it is to price the cold corpus at
-flash. Under CXL 3.x Shared FAM/GFAM, multiple hosts can map the same region
-concurrently~\cite{cxl30} --- a \emph{deployment} path to one-copy serving, not
-a mechanism we claim to have evaluated. We state the three CXL conditions
-explicitly so they are not conflated: (i)~direct-attach CXL-SSD already
-provides flash-priced memory semantics on one host; (ii)~CXL 2.0 pooling
-shares a device, not a concurrently mapped HDM region; (iii)~only Shared FAM
-is a standard premise for multi-host one-copy.
+Two published lines each solve one side of the capacity--latency tension and tax the other (Figure~\ref{fig:intro-position}).
+DiskANN~\cite{diskann,freshdiskann} and pipelined descendants such as PipeANN~\cite{pipeann} are excellent \emph{block-SSD} ANNS: PQ navigation, sector layout, and asynchronous I/O hide NAND behind a per-host cache.
+Their serving unit remains CPU $+$ DRAM working set $+$ a local SSD index.
+Adding $R$ query workers typically replicates provisioned flash or shards the graph.
+They hide \emph{block I/O}, not a faulting CXL address space.
+CXL-ANNS and Cosmos put the graph and embeddings in a CXL-DRAM pool.
+Search never sees flash, and a pooled HDM can be one copy---but the cold tail $D-H$ is priced at DRAM~\cite{bauhaus,secondtier}.
+We build a third service because neither line is the right contract for CXL-SSD: the corpus should stay flash-priced, the hot path should stay memory-semantic, and the runtime must hide NAND from the scoring instruction.
+Multi-host one-copy under Shared FAM is a deployment path we do not evaluate (\S\ref{sec:background}).
 
 \begin{figure*}[t]
   \centering
-  \phbox{0.98\textwidth}{3.6cm}{%
-    Fig.~1 placeholder --- draw three columns:\\
-    (a)~replicated local-SSD DiskANN ($R\times D$ flash, per-host cache);\\
-    (b)~full-in-memory CXL-DRAM ANNS ($D$ at DRAM price);\\
-    (c)~\sys{}: graph/PQ in host DRAM, hot records in a bounded CXL-DRAM
-    window, full-precision corpus on CXL-SSD, optional Shared-FAM caption.}
-  \caption{Three deployment points for billion-scale graph ANNS, and the
-    \sys{} runtime that sits on the third. CXL-SSD is an \emph{opportunity}
-    (flash-priced corpus, memory-semantic hot path, one-copy under Shared FAM).
-    The \emph{system} is residency and stall control on that tier.
-    \textbf{Fill-in:} replace this box with a 3-column deployment drawing plus
-    a compact runtime overlay on (c). Do not draw a 160\,GB/s device-internal
-    bus as a measured link.}
-  \Description{Three-column comparison of replicated SSD ANNS, full CXL-DRAM
-    ANNS, and the proposed flash-backed CXL-SSD system.}
+  \resizebox{\textwidth}{!}{%
+  \begin{tikzpicture}[
+      font=\scriptsize,
+      every node/.style={align=center},
+      slab/.style={draw, thick, inner sep=3pt, minimum height=1.15cm,
+                   text width=4.55cm},
+      host/.style={slab, fill=black!4},
+      hot/.style={slab, fill=black!8},
+      store/.style={slab, fill=black!14},
+    ]
+    \def\xa{0}
+    \def\xb{5.85}
+    \def\xc{11.7}
+    \def\yh{3.05}
+    \def\ym{1.70}
+    \def\ys{0.35}
+
+    \node[font=\footnotesize\bfseries] at (\xa+2.4,4.00) {(a) DiskANN / PipeANN};
+    \node[font=\footnotesize\bfseries] at (\xb+2.4,4.00) {(b) CXL-ANNS / Cosmos};
+    \node[font=\footnotesize\bfseries] at (\xc+2.4,4.00) {(c) \sys{} on CXL-SSD};
+
+    \node[host] (aH) at (\xa+2.4,\yh) {Host CPU\\PQ + per-host node cache};
+    \node[host] (bH) at (\xb+2.4,\yh) {Host CPU\\walk never touches NAND};
+    \node[host] (cH) at (\xc+2.4,\yh) {Host CPU + graph / PQ\\neighbor IDs without a NAND miss};
+
+    \node[hot] (aM) at (\xa+2.4,\ym) {Hot path: async block I/O\\hide NAND behind \texttt{aio} / PQ};
+    \node[hot] (bM) at (\xb+2.4,\ym) {Hot path: CXL.mem hit\\full corpus already in DRAM};
+    \node[hot] (cW) at (\xc+2.4,\ym) {Score window (small)\\full-precision distances stay here};
+
+    \node[store] (aC) at (\xa+2.4,\ys) {Local NVMe: graph + vectors $D$\\$R$ workers $\Rightarrow$ $R$ copies};
+    \node[store] (bC) at (\xb+2.4,\ys) {CXL-DRAM pool: graph + vectors $D$\\cold tail priced as DRAM};
+    \node[store] (cC) at (\xc+2.4,\ys) {CXL-SSD NAND: full-precision $D$\\miss is a NAND fill};
+
+    \draw[->, thick] (aH) -- (aM);
+    \draw[->, thick] (aM) -- (aC);
+    \draw[->, thick] (bH) -- (bM);
+    \draw[->, thick] (bM) -- (bC);
+    \draw[->, thick] (cH) -- (cW) node[midway, right, inner sep=2pt] {score};
+    \draw[<-, thick, densely dashed] (cW) -- (cC)
+      node[midway, right, inner sep=2pt] {fill};
+
+    \node at (\xa+2.4,-0.62) {Tax: replicate or shard $D$};
+    \node at (\xb+2.4,-0.62) {Tax: $D$ priced as DRAM};
+    \node at (\xc+2.4,-0.62) {Tax: miss cliff + tiny window};
+  \end{tikzpicture}}
+  \caption{Two published deployments and the third point this paper serves.
+    CXL-SSD is the \emph{opportunity} (flash-priced $D$, a small memory-semantic window).
+    \sys{} is the \emph{runtime}: a wise prefetcher plus continuous batching so scoring does not wait on NAND.
+    The window in (c) is the score working set, not a measured CXL-DRAM DAX.
+    Shared FAM is not a measured link.}
+  \Description{Three-column comparison. (a) Block-SSD ANNS keeps graph and
+    vectors on a local NVMe and hides block I/O, at a replication tax.
+    (b) CXL-DRAM ANNS places the full corpus in a DRAM-priced pool and has
+    no flash miss. (c) FlashANNS scores from a small window while the
+    corpus stays on CXL-SSD; dashed fills are off the scoring path.}
   \label{fig:intro-position}
 \end{figure*}
 
-CXL-SSD does \emph{not} make NAND as fast as DRAM. A cold vector load on this
-tier costs tens of microseconds --- two orders of magnitude above a CXL-DRAM
-or host-DRAM hit (Figure~\ref{fig:mot-cliff}). Treating the device as slightly
-slow memory, or as ``mmap DiskANN'', fails in four systematic ways that we
-measure in~\S\ref{sec:motivation}: (1)~the miss cliff dominates end-to-end
-search once any material fraction of loads miss; (2)~OS-style page admission
-is a poor match for high-dimensional graph adjacency and inflates NAND reads;
-(3)~synchronous or high-coverage graph prefetch pollutes the small DRAM window
-and can \emph{reduce} QPS; (4)~a blocking load/store miss collapses device
-queue depth to $\approx 1$, so a scheduler designed for \texttt{io\_uring}
-depth can become a pessimization until fills are made asynchronous. Widening
-search (\texttt{efSearch} / beam) to ``buy recall'' further cools the working
-set and couples quality to stall.
+Making that service real is hard because the device is not slightly slow DRAM and not a DiskANN SSD.
+Three hardware facts break conventional designs~(\S\ref{sec:motivation}).
+\emph{(C1)~The miss cliff.}
+A window hit is a DRAM-class copy; a miss is a NAND fill ($\sim$40--80\,$\mu$s, about $140\times$).
+Graph walk multiplies the tax by hops $\times$ degree, so treating CXL-SSD as mmap'd memory makes search miss-bound.
+\emph{(C2)~Prefetch must be wise.}
+Neighbor IDs are not sequential.
+OS-style page admission and synchronous 2-hop graph prefetch bring vectors the walk will not score, pollute the small window, and can drop QPS by $3$--$5\times$.
+Wrong pages cost more than a missed page.
+\emph{(C3)~One query cannot fill the device.}
+Best-first search cannot issue hop $i{+}1$'s vector pages until hop $i$ scores.
+A blocking load/store miss collapses queue depth to $\approx 1$; a single walk leaves the NAND pipeline idle even when bandwidth remains.
+Continuous issue across queries is what holds depth; it does not, by itself, make one walk as fast as an in-window oracle.
 
-This paper presents \sys{}, a graph-ANNS \emph{runtime} whose service
-goal is to make CXL-SSD \emph{invisible on the search critical path}.
-The host should score as if the working set already lived in a small
-CXL-DRAM window; the corpus stays on flash because that window cannot
-hold $D$. Prefetch, page admission, bandwidth caps, and continuous
-batching exist to finish NAND fills \emph{before} a hop scores---not to
-make blocking \texttt{load}/\texttt{store} slightly faster.
-\sys{} does not replace DiskANN's block-SSD path and does not assume
-the corpus fits in CXL-DRAM. A single walk cannot hide hop $i{+}1$
-until hop $i$ scores (pointer-chasing); inter-query continuous issue is
-what keeps device depth up while one walk is stuck.
-The runtime has five coupled modules
-(\S\ref{sec:design}): semantic placement; bounded window admission;
-entry / soft-pin (not a thrashing LFU hot set); stall-aware search
-control; and continuous fetch-level batching over asynchronous
-memory-semantic reads.
-
-To our knowledge, this is the first \emph{graph-ANNS serving system} that
-directly operates over an SSD-backed CXL address space and jointly manages
-ANNS-specific residency, promotion, and search stalls. We do \emph{not} claim
-to be the first work to attach a CXL-SSD to a vector database, nor that we
-have deployed Shared FAM in production.
+\sys{} is a runtime for those three constraints, not a new graph index.
+A placement premise comes first: the adjacency list and any PQ codebook live in host DRAM so the prefetcher can read neighbor IDs without a NAND miss; full-precision vectors stay on CXL-SSD.
+The first mechanism is a \emph{wise prefetcher}.
+It issues asynchronous fills only for pages the current frontier is about to expand, packs co-scored neighbors into the same pages (expand-bundle / page-bin), and admits them under a byte budget.
+It never synchronous-walks a 2-hop neighborhood and never scores unused siblings to inflate utilization.
+The second mechanism is \emph{continuous batching}.
+Fills are issued at fetch granularity across in-flight queries so that when one walk is stuck on pointer-chasing, another query keeps the device busy.
+Prefetch and batching may touch CXL-SSD; the scoring thread may not.
+We call that split \emph{score hide}.
+The stronger contract---\emph{query hide}, no wait for a fill on the timed path---is the oracle, not a result we claim.
+On true-cold Text2Image-10M (recall@10 $\ge 0.92$, $L{=}400$), score hide holds (\texttt{from\_win}${=}100\%$) at $50.25$~QPS versus $1.64$~QPS demand, but remains $0.59\times$ an in-window oracle ($85.8$~QPS) because hop $i{+}1$ cannot issue until hop $i$ scores.
 
 This paper makes four contributions:
-
 \begin{enumerate}
-  \item \textbf{A third deployment point, stated with its limits.} We
-    separate the CXL-SSD \emph{opportunity} (flash-priced $D$, a small
-    memory-semantic window, optional one-copy) from the \emph{system}
-    (hide NAND from the ANNS critical path), and we name
-    the CXL 2.0 vs.\ 3.x conditions under which one-copy is even
-    well-formed~(\S\ref{sec:intro}, \S\ref{sec:background}).
-  \item \textbf{A measured pathology of graph ANNS on this tier.} We show
-    that naive page caches, blind prefetch, unconstrained search width, and
-    blocking load/store each amplify stall, and we turn the negative results
-    into design constraints~(\S\ref{sec:motivation}).
-  \item \textbf{A runtime that tries to hide flash from graph search.}
-    \sys{} places graph/PQ off the window, admits few pages, prefetches
-    the next hop off the scoring path, and batches fills across queries
-    under an iso-recall $L$~(\S\ref{sec:design}, \S\ref{sec:impl}).
+  \item \textbf{A third serving point, scoped.}
+    We place graph ANNS on flash-backed CXL memory and separate the \emph{opportunity} (flash-priced $D$, a small window) from the \emph{system} (hide NAND from scoring).
+    We do not claim the first CXL-DRAM ANNS or an evaluated Shared-FAM deployment~(\S\ref{sec:background}).
+  \item \textbf{Why naive CXL-SSD ANNS fails.}
+    We measure the miss cliff, unwise page/prefetch admission, and single-query queue collapse, and we turn those negatives into design constraints~(\S\ref{sec:motivation}).
+  \item \textbf{A wise prefetcher plus continuous batching.}
+    Placement keeps neighbor IDs off the window; the prefetcher fills only soon-to-expand pages; batching holds device depth across walks.
+    Score hide reaches $100\%$ window hits on the scoring path; query hide remains $0.59\times$ the in-window oracle~(\S\ref{sec:design}, \S\ref{sec:impl}).
   \item \textbf{An iso-recall evaluation of hide, not just QPS.}
-    At matched recall we report critical-path wait, window-hit on scored
-    vectors, QPS vs.\ demand and vs.\ an in-window oracle, and a
-    same-machine DiskANN/PipeANN residual~(\S\ref{sec:eval}).
+    We report scores-from-window, critical-path wait, and QPS from demand ($1.64$) through \sys{} ($50.25$) to the oracle ($85.8$).
+    Same-machine PipeANN is a named residual (oneshot full-precision versus PQ navigation), not a hidden bar~(\S\ref{sec:eval}).
 \end{enumerate}
 
-\paragraph{Scope we do not claim.}
-The prototype is an FPGA Type-2/BAR endpoint (\texttt{mem2nvme}/\texttt{nvmex})
-plus a software memory-semantic node (\texttt{/dev/vmem0}, \texttt{vmem\_sw})
-in front of a 1.92\,TB NVMe. Device HPS and CPU writes into the 32\,GiB BAR
-are not live; we do not publish BAR-path numbers. A Montage-style CXL-DRAM
-DAX window is \emph{absent} on the measured boot---the 1\,GiB search window
-is host DRAM (\texttt{mbind}). We do not report 160\,GB/s device-side copy,
-product CXL.mem SSD, or Shared-FAM one-copy. Cost claims are qualitative.
-
-The rest of the paper is organized as follows.
-\S\ref{sec:background} reviews graph ANNS and CXL memory-semantic flash.
-\S\ref{sec:motivation} presents the findings that constrain the design.
-\S\ref{sec:design}--\S\ref{sec:impl} describe \sys{}.
-\S\ref{sec:eval} evaluates it.
-\S\ref{sec:related} and~\S\ref{sec:discuss} place the work and state limits.

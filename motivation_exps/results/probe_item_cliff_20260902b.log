@@ -1,0 +1,30 @@
+# probe-item-cliff dax=/dev/dax0.0 vmem=/dev/vmem0 bdf=0000:d9:00.0 nvme=/dev/nvme2n1
+# LAION-10M dim=512 item=2048 n_use=10000000 probes=400
+[LAION-10M/CXL-DRAM] n=400 mean_ns=665.2 p50=666.0 p90=727.0 p99=810.0 Δfaults=0 Δread_ios=0 sink=3366000
+  thrash 512 MB
+  thrash 1024 MB
+  thrash 1536 MB
+  thrash 2048 MB
+  thrash 2560 MB
+  thrash 3072 MB
+  thrash 3584 MB
+  thrash 4096 MB
+  thrash 4608 MB
+  thrash 5120 MB
+thrashed ≈5120 MB
+[LAION-10M/CXL-SSD-miss] n=400 mean_ns=80201.0 p50=88713.0 p90=90444.0 p99=98218.0 Δfaults=400 Δread_ios=391 sink=1641809
+# T2I-10M dim=200 item=800 n_use=10000000 probes=400
+[T2I-10M/CXL-DRAM] n=400 mean_ns=286.4 p50=281.0 p90=299.0 p99=384.0 Δfaults=0 Δread_ios=0 sink=1428000
+# T2I vmem magic=CXAN1 off_vectors=1600004096
+  thrash 512 MB
+  thrash 1024 MB
+  thrash 1536 MB
+  thrash 2048 MB
+  thrash 2560 MB
+  thrash 3072 MB
+  thrash 3584 MB
+  thrash 4096 MB
+  thrash 4608 MB
+  thrash 5120 MB
+thrashed ≈5120 MB
+[T2I-10M/CXL-SSD-miss] n=400 mean_ns=95905.6 p50=88841.0 p90=173231.0 p99=179011.0 Δfaults=482 Δread_ios=473 sink=707444

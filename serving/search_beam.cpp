@@ -175,7 +175,7 @@ static void* map_dram_dax(const char* dax_dev, off_t offset, size_t bytes) {
   return p;
 }
 
-// Legacy fallback: anonymous pages bound to a NUMA node (may be local DRAM).
+// HOST scoring window: anonymous pages bound to a NUMA node (socket DRAM).
 static void* map_dram_numa(size_t bytes, unsigned numa_node) {
   void* p = mmap(nullptr, bytes, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, -1, 0);
   if (p == MAP_FAILED) die("mmap dram anon");
@@ -1097,12 +1097,12 @@ int main(int argc, char** argv) {
                                             : 0;
   size_t vmem_len = 0;
   std::string policy_s = "P0";
-  std::string dram_backend = getenv("CXAN_DRAM_BACKEND") ? getenv("CXAN_DRAM_BACKEND") : "dax";
-  // dax | numa
+  std::string dram_backend = getenv("CXAN_DRAM_BACKEND") ? getenv("CXAN_DRAM_BACKEND") : "numa";
+  // numa = HOST scoring window (default). dax / --require-cxl-dram = BAR path (HPS).
   size_t budget = 64ull << 20;  // hide: 64 MiB lookahead budget default
   size_t dram_bytes = getenv("CXAN_DRAM_BYTES")
                           ? strtoull(getenv("CXAN_DRAM_BYTES"), nullptr, 10)
-                          : (1ull << 30);
+                          : (2ull << 30);
   size_t host_bytes = getenv("CXAN_HOST_BYTES")
                           ? strtoull(getenv("CXAN_HOST_BYTES"), nullptr, 10)
                           : (2ull << 30);
@@ -1393,9 +1393,12 @@ int main(int argc, char** argv) {
   DramWindow win;
   if (hide_warm_entry) {
     win.pin_bytes_cap = 256ull << 20;
-    // Leave ≥256MiB unpinned so clock eviction stays O(1). pin 256 + soft 768
-    // filled the whole 1GiB window; every evict scanned 256k frames (nq=100).
+    // Leave headroom so clock eviction stays O(1).
     win.soft_pin_bytes_cap = 512ull << 20;
+    if (dram_bytes >= (2ull << 30)) {
+      win.pin_bytes_cap = 512ull << 20;
+      win.soft_pin_bytes_cap = 1024ull << 20;
+    }
   }
   win.init(dram, dram_bytes, &metrics);
   win.soft_pin_neighbors = page_group_b;

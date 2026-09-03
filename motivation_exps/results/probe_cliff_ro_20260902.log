@@ -1,0 +1,29 @@
+# probe-cliff-ro backend=software bdf=0000:d9:00.0 nvme=/dev/nvme2n1 cache_used=275025920 cache_limit=4294967296
+# VMEM-CLIFF-RO 800B loads at logical 0x2000000000 (no write)
+  thrash progress 512 MB
+  thrash progress 1024 MB
+  thrash progress 1536 MB
+  thrash progress 2048 MB
+  thrash progress 2560 MB
+  thrash progress 3072 MB
+  thrash progress 3584 MB
+  thrash progress 4096 MB
+  thrash progress 4608 MB
+  thrash progress 5120 MB
+thrashed soft-cache touch≈5120 MB
+[RO-cold_ssd] n=800 bytes=800 ns/load=8105.7 Δfaults=800 Δread_ios=800 time=0.0065s sink=0
+[QD] blocking_memcpy max_in_flight=1 mean_gap_ns=8105.6 p50=8005.0 p90=8295.0 (serial by construction)
+[RO-warm_pte] n=800 bytes=800 ns/load=80.8 Δfaults=0 Δread_ios=0 time=0.0001s sink=0
+[RO-softcache_pte_cold] n=800 bytes=800 ns/load=786.6 Δfaults=800 Δread_ios=0 time=0.0006s sink=0
+  thrash progress 512 MB
+  thrash progress 1024 MB
+  thrash progress 1536 MB
+  thrash progress 2048 MB
+  thrash progress 2560 MB
+  thrash progress 3072 MB
+  thrash progress 3584 MB
+  thrash progress 4096 MB
+  thrash progress 4608 MB
+  thrash progress 5120 MB
+thrashed soft-cache touch≈5120 MB
+[RO-after_thrash] n=800 bytes=800 ns/load=8049.7 Δfaults=800 Δread_ios=800 time=0.0064s sink=0

@@ -4,41 +4,29 @@
 \section{Implementation}
 \label{sec:impl}
 
-\sys{} is a userspace beam search (\texttt{serving/search\_beam}) over a
-CXAN packed (or page-binned) image \texttt{mmap}'d from
-\texttt{/dev/vmem0}. Policy P3 issues hop-ranked miss pages with
-\texttt{VMEM\_IOC\_PREFETCH\_BATCH}, copies into a host bounce
-(\texttt{PageCopyPool}), scores there, and installs only
-\texttt{install\_top} pages into a 1\,GiB DramWindow. That split is
-exactly the hide debt~\S\ref{sec:eval}: scoring still waits on the
-bounce, so NAND is not yet off the critical path.
+\sys{} is a userspace beam search (\texttt{serving/search\_beam}) over a CXAN packed (or page-binned) image \texttt{mmap}'d from \texttt{/dev/vmem0}.
+Policy P3 issues hop-ranked miss pages with \texttt{VMEM\_IOC\_PREFETCH\_BATCH}, copies into a host bounce (\texttt{PageCopyPool}), scores there, and installs only \texttt{install\_top} pages into a 1\,GiB DramWindow.
+That split is exactly the hide debt~\S\ref{sec:eval}: scoring still waits on the bounce, so NAND is not yet off the critical path.
 
 \paragraph{What we measure (2026-08-30, \texttt{gpu01}).}
-Kernel \texttt{6.18.0-rc5}. FPGA Altera \texttt{0000:15:00.0} bound to
-\texttt{ntcx}/\texttt{mem2nvme} (32\,GiB BAR). NAND I/O goes through
-\texttt{nvmex} on \texttt{0000:d9:00.0} ($\rightarrow$
-\texttt{/dev/nvme4n1}, Dell CD8P 1.92\,TB). Userspace
-\texttt{/dev/vmem0} is \texttt{vmem\_sw}: 28\,GiB logical RAM map, 4\,GiB
-device cache, 2\,MiB stripe. HPS registers return
-\texttt{-EOPNOTSUPP}; stores to the BAR read back as \texttt{0xff}.
-Hardware \texttt{vmem.ko} implements \texttt{PREFETCH\_BATCH} but is
-\textbf{not} the measured path. CXL-DRAM DAX is absent; DramWindow is
-anonymous pages bound to NUMA node~1.
+Kernel \texttt{6.18.0-rc5}.
+FPGA Altera \texttt{0000:15:00.0} bound to \texttt{ntcx}/\texttt{mem2nvme} (32\,GiB BAR).
+NAND I/O goes through \texttt{nvmex} on \texttt{0000:d9:00.0} ($\rightarrow$ \texttt{/dev/nvme4n1}, Dell CD8P 1.92\,TB).
+Userspace \texttt{/dev/vmem0} is \texttt{vmem\_sw}: 28\,GiB logical RAM map, 4\,GiB device cache, 2\,MiB stripe.
+HPS registers return \texttt{-EOPNOTSUPP}; stores to the BAR read back as \texttt{0xff}.
+Hardware \texttt{vmem.ko} implements \texttt{PREFETCH\_BATCH} but is \textbf{not} the measured path.
+CXL-DRAM DAX is absent; DramWindow is anonymous pages bound to NUMA node~1.
 
 \paragraph{What is implemented.}
-P0 demand promote and P3 bounded install; \texttt{PREFETCH\_BATCH};
-page-bin layout pack; iso-recall $L$ picker; optional graph copy into
-host DRAM (intended default for hide rows). Entry subgraph $\le$32\,MiB
-is pinned. A shared LFU hot set was prototyped and \emph{lost} QPS on
-the warm protocol; we do not ship it as a result.
+P0 demand promote and P3 bounded install; \texttt{PREFETCH\_BATCH}; page-bin layout pack; iso-recall $L$ picker; optional graph copy into host DRAM (intended default for hide rows).
+Entry subgraph $\le$32\,MiB is pinned.
+A shared LFU hot set was prototyped and \emph{lost} QPS on the warm protocol; we do not ship it as a result.
 
 \paragraph{What is not implemented, and is not claimed.}
-Product CXL.mem SSD; HPS fill of the FPGA BAR; Shared FAM; a 160\,GB/s
-DRAM--SSD engine; closed-loop F9 miss-chop; multi-thread shared-window
-speedup. DiskANN PQ-off is never placed on the PQ-on line.
+Product CXL.mem SSD; HPS fill of the FPGA BAR; Shared FAM; a 160\,GB/s DRAM--SSD engine; closed-loop F9 miss-chop; multi-thread shared-window speedup.
+DiskANN PQ-off is never placed on the PQ-on line.
 
 \paragraph{Prototype scale.}
-The serving binary is a single translation unit plus small headers on
-top of the CXAN layout. The software CXL-SSD path is the out-of-tree
-\texttt{vmem\_sw} driver. A log header that omits kernel, BDF, and
-\texttt{vmem\_sw} vs.\ \texttt{vmem.ko} is an invalid row.
+The serving binary is a single translation unit plus small headers on top of the CXAN layout.
+The software CXL-SSD path is the out-of-tree \texttt{vmem\_sw} driver.
+A log header that omits kernel, BDF, and \texttt{vmem\_sw} vs.\ \texttt{vmem.ko} is an invalid row.

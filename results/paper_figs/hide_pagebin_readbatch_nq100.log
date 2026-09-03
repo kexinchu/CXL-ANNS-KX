@@ -1,0 +1,18 @@
+mapped vmem /dev/vmem0 off=450971566080 len=9600069632 fd=5 prefetch=1 cache_used=0
+graph-file /mnt/disk0/chukexin_motivation/serving_t2i_10m/pagebin_graph.bin
+graph-in-dram bytes=1280000000 src=graph-file
+vec_stride=800 (packed=800) graph_in_dram=1
+mapped DRAM window anon+mbind node=1 len=1073741824 (fallback; not DAX)
+P3v2 softpin W=16 budget=67108864 install_top=4 fetch_top=0 page_group_b=0 install_all=0 threads=1 per_thread_window=1 cont_batch=0
+loaded id-map new→old n=10000000 from /mnt/disk0/chukexin_motivation/serving_t2i_10m/new_to_old_pagebin.bin
+query_select nq=100/10000 shuffle_seed=42 flush_window=0 oneshot_fp=1 oracle_dram=0 oracle_window=0 pin_entry=1 host_used=1165356 host_cap=33554432 dram_bytes=1073741824 pin_cap=268435456
+hide_warm_entry ids=8192 pin_bytes=6553600/268435456
+policy=P3 budget=67108864 dram_bytes=1073741824 nq=100 beam=400 k=10 iters=0 oneshot_fp=1 pin_bytes=6553600/268435456
+wall_s=33.273 throughput_QPS=3.01
+cxl_ssd_to_dram_promote_GBps=0.127 promote_bytes=4213612544 target=12.0
+latency_ms mean=332.719 p50=300.805 p90=625.295 p99=959.555
+recall@10=0.9340
+cxl_dram_hit_pct=62.52
+metrics queries=100 dram_hits=858170 ssd_misses=514357 hit_pct=62.52 promote_bytes=4213612544 avg_promote_ns=58103.0 prefetch_pages=1028714 evicts=252213 dist=714524
+hide from_win=714524 from_bounce=0 from_win_pct=100.00 hide_prec=138.92 crit_wait_ns=4278856962 device_fill_ns=4284549384 overlap=0.13
+CSV,P3,67108864,1073741824,100,400,0,3.01,332.719,300.805,625.295,959.555,0.9340,62.52,858170,514357,100.00,138.92,4278856962,0.13

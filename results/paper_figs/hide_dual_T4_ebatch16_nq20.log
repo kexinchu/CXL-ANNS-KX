@@ -1,0 +1,30 @@
+# dual 2026-09-01T02:36:56+00:00 kernel=6.18.0-rc5 peak_denom=1.744
+# cache_used=4096 nvme=/dev/nvme1n1,/dev/nvme2n1 backings=2
+# extra_flags=--expand-batch 16
+mapped vmem /dev/vmem0 off=450971566080 len=9600069632 fd=5 prefetch=1 cache_used=4096
+nbr-bundle off=9600069632 stride=28672 bytes=267.03 GiB score_page=0 look_k=0
+graph-file /mnt/disk0/chukexin_motivation/serving_t2i_10m/pagebin_graph.bin
+graph-in-dram bytes=1280000000 src=graph-file
+vec_stride=800 (packed=800) graph_in_dram=1
+mapped DRAM window anon+mbind node=1 len=536870912 (fallback; not DAX)
+P3v2 softpin W=16 budget=67108864 install_top=4 fetch_top=0 page_group_b=0 install_all=0 threads=4 per_thread_window=1 cont_batch=0 score_page=0 expand_batch=16 issue_ahead=2 min_issue_use=0.00
+loaded id-map new→old n=10000000 from /mnt/disk0/chukexin_motivation/serving_t2i_10m/new_to_old_pagebin.bin
+query_select nq=20/10000 shuffle_seed=42 flush_window=0 oneshot_fp=1 oracle_dram=0 oracle_window=0 pin_entry=1 host_used=1098156 host_cap=33554432 dram_bytes=536870912 pin_cap=268435456
+hide_warm_entry ids=8192 pin_bytes=6553600/268435456
+mapped DRAM window anon+mbind node=1 len=536870912 (fallback; not DAX)
+mapped DRAM window anon+mbind node=1 len=536870912 (fallback; not DAX)
+mapped DRAM window anon+mbind node=1 len=536870912 (fallback; not DAX)
+mapped DRAM window anon+mbind node=1 len=536870912 (fallback; not DAX)
+per-thread windows=4 dram_bytes=536870912 warm_before_timed=1
+policy=P3 budget=67108864 dram_bytes=536870912 nq=20 beam=400 k=10 iters=0 oneshot_fp=1 pin_bytes=6553600/268435456
+wall_s=0.199 throughput_QPS=100.54
+cxl_ssd_to_dram_promote_GBps=3.314 promote_bytes=659292160 target=12.0
+latency_ms mean=37.439 p50=38.011 p90=48.715 p99=50.813
+recall@10=0.9600
+cxl_dram_hit_pct=50.50
+metrics queries=20 dram_hits=82628 ssd_misses=80994 hit_pct=50.50 promote_bytes=659292160 avg_promote_ns=2295.0 prefetch_pages=159932 evicts=0 dist=232038
+hide from_win=232038 from_bounce=0 from_win_pct=100.00 hide_prec=290.17 crit_wait_ns=61374806 device_fill_ns=82511777 overlap=0.41
+prefetch_use issued=68432 used=66714 page_use_pct=97.49 look_issued=0 look_used=0 look_use_pct=0.00 miss_use_pct=97.49 byte_use_pct=66.22 slot_use_pct=100.00 issue_use_pct=66.72 slots_on_pages=164804 slots_scored=164803 issue_slots=282164 issue_want=188273 scored_vec_B=185614400 nvme_read_B=278298624
+issue_use_hist=[0,.2):4844 [.2,.4):10703 [.4,.6):12291 [.6,.8):15112 [.8,1]:31511
+nvme_real_GBps=1.399 occ_vs_rnd_peak=80.2% peak_GBps=1.744 page_use=97.49 slot_use=100.00 issue_use=66.72
+CSV,P3,67108864,536870912,20,400,0,100.54,37.439,38.011,48.715,50.813,0.9600,50.50,82628,80994,100.00,290.17,61374806,0.41
