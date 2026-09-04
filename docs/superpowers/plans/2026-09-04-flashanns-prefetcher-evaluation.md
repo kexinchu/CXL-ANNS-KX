@@ -1,1659 +1,864 @@
-# FlashANNS Prefetcher-First Evaluation Implementation Plan
+# FlashANNS Integrated Evaluation Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Build and execute a reproducible, T=1-only evaluation of the frozen PQ-64 end-batch prefetcher, completing T2I-10M first and then the LAION-10M/YFCC-10M cross-dataset gate without depending on Continuous Batching.
+**Goal:** Produce validated Q2--Q4 measurements and final figures for the frozen FlashANNS Wise Prefetcher plus continuous pipeline on T2I-10M, YFCC-10M, and LAION-10M with a fixed 4 GiB CXL-side page cache.
 
-**Architecture:** Add observation-only C++ tracing around the frozen PQ path, then drive it through a Python manifest/preflight/runner/validator pipeline. Core comparisons keep PQ candidates fixed across serial transfer, batched transfer, extent-aware frozen transfer, and the resident Oracle; immutable JSON plus binary sidecars are the only inputs to aggregation and Figure 9.
+**Architecture:** Preserve the frozen page/I/O/scheduler path at runtime commit `15e6632`, add only the approved MIPS/L2 distance adapter and observation hooks, and drive all systems through a manifest/preflight/runner/validator pipeline. Complete one dataset vertically at a time (T2I, YFCC, LAION), seal immutable run records, then render the three paper figures from accepted JSON only.
 
-**Tech Stack:** C++17, GNU Make, Python 3 standard library, JSON, NumPy/Matplotlib for final aggregation and plotting, `/dev/vmem0`, vmem sysfs, NVMe block counters, SHA-256.
+**Tech Stack:** C++17, GNU Make, Python 3 standard library, JSON, NumPy/Matplotlib, SHA-256, `/dev/vmem0`, vmem sysfs, NVMe block counters.
 
-**Spec:** `docs/superpowers/specs/2026-09-04-flashanns-prefetcher-evaluation-design.md`
+**Spec:** `docs/superpowers/specs/2026-09-04-flashanns-prefetcher-evaluation-design.md` at or after commit `1dc182c`.
 
 ---
 
-## Scope and Hard Stops
+## Frozen Boundaries
 
-- Do not modify the scheduling or selection behavior of `search_one_pq`,
-  `PqTable`, `HidePipe`, the PQ-64 codebooks, the ID-to-slot map, or the staged
-  extent image at 1100 GiB.
-- Do not pass `--cont-batch` or run any T>1 experiment in this plan.
-- Do not add the removed optional-lookahead, Blind, score-page, spec-beam, or
-  pipe-drive mechanisms back to the frozen path.
-- Do not run `insmod`, `rmmod`, storage format/write, image staging, cache flush,
-  or backing-device switch commands from this plan.
-- Raw live results are not committed. Commit schemas, manifests, tests,
-  scripts, validated summaries, and provenance maps only.
-- `serving/search_beam.cpp`, `serving/metrics.hpp`, `serving/pq_table.hpp`,
-  `serving/tests/Makefile`, and related tests are already dirty at plan-writing
-  time. Do not stage or commit those files until Task 0 establishes a
-  user-approved baseline; never absorb in-progress Continuous Batching changes
-  into a prefetcher commit implicitly.
-- The current drafting-time live state reported
-  `/sys/class/vmem/vmem0/dirty_bytes=5279744`. Tasks 1--7 may proceed, but Task
-  8 and later live commands are blocked until a fresh preflight proves
-  `dirty_bytes=0`, `io_errors=0`, no open users, the expected device topology,
-  and valid image magic. Cleaning that state requires a separate user-approved
-  procedure.
+- Runtime baseline: `15e6632`.
+- Evaluation-contract baseline: `1dc182c`.
+- Paper files are not experiment inputs. Ignore concurrent edits under
+  `paper/` until Task 15.
+- Do not modify candidate-list maintenance, page collection, issue order,
+  completion handling, steal scheduling, pipeline depth, or scoring residency.
+- The only approved semantic extension is `--metric mips|l2`, used
+  consistently by PQ ADC and exact rerank.
+- Removed early-CL, lookahead, Blind, score-page, pipe-drive, admit-gap, and
+  speculative-beam controls never enter a command.
+- All internal measured runs require `cache_limit=4294967296`.
+- A runner never loads/unloads a driver, changes sysfs, stages an image, resets
+  a cache, or writes a backing device.
+- Raw run directories are immutable and untracked. Commit code, schemas,
+  manifests, validated tables, figures, and readiness records only.
+- Any `/mnt/disk0` build, live image stage, cache-limit change, or reset is a
+  separate approval checkpoint.
 
-## File Map
+## Canonical File Map
 
-| File | Responsibility |
+| Path | Responsibility |
 |---|---|
-| `serving/eval_trace.hpp` | Buffer and atomically write per-query query IDs, latency, PQ candidates, and final result sidecars. |
-| `serving/search_beam.cpp` | Add optional T=1 trace hooks and proof-only PQ-navigation device counters; do not change candidate selection or issue order. |
-| `serving/metrics.hpp` | Add event-counted requested/issued/extent page metrics and PQ-navigation NAND bytes. |
-| `serving/hide_fill.hpp` | Record counts immediately before and after existing extent expansion. |
-| `serving/tests/test_eval_trace.cpp` | Verify sidecar binary formats and T=1 restriction. |
-| `serving/tests/test_metrics.cpp` | Verify event page-use math and aggregation. |
-| `experiments/eval/prefetcher/config.py` | Load and validate dataset/system/matrix definitions. |
-| `experiments/eval/prefetcher/datasets.json` | Known source paths, expected sizes, readiness state, and layout contracts. |
-| `experiments/eval/prefetcher/systems.json` | Exact flags for Oracle, serial, batch, frozen, and diagnostic controls. |
-| `experiments/eval/prefetcher/freeze_artifacts.py` | Hash immutable artifacts and write a frozen manifest. |
-| `experiments/eval/prefetcher/preflight.py` | Read-only VMEM, sysfs, block-counter, process, and image-magic checks. |
-| `experiments/eval/prefetcher/run_one.py` | Expand one validated run, capture snapshots, invoke the binary, and seal `run.json`. |
-| `experiments/eval/prefetcher/run_matrix.py` | Deterministically expand smoke, calibration, and final T=1 matrices. |
-| `experiments/eval/prefetcher/validate_run.py` | Recompute sidecar counts, recall, latency percentiles, and proof gates. |
-| `experiments/eval/prefetcher/aggregate.py` | Aggregate matched five-run blocks and bootstrap confidence intervals. |
-| `experiments/eval/prefetcher/plot_figure9.py` | Render the revised three-panel prefetcher figure and provenance map. |
-| `experiments/eval/prefetcher/schema/run.schema.json` | Declare required run identity, counters, metrics, and sidecars. |
-| `experiments/eval/prefetcher/tests/` | Standard-library unit tests using temporary files and fake sysfs trees. |
-| `results/eval/prefetcher/` | Generated artifact manifests, raw runs, validated CSV, figure data, and readiness reports. |
+| `serving/distance_metric.hpp` | Parse and apply MIPS/L2 exact distance. |
+| `serving/pq_table.hpp` | Build query LUTs using the declared metric. |
+| `serving/eval_trace.hpp` | Store deterministic per-query trace records and sidecars. |
+| `serving/search_beam.cpp` | Parse metric/trace flags and add observation-only hooks. |
+| `serving/metrics.hpp` | Add event-counted page and scheduler counters. |
+| `serving/hide_fill.hpp` | Count requested pages before and issued pages after existing extent formation. |
+| `experiments/eval/flashanns/config.py` | Validate datasets, systems, matrix, and frozen constants. |
+| `experiments/eval/flashanns/datasets.json` | Dataset artifacts, metrics, layouts, sizes, and readiness. |
+| `experiments/eval/flashanns/systems.json` | Exact core and ablation system definitions. |
+| `experiments/eval/flashanns/matrix.json` | Smoke, calibration, Q2, Q3, and Q4 matrices. |
+| `experiments/eval/flashanns/verify_dataset.py` | Validate source and serving artifacts. |
+| `experiments/eval/flashanns/freeze_artifacts.py` | Stream SHA-256 manifests. |
+| `experiments/eval/flashanns/preflight.py` | Fail-closed read-only live checks. |
+| `experiments/eval/flashanns/run_one.py` | Execute one already-approved run and seal `run.json`. |
+| `experiments/eval/flashanns/run_matrix.py` | Deterministically expand a phase; never reset hardware. |
+| `experiments/eval/flashanns/validate_run.py` | Recompute sidecars, recall, metrics, and proof gates. |
+| `experiments/eval/flashanns/aggregate.py` | Build five-repeat estimates and bootstrap intervals. |
+| `experiments/eval/flashanns/plot_q2_q4.py` | Render provisional and final Q2--Q4 figures. |
+| `experiments/eval/flashanns/schema/run.schema.json` | Required run identity and evidence fields. |
+| `experiments/eval/flashanns/tests/` | Offline unit and negative tests. |
+| `results/eval/flashanns/` | Generated manifests, readiness, validated CSV, provenance, and plots. |
 
 ---
 
-### Task 0: Establish a Safe Source Baseline
+### Task 0: Reconfirm the Frozen Baseline and Record Live Blockers
 
 **Files:**
 - Inspect: `serving/search_beam.cpp`
-- Inspect: `serving/metrics.hpp`
-- Inspect: `serving/pq_table.hpp`
+- Inspect: `serving/cont_batch.hpp`
 - Inspect: `serving/hide_fill.hpp`
-- Inspect: `serving/tests/Makefile`
-- Produce: `/tmp/flashanns-prefetcher-baseline.patch`
+- Inspect: `serving/pq_table.hpp`
+- Inspect: `serving/metrics.hpp`
+- Produce: `results/eval/flashanns/readiness/baseline.json`
 
-- [ ] **Step 1: Capture the exact dirty state without changing it**
+- [ ] **Step 1: Prove the runtime sources still equal the freeze**
 
-```bash
-git status --short --branch
-git diff --binary --output=/tmp/flashanns-prefetcher-baseline.patch -- serving/search_beam.cpp serving/metrics.hpp serving/pq_table.hpp serving/hide_fill.hpp serving/tests/Makefile serving/tests/test_metrics.cpp serving/tests/test_pq_table.cpp
-sha256sum /tmp/flashanns-prefetcher-baseline.patch
-```
+Run:
 
-Expected: the patch records the existing Continuous Batching/PQ/test edits and
-the hash command succeeds. Do not run `git add`, `git stash`, checkout, reset,
-or clean.
+~~~bash
+git diff --exit-code 15e6632 -- serving/search_beam.cpp serving/cont_batch.hpp serving/hide_fill.hpp serving/pq_table.hpp serving/metrics.hpp serving/prefetch.hpp
+~~~
 
-- [ ] **Step 2: Ask for an explicit baseline decision**
+Expected: exit 0 before evaluation changes.
 
-Present the dirty-file list and patch hash. Continue only after the user either
-commits/checkpoints those edits or explicitly authorizes one narrowly scoped
-checkpoint commit. If the user keeps them uncommitted, Tasks 2--4 must remain
-blocked because their per-task commits would otherwise absorb unrelated work.
+- [ ] **Step 2: Run and record the offline baseline**
 
-- [ ] **Step 3: Recheck the approved baseline**
+~~~bash
+make -C serving/tests test
+g++ -O3 -std=c++17 -march=native -pthread -I. serving/search_beam.cpp -o /tmp/search_beam-15e6632 -lnuma
+sha256sum /tmp/search_beam-15e6632
+~~~
 
-```bash
-git status --short --branch
-git rev-parse HEAD
-sha256sum /tmp/flashanns-prefetcher-baseline.patch
-```
+Expected: all 11 current C++ tests pass and compilation succeeds.
 
-Record the approved base commit and whether the original patch is now committed
-or intentionally absent. The patch hash is diagnostic evidence only and is not
-committed.
+- [ ] **Step 3: Read live state without opening or changing the device**
+
+~~~bash
+for f in backend backing_count nvme_dev target_bdf cache_limit cache_used dirty_bytes io_errors evictions; do
+  printf '%s=' "$f"
+  sed -n '1p' "/sys/class/vmem/vmem0/$f"
+done
+test -e /dev/vmem0
+~~~
+
+Expected at plan-writing time: this gate fails because the cache is 100 MiB,
+`dirty_bytes` is nonzero, and `/dev/vmem0` is absent. Record the values and
+do not repair them in this task.
+
+- [ ] **Step 4: Write the baseline record**
+
+The record must contain:
+
+~~~json
+{
+  "runtime_base": "15e6632",
+  "contract_base": "1dc182c",
+  "offline_tests": {"passed": 11, "failed": 0},
+  "source_equal_to_runtime_base": true,
+  "live_ready": false,
+  "live_blockers": [
+    "cache_limit is not 4294967296",
+    "dirty_bytes is nonzero",
+    "/dev/vmem0 is absent"
+  ]
+}
+~~~
+
+Populate observed values rather than copying the drafting-time numbers.
+
+- [ ] **Step 5: Commit only the readiness record**
+
+~~~bash
+git add results/eval/flashanns/readiness/baseline.json
+git commit -m "test: record integrated evaluation baseline"
+~~~
 
 ---
 
-### Task 1: Lock Dataset and System Configuration
+### Task 1: Add the Approved MIPS/L2 Distance Adapter
+
+**Files:**
+- Create: `serving/distance_metric.hpp`
+- Modify: `serving/pq_table.hpp`
+- Modify: `serving/prefetch.hpp`
+- Modify: `serving/search_beam.cpp`
+- Create: `serving/tests/test_distance_metric.cpp`
+- Modify: `serving/tests/test_pq_table.cpp`
+- Modify: `serving/tests/Makefile`
+
+- [ ] **Step 1: Write failing exact-distance tests**
+
+Create `test_distance_metric.cpp` with these assertions:
+
+~~~cpp
+#include "serving/distance_metric.hpp"
+#include <cassert>
+#include <cmath>
+#include <cstdio>
+
+int main() {
+  const float a[] = {1, 2, 3};
+  const float b[] = {3, 2, 1};
+  assert(parse_distance_metric("mips") == DistanceMetric::Mips);
+  assert(parse_distance_metric("l2") == DistanceMetric::L2);
+  assert(std::fabs(distance_f32(a, b, 3, DistanceMetric::Mips) + 10.f) < 1e-6f);
+  assert(std::fabs(distance_f32(a, b, 3, DistanceMetric::L2) - 8.f) < 1e-6f);
+  bool rejected = false;
+  try { (void)parse_distance_metric("cosine"); }
+  catch (const std::invalid_argument&) { rejected = true; }
+  assert(rejected);
+  std::puts("test_distance_metric OK");
+}
+~~~
+
+Add a PQ test using two one-dimensional centroids and assert that MIPS and L2
+produce different, analytically correct orderings for the same query.
+
+- [ ] **Step 2: Confirm the new test fails**
+
+~~~bash
+make -C serving/tests test_distance_metric
+~~~
+
+Expected: missing `serving/distance_metric.hpp`.
+
+- [ ] **Step 3: Implement the pure metric interface**
+
+Create:
+
+~~~cpp
+#pragma once
+#include <cstdint>
+#include <stdexcept>
+#include <string>
+
+enum class DistanceMetric : uint8_t { Mips, L2 };
+
+inline DistanceMetric parse_distance_metric(const std::string& value) {
+  if (value == "mips") return DistanceMetric::Mips;
+  if (value == "l2") return DistanceMetric::L2;
+  throw std::invalid_argument("metric must be mips or l2");
+}
+
+inline const char* distance_metric_name(DistanceMetric value) {
+  return value == DistanceMetric::Mips ? "mips" : "l2";
+}
+
+inline float distance_f32(const float* x, const float* q, uint32_t dim,
+                          DistanceMetric metric) {
+  float sum = 0;
+  if (metric == DistanceMetric::Mips) {
+    for (uint32_t i = 0; i < dim; ++i) sum -= x[i] * q[i];
+  } else {
+    for (uint32_t i = 0; i < dim; ++i) {
+      const float d = x[i] - q[i];
+      sum += d * d;
+    }
+  }
+  return sum;
+}
+~~~
+
+- [ ] **Step 4: Make PQ LUT construction metric-aware**
+
+Retain the pivot centroid in `PqTable::centroid`. Add:
+
+~~~cpp
+void fill_lut_l2(const float* q, float* dst) const {
+  for (uint32_t c = 0; c < nchunks; ++c) {
+    float* chunk = dst + (size_t)c * kCentroids;
+    for (uint32_t i = 0; i < kCentroids; ++i) chunk[i] = 0;
+    for (uint32_t d = chunk_off[c]; d < chunk_off[c + 1]; ++d) {
+      const float* centers = tables_T.data() + (size_t)d * kCentroids;
+      for (uint32_t i = 0; i < kCentroids; ++i) {
+        const float delta = q[d] - centroid[d] - centers[i];
+        chunk[i] += delta * delta;
+      }
+    }
+  }
+}
+
+void fill_lut(const float* q, float* dst, DistanceMetric metric) const {
+  if (metric == DistanceMetric::Mips) fill_lut_ip(q, dst);
+  else fill_lut_l2(q, dst);
+}
+~~~
+
+Change `begin_query_ip` into `begin_query(q, metric)` and keep no implicit
+metric default inside evaluation code.
+
+- [ ] **Step 5: Dispatch only the PQ paths**
+
+Add `DistanceMetric metric = DistanceMetric::Mips` to `Prefetch`. Parse
+`--metric`, reject other strings, print `metric=<name>`, and use:
+
+~~~cpp
+pq->begin_query(qf, pref.metric);
+pq->fill_lut(qf, q.lut.data(), pref.metric);
+c.dist = vec_distance(src, qf, pl.hdr->dim, pl.hdr->vec_bytes, pref.metric);
+c.dist = vec_distance(src, q.qf, pl.hdr->dim, pl.hdr->vec_bytes, q.metric);
+~~~
+
+Add `DistanceMetric metric` to `PqQ` and initialize it from `Prefetch`.
+Do not reorder any candidate, page, issue, wait, or scheduling statement.
+
+- [ ] **Step 6: Verify both metrics and audit the frozen diff**
+
+~~~bash
+make -C serving/tests test_distance_metric test_pq_table
+serving/tests/test_distance_metric
+serving/tests/test_pq_table
+make -C serving/tests test
+g++ -O3 -std=c++17 -march=native -pthread -I. serving/search_beam.cpp -o /tmp/search_beam-metrics -lnuma
+git diff --function-context 15e6632 -- serving/search_beam.cpp serving/cont_batch.hpp serving/hide_fill.hpp
+~~~
+
+Expected: all tests pass; `cont_batch.hpp` and page/scheduler statements are
+unchanged; the search diff contains distance dispatch only.
+
+- [ ] **Step 7: Commit**
+
+~~~bash
+git add serving/distance_metric.hpp serving/pq_table.hpp serving/prefetch.hpp serving/search_beam.cpp serving/tests/test_distance_metric.cpp serving/tests/test_pq_table.cpp serving/tests/Makefile
+git commit -m "feat: add dataset metric adapter"
+~~~
+
+---
+
+### Task 2: Lock Dataset, System, and Matrix Configuration
 
 **Files:**
 - Create: `experiments/__init__.py`
 - Create: `experiments/eval/__init__.py`
-- Create: `experiments/eval/prefetcher/__init__.py`
-- Create: `experiments/eval/prefetcher/config.py`
-- Create: `experiments/eval/prefetcher/datasets.json`
-- Create: `experiments/eval/prefetcher/systems.json`
-- Create: `experiments/eval/prefetcher/tests/test_config.py`
+- Create: `experiments/eval/flashanns/__init__.py`
+- Create: `experiments/eval/flashanns/config.py`
+- Create: `experiments/eval/flashanns/datasets.json`
+- Create: `experiments/eval/flashanns/systems.json`
+- Create: `experiments/eval/flashanns/matrix.json`
+- Create: `experiments/eval/flashanns/tests/test_config.py`
 
-- [ ] **Step 1: Write the failing configuration tests**
+- [ ] **Step 1: Write failing configuration tests**
 
-Create `experiments/eval/prefetcher/tests/test_config.py`:
+Tests must assert:
 
-```python
-import json
-import tempfile
-import unittest
-from pathlib import Path
+~~~python
+self.assertEqual(datasets["t2i10m"]["metric"], "mips")
+self.assertEqual(datasets["laion10m"]["metric"], "mips")
+self.assertEqual(datasets["yfcc10m"]["metric"], "l2")
+self.assertEqual(constants["cache_limit"], 4 * 1024**3)
+self.assertEqual(systems["flashanns"]["threads"], 8)
+self.assertEqual(systems["flashanns"]["pipe_depth"], 2)
+self.assertEqual(systems["flashanns"]["issue_qd"], 0)
+self.assertEqual(systems["flashanns"]["per_thread_window"], 128 * 1024**2)
+~~~
 
-from experiments.eval.prefetcher.config import ConfigError, load_configs
+Also reject a ready dataset missing an artifact, a metric not in
+`{"mips","l2"}`, a live removed flag, a system other than eight threads in
+Q2, and any cache limit other than 4294967296.
 
+- [ ] **Step 2: Confirm the module is absent**
 
-class ConfigTest(unittest.TestCase):
-    def test_frozen_systems_are_t1_and_have_no_removed_flags(self):
-        root = Path(__file__).resolve().parents[4]
-        datasets, systems = load_configs(root)
-        self.assertTrue(datasets["t2i10m"]["ready"])
-        self.assertEqual(systems["pq-frozen"]["threads"], 1)
-        flat = " ".join(systems["pq-frozen"]["flags"])
-        for forbidden in ("--cont-batch", "--lookahead-k", "--spec-beam-nbrs",
-                          "--score-page", "--pipe-drive"):
-            self.assertNotIn(forbidden, flat)
+~~~bash
+python3 -m unittest experiments.eval.flashanns.tests.test_config -v
+~~~
 
-    def test_ready_dataset_cannot_omit_required_artifact(self):
-        with tempfile.TemporaryDirectory() as td:
-            root = Path(td)
-            path = root / "experiments/eval/prefetcher"
-            path.mkdir(parents=True)
-            (path / "datasets.json").write_text(json.dumps({
-                "broken": {"ready": True, "artifacts": {}}
-            }))
-            (path / "systems.json").write_text("{}")
-            with self.assertRaisesRegex(ConfigError, "broken.*missing artifact"):
-                load_configs(root)
+Expected: import failure.
 
+- [ ] **Step 3: Define dataset records**
 
-if __name__ == "__main__":
-    unittest.main()
-```
+Use these exact T2I artifact keys and paths:
 
-- [ ] **Step 2: Run the tests and confirm the module is absent**
-
-Run:
-
-```bash
-python3 -m unittest experiments.eval.prefetcher.tests.test_config -v
-```
-
-Expected: `ModuleNotFoundError: No module named 'experiments'` or missing
-`experiments.eval.prefetcher.config`.
-
-- [ ] **Step 3: Add the exact dataset configuration**
-
-Create `datasets.json` with T2I ready and the other datasets explicitly blocked
-on missing serving artifacts rather than represented by empty placeholders:
-
-```json
+~~~json
 {
-  "t2i10m": {
-    "ready": true,
-    "metric": "mips",
-    "n": 10000000,
-    "dim": 200,
-    "source_dtype": "float32",
-    "execution_dtype": "float32",
-    "record_stride": 2048,
-    "vmem_device": "/dev/vmem0",
-    "vmem_offset": 1181116006400,
-    "vmem_length": 20480004096,
-    "artifacts": {
-      "oracle_image": "/mnt/disk0/chukexin_motivation/serving_t2i_10m/diskann_t2i_10m.bin",
-      "extent_image": "/mnt/disk0/chukexin_motivation/serving_t2i_10m/diskann_t2i_10m_extent.bin",
-      "graph": "/mnt/disk0/chukexin_motivation/serving_t2i_10m/diskann_t2i_10m.graph.bin",
-      "slot_map": "/mnt/disk0/chukexin_motivation/serving_t2i_10m/id_to_slot_10m_extent.bin",
-      "entry": "/mnt/disk0/chukexin_motivation/serving_t2i_10m/serving_entry_t2i_10m_pagebin.bin",
-      "queries": "/mnt/disk0/chukexin_motivation/serving_t2i_10m/query_10k.fbin",
-      "ground_truth": "/mnt/disk0/chukexin_motivation/serving_t2i_10m/gt_10k_k10.ibin",
-      "id_map": "/mnt/disk0/chukexin_motivation/serving_t2i_10m/new_to_old_pagebin.bin",
-      "pq64_pivots": "/mnt/disk0/chukexin_motivation/pipeann_t2i10m/idx_t2i64_pq_pivots.bin",
-      "pq64_codes": "/mnt/disk0/chukexin_motivation/pipeann_t2i10m/idx_t2i64_pq_compressed.bin",
-      "pq32_pivots": "/mnt/disk0/chukexin_motivation/pipeann_t2i10m/idx_t2i_pq_pivots.bin",
-      "pq32_codes": "/mnt/disk0/chukexin_motivation/pipeann_t2i10m/idx_t2i_pq_compressed.bin"
-    },
-    "expected_sizes": {
-      "oracle_image": 20480004096,
-      "extent_image": 20480004096,
-      "graph": 1280000000,
-      "slot_map": 40000000,
-      "entry": 1081356,
-      "queries": 8000008,
-      "ground_truth": 400008,
-      "id_map": 40000000,
-      "pq64_pivots": 210788,
-      "pq64_codes": 640000008
-    }
-  },
-  "laion10m": {
-    "ready": false,
-    "source_root": "/mnt/disk0/chukexin_motivation/diskann_data_laion25m",
-    "blocked_on": ["10M query subset", "recall@10 ground truth", "10M graph", "PQ-64 codebook", "packed extent image", "slot map"]
-  },
-  "yfcc10m": {
-    "ready": false,
-    "source_root": "/mnt/disk0/chukexin_motivation/data/yfcc10m",
-    "source_files": ["base.10M.u8bin", "query.public.100K.u8bin", "unfiltered.GT.public.ibin"],
-    "blocked_on": ["frozen 10K query subset", "10M graph", "PQ-64 codebook", "packed extent image", "slot map"]
-  }
-}
-```
-
-- [ ] **Step 4: Add exact system definitions**
-
-Create `systems.json`:
-
-```json
-{
-  "pq-oracle": {
-    "threads": 1,
-    "flags": ["--oracle-dram", "--policy", "P0", "--pq-nav"]
-  },
-  "pq-serial": {
-    "threads": 1,
-    "flags": ["--policy", "P3", "--pq-nav", "--no-vmem-prefetch", "--pipe-w", "1", "--no-extent-run", "--shared-window"]
-  },
-  "pq-batch": {
-    "threads": 1,
-    "flags": ["--policy", "P3", "--pq-nav", "--pipe-w", "16", "--no-extent-run", "--shared-window"]
-  },
-  "pq-frozen": {
-    "threads": 1,
-    "flags": ["--policy", "P3", "--pq-nav", "--pipe-w", "16", "--extent-run", "--shared-window"]
-  },
-  "legacy-fp-hop": {
-    "threads": 1,
-    "diagnostic_only": true,
-    "flags": ["--policy", "P3", "--oneshot-fp", "--expand-batch", "4", "--issue-ahead", "1", "--no-sync-hop", "--shared-window"]
-  },
-  "pq32-sensitivity": {
-    "threads": 1,
-    "diagnostic_only": true,
-    "datasets": ["t2i10m"],
-    "flags": ["--policy", "P3", "--pq-nav", "--pipe-w", "16", "--extent-run", "--shared-window"]
-  }
-}
-```
-
-All common frozen flags (`--diskann-layout`, `--threads 1`, `--no-hide-warm-entry`,
-`--no-direct-install`, `--no-score-cache`, `--no-stripe-fill`, `--k 10`) are
-added centrally by the runner so a system cannot silently omit them.
-
-- [ ] **Step 5: Implement configuration validation**
-
-Create `config.py`:
-
-```python
-import json
-import argparse
-from pathlib import Path
-
-
-class ConfigError(ValueError):
-    pass
-
-
-REQUIRED_ARTIFACTS = {
-    "oracle_image", "extent_image", "graph", "slot_map", "entry", "queries", "ground_truth",
-    "id_map", "pq64_pivots", "pq64_codes"
-}
-FORBIDDEN_FLAGS = {
-    "--cont-batch", "--lookahead-k", "--spec-beam-nbrs", "--score-page",
-    "--pipe-drive"
-}
-
-
-def _read(path):
-    with Path(path).open(encoding="utf-8") as handle:
-        return json.load(handle)
-
-
-def load_configs(repo_root):
-    base = Path(repo_root) / "experiments/eval/prefetcher"
-    datasets = _read(base / "datasets.json")
-    systems = _read(base / "systems.json")
-    for name, dataset in datasets.items():
-        if dataset.get("ready"):
-            missing = REQUIRED_ARTIFACTS - set(dataset.get("artifacts", {}))
-            if missing:
-                raise ConfigError(f"{name}: missing artifact {sorted(missing)}")
-    for name, system in systems.items():
-        if system.get("threads") != 1:
-            raise ConfigError(f"{name}: prefetcher plan requires threads=1")
-        bad = FORBIDDEN_FLAGS.intersection(system.get("flags", []))
-        if bad:
-            raise ConfigError(f"{name}: forbidden flags {sorted(bad)}")
-    return datasets, systems
-
-
-def require_all_ready(datasets):
-    blocked = {name: cfg.get("blocked_on", []) for name, cfg in datasets.items()
-               if not cfg.get("ready")}
-    if blocked:
-        raise ConfigError(f"cross-dataset gate blocked: {blocked}")
-
-
-def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--repo-root", default=".")
-    parser.add_argument("--require-all-ready", action="store_true")
-    args = parser.parse_args()
-    datasets, _ = load_configs(Path(args.repo_root).resolve())
-    if args.require_all_ready:
-        require_all_ready(datasets)
-
-
-if __name__ == "__main__":
-    main()
-```
-
-- [ ] **Step 6: Run the tests**
-
-Run:
-
-```bash
-python3 -m unittest experiments.eval.prefetcher.tests.test_config -v
-```
-
-Expected: two tests pass.
-
-- [ ] **Step 7: Commit configuration**
-
-```bash
-git add experiments/__init__.py experiments/eval/__init__.py experiments/eval/prefetcher/__init__.py experiments/eval/prefetcher/config.py experiments/eval/prefetcher/datasets.json experiments/eval/prefetcher/systems.json experiments/eval/prefetcher/tests/test_config.py
-git commit -m "test: lock prefetcher evaluation configurations"
-```
-
----
-
-### Task 2: Add Stable T=1 Binary Sidecars
-
-**Files:**
-- Create: `serving/eval_trace.hpp`
-- Create: `serving/tests/test_eval_trace.cpp`
-- Modify: `serving/tests/Makefile`
-
-- [ ] **Step 1: Write the failing sidecar test**
-
-Create `serving/tests/test_eval_trace.cpp`:
-
-```cpp
-#include "serving/eval_trace.hpp"
-#include <cassert>
-#include <cstdint>
-#include <cstdio>
-#include <filesystem>
-#include <vector>
-
-int main() {
-  const auto dir = std::filesystem::temp_directory_path() / "flashanns-eval-trace-test";
-  std::filesystem::remove_all(dir);
-  EvalTrace trace(dir.string(), 2);
-  trace.add(7, 1000, {3, 5, 9}, {5, 3});
-  trace.add(8, 2000, {4}, {4, 1});
-  assert(trace.finish());
-  assert(std::filesystem::file_size(dir / "query_ids.u32") == 2 * sizeof(uint32_t));
-  assert(std::filesystem::file_size(dir / "latency_ns.u64") == 2 * sizeof(uint64_t));
-  assert(std::filesystem::file_size(dir / "candidate_offsets.u64") == 3 * sizeof(uint64_t));
-  assert(std::filesystem::file_size(dir / "candidate_ids.u32") == 4 * sizeof(uint32_t));
-  assert(std::filesystem::file_size(dir / "result_ids.u32") == 4 * sizeof(uint32_t));
-  std::filesystem::remove_all(dir);
-  std::puts("test_eval_trace OK");
-}
-```
-
-- [ ] **Step 2: Confirm the header is missing**
-
-Run:
-
-```bash
-make -C serving/tests test_eval_trace
-```
-
-Expected: compilation fails with `serving/eval_trace.hpp: No such file or directory`.
-
-- [ ] **Step 3: Implement the observation-only writer**
-
-Create `serving/eval_trace.hpp`:
-
-```cpp
-#pragma once
-#include <cstdint>
-#include <filesystem>
-#include <fstream>
-#include <string>
-#include <utility>
-#include <vector>
-
-class EvalTrace {
- public:
-  EvalTrace(std::string dir, uint32_t k) : dir_(std::move(dir)), k_(k) {
-    candidate_offsets_.push_back(0);
-  }
-
-  void add(uint32_t query_id, uint64_t latency_ns,
-           const std::vector<uint32_t>& candidates,
-           const std::vector<uint32_t>& results) {
-    query_ids_.push_back(query_id);
-    latency_ns_.push_back(latency_ns);
-    candidate_ids_.insert(candidate_ids_.end(), candidates.begin(), candidates.end());
-    candidate_offsets_.push_back(candidate_ids_.size());
-    for (uint32_t i = 0; i < k_; ++i)
-      result_ids_.push_back(i < results.size() ? results[i] : UINT32_MAX);
-  }
-
-  bool finish() const {
-    std::error_code ec;
-    std::filesystem::create_directories(dir_, ec);
-    if (ec) return false;
-    return write("query_ids.u32", query_ids_) &&
-           write("latency_ns.u64", latency_ns_) &&
-           write("candidate_offsets.u64", candidate_offsets_) &&
-           write("candidate_ids.u32", candidate_ids_) &&
-           write("result_ids.u32", result_ids_);
-  }
-
- private:
-  template <typename T>
-  bool write(const char* name, const std::vector<T>& values) const {
-    const auto final = std::filesystem::path(dir_) / name;
-    const auto temp = final.string() + ".tmp";
-    std::ofstream out(temp, std::ios::binary | std::ios::trunc);
-    out.write(reinterpret_cast<const char*>(values.data()),
-              static_cast<std::streamsize>(values.size() * sizeof(T)));
-    out.close();
-    if (!out) return false;
-    std::error_code ec;
-    std::filesystem::rename(temp, final, ec);
-    return !ec;
-  }
-
-  std::string dir_;
-  uint32_t k_;
-  std::vector<uint32_t> query_ids_;
-  std::vector<uint64_t> latency_ns_;
-  std::vector<uint64_t> candidate_offsets_;
-  std::vector<uint32_t> candidate_ids_;
-  std::vector<uint32_t> result_ids_;
-};
-```
-
-- [ ] **Step 4: Add the Make target**
-
-Add `test_eval_trace` to the `test:` prerequisites and execution list in
-`serving/tests/Makefile`, then add:
-
-```makefile
-test_eval_trace: test_eval_trace.cpp ../../serving/eval_trace.hpp
-	$(CXX) $(CXXFLAGS) -o $@ test_eval_trace.cpp
-```
-
-Add `test_eval_trace` to the `clean` removal list.
-
-- [ ] **Step 5: Run the focused and full offline tests**
-
-```bash
-make -C serving/tests test_eval_trace
-serving/tests/test_eval_trace
-make -C serving/tests test
-```
-
-Expected: `test_eval_trace OK` and the existing suite passes.
-
-- [ ] **Step 6: Commit sidecar support**
-
-```bash
-git add serving/eval_trace.hpp serving/tests/test_eval_trace.cpp serving/tests/Makefile
-git commit -m "test: add immutable evaluation sidecars"
-```
-
----
-
-### Task 3: Hook Sidecars into the Frozen PQ Path
-
-**Files:**
-- Modify: `serving/search_beam.cpp:356-523`
-- Modify: `serving/search_beam.cpp:1106-1114`
-- Modify: `serving/search_beam.cpp:2231-2262`
-- Modify: `serving/search_beam.cpp:2501-2516`
-- Create: `serving/tests/test_eval_trace_mode.cpp`
-- Modify: `serving/tests/Makefile`
-
-- [ ] **Step 1: Add a failing T=1-mode validation test**
-
-Add this helper test in `test_eval_trace_mode.cpp`:
-
-```cpp
-#include "serving/eval_trace_mode.hpp"
-#include <cassert>
-#include <cstdio>
-
-int main() {
-  assert(eval_trace_mode_valid(1, false));
-  assert(!eval_trace_mode_valid(2, false));
-  assert(!eval_trace_mode_valid(1, true));
-  std::puts("test_eval_trace_mode OK");
-}
-```
-
-Run `make -C serving/tests test_eval_trace_mode`; expect the missing-header
-compile failure.
-
-- [ ] **Step 2: Add the pure mode guard**
-
-Create `serving/eval_trace_mode.hpp`:
-
-```cpp
-#pragma once
-inline bool eval_trace_mode_valid(int threads, bool cont_batch) {
-  return threads == 1 && !cont_batch;
-}
-```
-
-Add the test target to `serving/tests/Makefile` using the same C++17 flags as
-`test_eval_trace`.
-
-- [ ] **Step 3: Add an optional candidate output without changing selection**
-
-Extend `search_one_pq` with a final optional argument:
-
-```cpp
-std::vector<uint32_t>* candidate_ids_out = nullptr
-```
-
-The Oracle branch returns before `rerank_ids` exists, so immediately before its
-`fp_rerank_dram()` call copy the unsorted PQ candidate IDs:
-
-```cpp
-    if (candidate_ids_out) {
-      candidate_ids_out->clear();
-      candidate_ids_out->reserve(cand.size());
-      for (const Cand& c : cand) candidate_ids_out->push_back(c.id);
-    }
-```
-
-In the non-Oracle branch, immediately after constructing `rerank_ids` and
-before `issue_ids`, add:
-
-```cpp
-  if (candidate_ids_out) *candidate_ids_out = rerank_ids;
-```
-
-Extend `search_one` with the same optional argument and pass it only to
-`search_one_pq`:
-
-```cpp
-  if (!oneshot_fp && pref.pq_nav && pref.pq)
-    return search_one_pq(pl, win, pref, eg, qf, beam, k, iters, ext_pool, vio,
-                         candidate_ids_out);
-```
-
-All non-PQ paths leave the vector empty.
-
-- [ ] **Step 4: Add the trace CLI and fail-closed restrictions**
-
-Include `serving/eval_trace.hpp` and `serving/eval_trace_mode.hpp`. Add:
-
-```cpp
-  const char* eval_trace_dir = nullptr;
-```
-
-to main's CLI state, parse `--eval-trace-dir`, and after argument parsing add:
-
-```cpp
-  if (eval_trace_dir && !eval_trace_mode_valid(nthreads, cont_batch_mode)) {
-    fprintf(stderr, "--eval-trace-dir requires --threads 1 and no --cont-batch\n");
-    return 2;
-  }
-```
-
-Construct `std::unique_ptr<EvalTrace> eval_trace` after `nq` and `k` are known.
-
-- [ ] **Step 5: Record original query ID, integer latency, candidates, and mapped results**
-
-Inside `run_one_q`, declare `std::vector<uint32_t> candidates`, pass its address
-to `search_one`, and compute integer nanoseconds. Move the existing `id_map`
-translation outside the `if (gt_path)` block so result IDs are always written
-in the original dataset-ID domain; then compute recall and write:
-
-```cpp
-    const uint64_t latency_ns = static_cast<uint64_t>(
-        std::chrono::duration_cast<std::chrono::nanoseconds>(tq1 - tq0).count());
-    if (eval_trace)
-      eval_trace->add(qidx[qi], latency_ns, candidates, ids);
-```
-
-Call `eval_trace->finish()` after the T=1 loop and return 2 if it fails. Keep the
-existing stdout and return value unchanged.
-
-- [ ] **Step 6: Compile and run offline regression tests**
-
-```bash
-make -C serving/tests test_eval_trace test_eval_trace_mode
-serving/tests/test_eval_trace
-serving/tests/test_eval_trace_mode
-make -C serving/tests test
-g++ -O3 -std=c++17 -march=native -pthread -I. serving/search_beam.cpp -o serving/search_beam -lnuma
-```
-
-Expected: all tests and the serving binary compile. Do not execute the binary on
-`/dev/vmem0` in this task.
-
-- [ ] **Step 7: Inspect the frozen-function diff**
-
-```bash
-git diff --function-context -- serving/search_beam.cpp serving/eval_trace.hpp
-```
-
-Expected: `search_one_pq` has only the optional candidate copy; candidate
-insertion, beam termination, page issue, wait, scoring, and sorting statements
-are byte-for-byte unchanged.
-
-- [ ] **Step 8: Commit trace hooks**
-
-```bash
-git add serving/search_beam.cpp serving/eval_trace_mode.hpp serving/tests/test_eval_trace_mode.cpp serving/tests/Makefile
-git commit -m "test: trace frozen PQ candidates and results"
-```
-
----
-
-### Task 4: Correct Event Page Accounting and Add Proof-Only Phase Counters
-
-**Files:**
-- Modify: `serving/metrics.hpp:7-196`
-- Modify: `serving/hide_fill.hpp:194-223`
-- Modify: `serving/search_beam.cpp:356-495`
-- Modify: `serving/tests/test_metrics.cpp`
-
-- [ ] **Step 1: Write failing event-accounting assertions**
-
-Append to `test_metrics.cpp` before its final print:
-
-```cpp
-  Metrics evt;
-  evt.note_pf_issue_event(7, 10);
-  evt.note_pf_issue_event(3, 3);
-  assert(evt.pf_requested_page_events == 10);
-  assert(evt.pf_issued_page_events == 13);
-  assert(evt.pf_extent_extra_page_events == 3);
-  assert(evt.prefetch_event_page_use_pct() > 76.9);
-  assert(evt.prefetch_event_page_use_pct() < 77.0);
-  evt.pq_nav_nand_bytes = 512;
-  Metrics evt2;
-  evt2.note_pf_issue_event(1, 2);
-  evt2.pq_nav_nand_bytes = 1024;
-  evt.add_from(evt2);
-  assert(evt.pf_issued_page_events == 15);
-  assert(evt.pq_nav_nand_bytes == 1536);
-```
-
-Run `make -C serving/tests test_metrics`; expect missing members/methods.
-
-- [ ] **Step 2: Add additive counters to `Metrics`**
-
-Add:
-
-```cpp
-  uint64_t pf_requested_page_events = 0;
-  uint64_t pf_issued_page_events = 0;
-  uint64_t pf_extent_extra_page_events = 0;
-  uint64_t pq_nav_nand_bytes = 0;
-
-  void note_pf_issue_event(uint64_t requested, uint64_t issued) {
-    pf_requested_page_events += requested;
-    pf_issued_page_events += issued;
-    if (issued > requested) pf_extent_extra_page_events += issued - requested;
-  }
-  double prefetch_event_page_use_pct() const {
-    return pf_issued_page_events
-        ? 100.0 * static_cast<double>(pf_requested_page_events) /
-              static_cast<double>(pf_issued_page_events)
-        : 0.0;
-  }
-```
-
-Merge all four counters in `add_from` and print them on a new stable line:
-
-```cpp
-fprintf(f, "prefetch_events requested=%llu issued=%llu extent_extra=%llu page_use_pct=%.2f pq_nav_nand_B=%llu\n",
-        (unsigned long long)pf_requested_page_events,
-        (unsigned long long)pf_issued_page_events,
-        (unsigned long long)pf_extent_extra_page_events,
-        prefetch_event_page_use_pct(),
-        (unsigned long long)pq_nav_nand_bytes);
-```
-
-- [ ] **Step 3: Count before and after the existing extent transform**
-
-In `hide_issue`, after residency/deduplication and before `hide_extent_run`,
-save:
-
-```cpp
-  const uint64_t requested_pages = miss.size();
-```
-
-Immediately after the existing `hide_extent_run` call, add:
-
-```cpp
-  if (m) m->note_pf_issue_event(requested_pages, miss.size());
-```
-
-Do not reorder or alter the existing extent call or `miss` contents.
-
-- [ ] **Step 4: Add proof-only PQ-navigation counter reads**
-
-Parse `--eval-phase-counters` into `bool eval_phase_counters = false` and reject
-it unless the run is T=1, PQ navigation is enabled, and `--eval-trace-dir` is
-also present.
-
-In `search_one_pq`, capture the backing-sector sum immediately before the PQ
-beam loop and immediately after it:
-
-```cpp
-  const uint64_t pq_sect0 = eval_phase_counters ? nvme_read_sectors() : 0;
-  // existing PQ beam loop remains here
-  if (eval_phase_counters) {
-    const uint64_t pq_sect1 = nvme_read_sectors();
-    if (pq_sect1 >= pq_sect0 && cur_met(win))
-      cur_met(win)->pq_nav_nand_bytes += (pq_sect1 - pq_sect0) * 512ull;
-  }
-```
-
-Pass the boolean as an optional final argument through `search_one`. The proof
-flag is used only for 100-query correctness runs because per-query sysfs reads
-perturb timing. Final measured runs must reject it in `run_one.py`.
-
-- [ ] **Step 5: Run tests and inspect the scheduling diff**
-
-```bash
-make -C serving/tests test_metrics
-serving/tests/test_metrics
-make -C serving/tests test
-g++ -O3 -std=c++17 -march=native -pthread -I. serving/search_beam.cpp -o serving/search_beam -lnuma
-git diff --function-context -- serving/hide_fill.hpp serving/search_beam.cpp
-```
-
-Expected: tests pass; `hide_issue` has only count snapshots around the existing
-extent transform; the PQ loop has only optional before/after counter reads.
-
-- [ ] **Step 6: Commit metrics**
-
-```bash
-git add serving/metrics.hpp serving/hide_fill.hpp serving/search_beam.cpp serving/tests/test_metrics.cpp
-git commit -m "test: account frozen prefetch issue events"
-```
-
----
-
-### Task 5: Freeze Artifact Identity
-
-**Files:**
-- Create: `experiments/eval/prefetcher/freeze_artifacts.py`
-- Create: `experiments/eval/prefetcher/tests/test_freeze_artifacts.py`
-- Produce: `results/eval/prefetcher/manifests/t2i10m-artifacts.json`
-
-- [ ] **Step 1: Write the failing hash test**
-
-Use two temporary files and assert that `freeze_dataset()` records absolute
-path, size, and SHA-256, and rejects an expected-size mismatch with
-`ArtifactError`.
-
-```python
-from experiments.eval.prefetcher.freeze_artifacts import ArtifactError, hash_file
-
-self.assertEqual(hash_file(path)["size"], len(payload))
-self.assertEqual(hash_file(path)["sha256"], hashlib.sha256(payload).hexdigest())
-```
-
-Run the focused unittest; expect an import failure.
-
-- [ ] **Step 2: Implement streaming hashing**
-
-Create `freeze_artifacts.py` with:
-
-```python
-import argparse
-import hashlib
-import json
-from pathlib import Path
-
-from experiments.eval.prefetcher.config import load_configs
-
-
-class ArtifactError(RuntimeError):
-    pass
-
-
-def hash_file(path):
-    path = Path(path).resolve()
-    digest = hashlib.sha256()
-    size = 0
-    with path.open("rb") as handle:
-        while True:
-            block = handle.read(8 << 20)
-            if not block:
-                break
-            size += len(block)
-            digest.update(block)
-    return {"path": str(path), "size": size, "sha256": digest.hexdigest()}
-
-
-def freeze_dataset(dataset, output):
-    frozen = {}
-    for name, path in sorted(dataset["artifacts"].items()):
-        record = hash_file(path)
-        expected = dataset.get("expected_sizes", {}).get(name)
-        if expected is not None and record["size"] != expected:
-            raise ArtifactError(f"{name}: size {record['size']} != {expected}")
-        frozen[name] = record
-    target = Path(output)
-    target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text(json.dumps({"artifacts": frozen}, indent=2, sort_keys=True) + "\n")
-
-
-def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--dataset", required=True)
-    parser.add_argument("--repo-root", default=".")
-    parser.add_argument("--out", required=True)
-    args = parser.parse_args()
-    datasets, _ = load_configs(Path(args.repo_root).resolve())
-    if args.dataset not in datasets or not datasets[args.dataset].get("ready"):
-        raise ArtifactError(f"dataset is not ready: {args.dataset}")
-    freeze_dataset(datasets[args.dataset], args.out)
-
-
-if __name__ == "__main__":
-    main()
-```
-
-- [ ] **Step 3: Run unit tests**
-
-```bash
-python3 -m unittest experiments.eval.prefetcher.tests.test_freeze_artifacts -v
-```
-
-Expected: hash and mismatch tests pass.
-
-- [ ] **Step 4: Freeze T2I artifacts outside a timed run**
-
-```bash
-python3 -m experiments.eval.prefetcher.freeze_artifacts \
-  --repo-root /root/chukexin/CXL-ANNS-KX \
-  --dataset t2i10m \
-  --out results/eval/prefetcher/manifests/t2i10m-artifacts.json
-```
-
-Expected: all required files match their expected sizes and receive SHA-256
-records. This command may take several minutes for the 20.48 GB image; run it
-once and reuse the sealed manifest.
-
-- [ ] **Step 5: Commit code and the small manifest**
-
-```bash
-git add experiments/eval/prefetcher/freeze_artifacts.py experiments/eval/prefetcher/tests/test_freeze_artifacts.py results/eval/prefetcher/manifests/t2i10m-artifacts.json
-git commit -m "test: freeze T2I prefetcher artifacts"
-```
-
----
-
-### Task 6: Add Fail-Closed Read-Only Live Preflight
-
-**Files:**
-- Create: `experiments/eval/prefetcher/preflight.py`
-- Create: `experiments/eval/prefetcher/t2i-live-contract.json`
-- Create: `experiments/eval/prefetcher/tests/test_preflight.py`
-
-- [ ] **Step 1: Write fake-sysfs failures first**
-
-Create tests that build a temporary `vmem0` directory and verify these exact
-rejections independently: nonzero `dirty_bytes`, nonzero `io_errors`, cache
-limit not equal to 104857600, backing-device mismatch, BDF mismatch, nonempty
-open-user list, bad image magic, and sampled extent-image mismatch.
-
-Use this base fixture:
-
-```python
-BASE = {
-    "backend": "software",
-    "backing_count": "2",
-    "nvme_dev": "/dev/nvme1n1,/dev/nvme2n1",
-    "target_bdf": "0000:d8:00.0,0000:d9:00.0",
-    "cache_limit": "104857600",
-    "cache_used": "0",
-    "dirty_bytes": "0",
-    "io_errors": "0",
-    "evictions": "0"
-}
-```
-
-Run the tests; expect the missing-module failure.
-
-- [ ] **Step 2: Define the current identity contract without claiming layout validity**
-
-Create `t2i-live-contract.json`:
-
-```json
-{
-  "device": "/dev/vmem0",
-  "sysfs": "/sys/class/vmem/vmem0",
-  "backend": "software",
-  "backing_count": 2,
-  "nvme_dev": ["/dev/nvme1n1", "/dev/nvme2n1"],
-  "target_bdf": ["0000:d8:00.0", "0000:d9:00.0"],
-  "cache_limit": 104857600,
-  "required_dirty_bytes": 0,
-  "required_io_errors": 0,
-  "image_offset": 1181116006400,
-  "image_magic": "CXAN",
+  "source_base": "/mnt/disk0/chukexin_motivation/data/text2image_10m/base.10M.fbin",
+  "source_queries": "/mnt/disk0/chukexin_motivation/data/text2image_10m/query.public.100K.fbin",
+  "source_gt": "/mnt/disk0/chukexin_motivation/data/text2image_10m/text2image-10M",
+  "execution_base": "/mnt/disk0/chukexin_motivation/data/text2image_10m/base.10M.fbin",
+  "oracle_image": "/mnt/disk0/chukexin_motivation/serving_t2i_10m/diskann_t2i_10m.bin",
   "extent_image": "/mnt/disk0/chukexin_motivation/serving_t2i_10m/diskann_t2i_10m_extent.bin",
-  "image_length": 20480004096,
-  "sample_pages": 32,
-  "sample_seed": 20260904
+  "graph": "/mnt/disk0/chukexin_motivation/serving_t2i_10m/diskann_t2i_10m.graph.bin",
+  "nav_graph": "/root/chukexin/CXL-ANNS-KX/results/paper_figs/nav_10k.bin",
+  "entry": "/mnt/disk0/chukexin_motivation/serving_t2i_10m/serving_entry_t2i_10m_pagebin.bin",
+  "query_subset": "/mnt/disk0/chukexin_motivation/serving_t2i_10m/query_10k.fbin",
+  "ground_truth": "/mnt/disk0/chukexin_motivation/serving_t2i_10m/gt_10k_k10.ibin",
+  "id_map": "/mnt/disk0/chukexin_motivation/serving_t2i_10m/new_to_old_pagebin.bin",
+  "slot_map": "/mnt/disk0/chukexin_motivation/serving_t2i_10m/id_to_slot_10m_extent.bin",
+  "pq64_pivots": "/mnt/disk0/chukexin_motivation/pipeann_t2i10m/idx_t2i64_pq_pivots.bin",
+  "pq64_codes": "/mnt/disk0/chukexin_motivation/pipeann_t2i10m/idx_t2i64_pq_compressed.bin"
 }
-```
+~~~
 
-This contract records the observed topology. The preflight must still read and
-validate image magic before declaring the staged layout usable.
+T2I paths use the existing `serving_t2i_10m` and
+`pipeann_t2i10m` trees. YFCC paths are rooted at
+`/mnt/disk0/chukexin_motivation/serving_yfcc_10m`; LAION paths are rooted at
+`/mnt/disk0/chukexin_motivation/serving_laion_10m`. Mark only T2I ready at
+initial creation.
 
-- [ ] **Step 3: Implement read-only snapshot and validation**
+- [ ] **Step 4: Define systems without dead flags**
 
-```python
-import argparse
-import hashlib
-import json
-import os
-import random
-import subprocess
-from datetime import datetime, timezone
-from pathlib import Path
+Create these IDs:
 
+~~~json
+{
+  "demand": {"threads": 8, "flags": ["--no-vmem-prefetch", "--pipe-w", "1", "--no-extent-run", "--no-steal-sched"]},
+  "oracle": {"threads": 8, "flags": ["--oracle-dram"]},
+  "flashanns": {"threads": 8, "flags": ["--per-thread-window", "--pipe-depth", "2", "--issue-qd", "0", "--steal-sched", "--extent-run"]},
+  "serial-t1": {"threads": 1, "flags": ["--no-vmem-prefetch", "--pipe-w", "1", "--no-extent-run"]},
+  "batch-t1": {"threads": 1, "flags": ["--pipe-w", "16", "--no-extent-run"]},
+  "extent-t1": {"threads": 1, "flags": ["--pipe-w", "16", "--extent-run"]},
+  "nosteal-t8": {"threads": 8, "flags": ["--per-thread-window", "--pipe-depth", "2", "--issue-qd", "0", "--no-steal-sched", "--extent-run"]}
+}
+~~~
 
-class PreflightError(RuntimeError):
-    pass
+The smoke proof must verify the semantic label `demand`; if it still submits
+asynchronous batch I/O, relabel it and do not use it as Demand.
 
+- [ ] **Step 5: Define matrices**
 
-def probe_users(device):
-    proc = subprocess.run(["fuser", device], text=True, capture_output=True,
-                          check=False)
-    return (proc.stdout + " " + proc.stderr).split()
-
-
-def probe_magic(device, image_offset):
-    fd = os.open(device, os.O_RDONLY)
-    try:
-        return os.pread(fd, 4, image_offset).decode("ascii", errors="replace")
-    finally:
-        os.close(fd)
-
-
-def snapshot(sysfs, device, image_offset, read_device=True,
-             user_probe=probe_users, magic_probe=probe_magic):
-    fields = ("backend", "backing_count", "nvme_dev", "target_bdf",
-              "cache_limit", "cache_used", "dirty_bytes", "io_errors", "evictions")
-    values = {name: Path(sysfs, name).read_text().strip() for name in fields}
-    users = user_probe(device)
-    magic = magic_probe(device, image_offset) if read_device else None
-    return {"fields": values, "open_users": users, "image_magic": magic}
-
-
-def validate(snapshot_record, contract, check_image=True):
-    errors = []
-    fields = snapshot_record["fields"]
-    if fields["dirty_bytes"] != str(contract["required_dirty_bytes"]):
-        errors.append(f"dirty_bytes={fields['dirty_bytes']}")
-    if fields["io_errors"] != str(contract["required_io_errors"]):
-        errors.append(f"io_errors={fields['io_errors']}")
-    if fields["cache_limit"] != str(contract["cache_limit"]):
-        errors.append(f"cache_limit={fields['cache_limit']}")
-    if snapshot_record["open_users"]:
-        errors.append(f"open_users={snapshot_record['open_users']}")
-    if check_image and snapshot_record["image_magic"] != contract["image_magic"]:
-        errors.append(f"image_magic={snapshot_record['image_magic']!r}")
-    for key in ("backend", "backing_count", "nvme_dev", "target_bdf"):
-        expected = contract[key]
-        actual = fields[key]
-        if isinstance(expected, list):
-            actual = [item for item in actual.split(",") if item]
-        elif isinstance(expected, int):
-            actual = int(actual)
-        if actual != expected:
-            errors.append(f"{key}={actual!r}")
-    if errors:
-        raise PreflightError("; ".join(errors))
-
-
-def sampled_layout_digest(path, base_offset, image_length, pages, seed):
-    rng = random.Random(seed)
-    offsets = sorted(rng.sample(range(image_length // 4096), pages))
-    digest = hashlib.sha256()
-    fd = os.open(path, os.O_RDONLY)
-    try:
-        for page in offsets:
-            data = os.pread(fd, 4096, base_offset + page * 4096)
-            if len(data) != 4096:
-                raise PreflightError(f"short sampled page {page}")
-            digest.update(page.to_bytes(8, "little"))
-            digest.update(data)
-    finally:
-        os.close(fd)
-    return digest.hexdigest()
-
-
-def snapshot_and_validate(contract, require_cache_used=None, read_device=True,
-                          identity_evidence=None):
-    record = snapshot(contract["sysfs"], contract["device"],
-                      contract["image_offset"], read_device=read_device)
-    validate(record, contract, check_image=read_device)
-    record["captured_utc"] = datetime.now(timezone.utc).isoformat()
-    if require_cache_used is not None:
-        actual = int(record["fields"]["cache_used"])
-        if actual != require_cache_used:
-            raise PreflightError(f"cache_used={actual}, required={require_cache_used}")
-    if not read_device:
-        if not identity_evidence or "layout_sample_sha256" not in identity_evidence:
-            raise PreflightError("sysfs-only check requires layout identity evidence")
-        record["identity_evidence"] = identity_evidence["layout_sample_sha256"]
-        return record
-    host_digest = sampled_layout_digest(contract["extent_image"], 0,
-                                        contract["image_length"],
-                                        contract["sample_pages"],
-                                        contract["sample_seed"])
-    device_digest = sampled_layout_digest(contract["device"],
-                                          contract["image_offset"],
-                                          contract["image_length"],
-                                          contract["sample_pages"],
-                                          contract["sample_seed"])
-    if device_digest != host_digest:
-        raise PreflightError("sampled extent image mismatch")
-    record["layout_sample_sha256"] = device_digest
-    return record
-
-
-def atomic_json_write(path, value):
-    target = Path(path)
-    target.parent.mkdir(parents=True, exist_ok=True)
-    temp = target.with_suffix(target.suffix + ".tmp")
-    temp.write_text(json.dumps(value, indent=2, sort_keys=True) + "\n")
-    temp.replace(target)
-
-
-def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--contract", required=True)
-    parser.add_argument("--out", required=True)
-    parser.add_argument("--require-cache-used", type=int)
-    parser.add_argument("--allow-cache-used-nonzero", action="store_true")
-    parser.add_argument("--sysfs-only", action="store_true")
-    parser.add_argument("--identity-evidence")
-    args = parser.parse_args()
-    contract = json.loads(Path(args.contract).read_text())
-    required = None if args.allow_cache_used_nonzero else args.require_cache_used
-    identity = (json.loads(Path(args.identity_evidence).read_text())
-                if args.identity_evidence else None)
-    record = snapshot_and_validate(contract, required,
-                                   read_device=not args.sysfs_only,
-                                   identity_evidence=identity)
-    atomic_json_write(args.out, record)
-
-
-if __name__ == "__main__":
-    main()
-```
-
-The CLI writes a JSON snapshot only after validation; it never mutates sysfs or
-the device.
-
-- [ ] **Step 4: Run fake-sysfs tests**
-
-```bash
-python3 -m unittest experiments.eval.prefetcher.tests.test_preflight -v
-```
-
-Expected: all independent rejection tests pass.
-
-- [ ] **Step 5: Run the live preflight and preserve the expected failure**
-
-```bash
-python3 -m experiments.eval.prefetcher.preflight \
-  --contract experiments/eval/prefetcher/t2i-live-contract.json \
-  --out results/eval/prefetcher/preflight/latest.json
-```
-
-Expected at the drafting-time state: exit nonzero and report
-`dirty_bytes=5279744`. Do not clean, unload, or reset anything in response.
-
-- [ ] **Step 6: Commit preflight code, tests, and contract**
-
-```bash
-git add experiments/eval/prefetcher/preflight.py experiments/eval/prefetcher/t2i-live-contract.json experiments/eval/prefetcher/tests/test_preflight.py
-git commit -m "test: add fail-closed VMEM preflight"
-```
-
----
-
-### Task 7: Build the Manifest Runner and Run Validator
-
-**Files:**
-- Create: `experiments/eval/prefetcher/matrix.json`
-- Create: `experiments/eval/prefetcher/schema/run.schema.json`
-- Create: `experiments/eval/prefetcher/run_one.py`
-- Create: `experiments/eval/prefetcher/run_matrix.py`
-- Create: `experiments/eval/prefetcher/validate_run.py`
-- Create: `experiments/eval/prefetcher/tests/test_runner.py`
-- Create: `experiments/eval/prefetcher/tests/test_validate_run.py`
-
-- [ ] **Step 1: Write failing dry-run expansion tests**
-
-Assert that smoke expansion produces exactly four T2I systems, 100 queries,
-`L=400`, one thread, trace output, and phase counters; calibration expands
-`L={50,100,200,400,800,1600}`; final mode has 10,000 queries and five repeats;
-no command contains `--cont-batch` or a removed flag.
-
-```python
-commands = expand_matrix("smoke", datasets, systems)
-self.assertEqual([c["system"] for c in commands],
-                 ["pq-oracle", "pq-serial", "pq-batch", "pq-frozen"])
-self.assertTrue(all(c["nq"] == 100 and c["threads"] == 1 for c in commands))
-```
-
-- [ ] **Step 2: Define the matrix**
-
-Create `matrix.json`:
-
-```json
+~~~json
 {
   "seed": 20260904,
   "query_seed": 42,
+  "cache_limit": 4294967296,
   "k": 10,
   "base_L": [50, 100, 200, 400, 800, 1600],
   "extended_L": [2400, 3200],
-  "smoke": {"datasets": ["t2i10m"], "systems": ["pq-oracle", "pq-serial", "pq-batch", "pq-frozen"], "nq": 100, "repeats": 1, "L": [400]},
-  "calibration": {"datasets": ["t2i10m"], "systems": ["pq-oracle", "pq-serial", "pq-batch", "pq-frozen", "pq32-sensitivity"], "nq": 500, "repeats": 1},
-  "final_t2i": {"datasets": ["t2i10m"], "systems": ["pq-oracle", "pq-serial", "pq-batch", "pq-frozen"], "nq": 10000, "repeats": 5},
-  "final_all": {"datasets": ["laion10m", "t2i10m", "yfcc10m"], "systems": ["pq-oracle", "pq-serial", "pq-batch", "pq-frozen"], "nq": 10000, "repeats": 5}
+  "smoke": {"nq": 100, "repeats": 1},
+  "calibration": {"nq": 500, "repeats": 1},
+  "q2": {"nq": 10000, "repeats": 5, "systems": ["demand", "pipeann", "oracle", "flashanns"]},
+  "q3_t1": {"nq": 10000, "repeats": 5, "systems": ["serial-t1", "batch-t1", "extent-t1"]},
+  "q3_t8": {"nq": 10000, "repeats": 5, "systems": ["nosteal-t8", "flashanns"]},
+  "q4": {"nq": 10000, "repeats": 5, "systems": ["flashanns"], "states": ["cold", "warm"]}
 }
-```
+~~~
 
-- [ ] **Step 3: Define required run fields**
+- [ ] **Step 6: Implement validation and run tests**
 
-The schema must require these top-level keys:
+`load_configs(repo_root)` returns `datasets, systems, matrix` and raises
+`ConfigError` for every condition tested in Step 1.
 
-```json
+~~~bash
+python3 -m unittest experiments.eval.flashanns.tests.test_config -v
+~~~
+
+Expected: all tests pass.
+
+- [ ] **Step 7: Commit**
+
+~~~bash
+git add experiments
+git commit -m "test: lock integrated evaluation matrix"
+~~~
+
+---
+
+### Task 3: Add Deterministic T=1/T=8 Sidecars
+
+**Files:**
+- Create: `serving/eval_trace.hpp`
+- Modify: `serving/search_beam.cpp`
+- Create: `serving/tests/test_eval_trace.cpp`
+- Modify: `serving/tests/Makefile`
+
+- [ ] **Step 1: Write the failing concurrent-order test**
+
+Construct `EvalTrace(3, 2)`, record query ordinals in order 2, 0, 1, finish,
+and assert sidecar order is 0, 1, 2 and exact sizes are:
+
+~~~text
+query_ids.u32          nq * 4
+latency_ns.u64         nq * 8
+candidate_offsets.u64  (nq + 1) * 8
+candidate_ids.u32      offsets[nq] * 4
+result_ids.u32         nq * k * 4
+~~~
+
+- [ ] **Step 2: Confirm failure**
+
+~~~bash
+make -C serving/tests test_eval_trace
+~~~
+
+Expected: missing header.
+
+- [ ] **Step 3: Implement index-addressed trace storage**
+
+Use:
+
+~~~cpp
+struct EvalTraceRow {
+  uint32_t query_id = UINT32_MAX;
+  uint64_t latency_ns = 0;
+  std::vector<uint32_t> candidates;
+  std::vector<uint32_t> results;
+  bool valid = false;
+};
+
+class EvalTrace {
+ public:
+  EvalTrace(size_t nq, uint32_t k);
+  void record(size_t ordinal, uint32_t query_id, uint64_t latency_ns,
+              const std::vector<CandId>& candidates,
+              const std::vector<uint32_t>& results);
+  bool finish(const std::filesystem::path& dir) const;
+};
+~~~
+
+Pre-size rows so distinct T=8 queries write distinct indices. `finish` runs
+after workers join, rejects any invalid row, writes `.tmp` files, fsyncs, and
+renames atomically.
+
+- [ ] **Step 4: Hook both PQ execution paths**
+
+Parse `--eval-trace-dir`. In T=1 copy the committed candidate IDs immediately
+before page issue. In the parkable T=8 path copy `PqQ::cand` immediately
+before `pqq_issue`; record final mapped IDs in `finish_slot` and
+`finish_local`. Record integer nanoseconds and original query ID
+`qidx[qi]`.
+
+Do not add a global lock to the timed path and do not change scheduler state.
+
+- [ ] **Step 5: Verify**
+
+~~~bash
+make -C serving/tests test_eval_trace
+serving/tests/test_eval_trace
+make -C serving/tests test
+g++ -O3 -std=c++17 -march=native -pthread -I. serving/search_beam.cpp -o /tmp/search_beam-trace -lnuma
+git diff --function-context 15e6632 -- serving/search_beam.cpp
+~~~
+
+Expected: sidecar test and full suite pass; only metric/trace hooks touch frozen
+functions.
+
+- [ ] **Step 6: Commit**
+
+~~~bash
+git add serving/eval_trace.hpp serving/search_beam.cpp serving/tests/test_eval_trace.cpp serving/tests/Makefile
+git commit -m "test: add deterministic evaluation sidecars"
+~~~
+
+---
+
+### Task 4: Add Event and Scheduler Accounting
+
+**Files:**
+- Modify: `serving/metrics.hpp`
+- Modify: `serving/hide_fill.hpp`
+- Modify: `serving/cont_batch.hpp`
+- Modify: `serving/search_beam.cpp`
+- Modify: `serving/tests/test_metrics.cpp`
+- Modify: `serving/tests/test_cont_batch.cpp`
+
+- [ ] **Step 1: Add failing additive-counter tests**
+
+Assert:
+
+~~~cpp
+Metrics m;
+m.note_pf_issue_event(7, 10);
+m.note_pf_issue_event(3, 3);
+assert(m.pf_requested_page_events == 10);
+assert(m.pf_issued_page_events == 13);
+assert(m.pf_extent_extra_page_events == 3);
+m.note_inflight_depth(0);
+m.note_inflight_depth(8);
+assert(m.inflight_depth_sum == 8);
+assert(m.inflight_depth_samples == 2);
+assert(m.inflight_depth_max == 8);
+~~~
+
+Also verify `add_from` sums events rather than deduplicating across queries.
+
+- [ ] **Step 2: Confirm the tests fail**
+
+~~~bash
+make -C serving/tests test_metrics test_cont_batch
+~~~
+
+Expected: missing fields/helpers.
+
+- [ ] **Step 3: Add counters**
+
+Add:
+
+~~~cpp
+uint64_t pf_requested_page_events = 0;
+uint64_t pf_issued_page_events = 0;
+uint64_t pf_extent_extra_page_events = 0;
+uint64_t issue_command_events = 0;
+uint64_t inflight_depth_sum = 0;
+uint64_t inflight_depth_samples = 0;
+uint64_t inflight_depth_max = 0;
+
+void note_pf_issue_event(uint64_t requested, uint64_t issued) {
+  pf_requested_page_events += requested;
+  pf_issued_page_events += issued;
+  pf_extent_extra_page_events += issued > requested ? issued - requested : 0;
+  if (issued) issue_command_events++;
+}
+~~~
+
+Merge and print them on one stable `eval_events` line. Keep existing legacy
+metrics for historical logs but never use unique-set sizes as per-query event
+counts in new figures.
+
+- [ ] **Step 4: Count around existing operations**
+
+In `hide_issue`, snapshot request count after residency/in-flight filtering
+and before the existing extent transform; call `note_pf_issue_event` after
+the transform. In the scheduler, sample the already-computed NAND-inflight
+count without changing decisions.
+
+- [ ] **Step 5: Verify and audit**
+
+~~~bash
+make -C serving/tests test_metrics test_cont_batch
+make -C serving/tests test
+git diff --function-context 15e6632 -- serving/hide_fill.hpp serving/cont_batch.hpp serving/search_beam.cpp
+~~~
+
+Expected: only counter calls surround existing behavior.
+
+- [ ] **Step 6: Commit**
+
+~~~bash
+git add serving/metrics.hpp serving/hide_fill.hpp serving/cont_batch.hpp serving/search_beam.cpp serving/tests/test_metrics.cpp serving/tests/test_cont_batch.cpp
+git commit -m "test: add integrated evaluation counters"
+~~~
+
+---
+
+### Task 5: Implement Dataset Verification and Artifact Freezing
+
+**Files:**
+- Create: `experiments/eval/flashanns/verify_dataset.py`
+- Create: `experiments/eval/flashanns/freeze_artifacts.py`
+- Create: `experiments/eval/flashanns/tests/test_verify_dataset.py`
+- Create: `experiments/eval/flashanns/tests/test_freeze_artifacts.py`
+
+- [ ] **Step 1: Write synthetic format tests**
+
+Cover `fbin`, `u8bin`, and `ibin` headers, exact file length, 10k unique
+query IDs, aligned GT extraction, permutation maps, packed headers, and sampled
+record readback.
+
+For YFCC widening, assert every sampled `uint8` coordinate equals the emitted
+`float32` value exactly and that direct native L2 and widened-runtime L2
+return identical top-k IDs.
+
+- [ ] **Step 2: Confirm import failures**
+
+~~~bash
+python3 -m unittest experiments.eval.flashanns.tests.test_verify_dataset experiments.eval.flashanns.tests.test_freeze_artifacts -v
+~~~
+
+- [ ] **Step 3: Implement checked interfaces**
+
+Provide these exact interfaces and behavior:
+
+~~~text
+read_bin_header(path: Path, item_size: int) -> (n: int, dim: int)
+  Read two little-endian uint32 fields and require size == 8 + n*dim*item_size.
+validate_query_ids(ids: list[int], available: int, required: int = 10000)
+  Require exact count, uniqueness, and 0 <= id < available.
+validate_gt_subset(source_gt: Path, query_ids: list[int], output_gt: Path, k: int = 10)
+  Select the declared rows and first k IDs, then reread and compare every ID.
+validate_permutation(values: list[int], n: int)
+  Require len(values) == n and sorted(values) == range(n).
+compare_widened_u8(native_path: Path, float_path: Path, sample_ids: list[int], dim: int)
+  Require float(native_coordinate) == widened_coordinate for every sampled coordinate.
+verify_packed_readback(dataset: dict, sample_count: int = 1024, seed: int = 20260904)
+  Compare source vector bytes/values, neighbor count, and logical neighbor IDs.
+hash_file(path: Path, block_bytes: int = 8388608) -> dict
+  Return absolute path, streamed byte count, and lowercase SHA-256.
+freeze_dataset(dataset: dict, output: Path)
+  Validate expected sizes, hash sorted artifact keys, and atomically write JSON.
+~~~
+
+All failures raise `DatasetError` or `ArtifactError` with the artifact name.
+
+- [ ] **Step 4: Run tests**
+
+~~~bash
+python3 -m unittest experiments.eval.flashanns.tests.test_verify_dataset experiments.eval.flashanns.tests.test_freeze_artifacts -v
+~~~
+
+Expected: pass.
+
+- [ ] **Step 5: Commit**
+
+~~~bash
+git add experiments/eval/flashanns/verify_dataset.py experiments/eval/flashanns/freeze_artifacts.py experiments/eval/flashanns/tests/test_verify_dataset.py experiments/eval/flashanns/tests/test_freeze_artifacts.py
+git commit -m "test: verify evaluation dataset artifacts"
+~~~
+
+---
+
+### Task 6: Implement the 4 GiB Fail-Closed Preflight
+
+**Files:**
+- Create: `experiments/eval/flashanns/preflight.py`
+- Create: `experiments/eval/flashanns/live-contract.json`
+- Create: `experiments/eval/flashanns/tests/test_preflight.py`
+
+- [ ] **Step 1: Write fake-sysfs failures**
+
+Independently reject:
+
+~~~text
+cache_limit != 4294967296
+dirty_bytes != 0
+io_errors != 0
+missing /dev/vmem0
+unexpected backend/backing_count/nvme_dev/target_bdf
+open users
+bad image magic
+sampled staged-image mismatch
+cold cache_used != 0
+warm run without accepted cold-parent evidence
+~~~
+
+- [ ] **Step 2: Define the identity contract**
+
+The common fields are:
+
+~~~json
 {
-  "required": ["run_id", "state", "dataset", "system", "L", "k", "nq", "repeat", "command", "git", "binary_sha256", "artifact_manifest_sha256", "preflight_before", "preflight_after", "device_before", "device_after", "metrics", "sidecars", "validation"],
-  "properties": {
-    "state": {"enum": ["cold", "warm", "proof"]},
-    "system": {"enum": ["pq-oracle", "pq-serial", "pq-batch", "pq-frozen"]},
-    "validation": {"required": ["status", "reasons"]}
-  }
+  "device": "/dev/vmem0",
+  "sysfs": "/sys/class/vmem/vmem0",
+  "cache_limit": 4294967296,
+  "required_dirty_bytes": 0,
+  "required_io_errors": 0,
+  "sample_pages": 32,
+  "sample_seed": 20260904
 }
-```
+~~~
 
-Implement explicit Python validation rather than silently skipping checks when
-the optional `jsonschema` package is unavailable.
+Dataset-specific image offset, length, host image, and magic come from
+`datasets.json`.
 
-- [ ] **Step 4: Implement deterministic command expansion**
+- [ ] **Step 3: Implement read-only checks**
 
-`run_matrix.py` must use `random.Random(seed)` and shuffle systems only within
-each `(dataset,L,repeat,state)` block. `run_one.py` must assemble common flags
-once and append system flags, dataset paths, PQ paths, `--eval-trace-dir`, and
-`--eval-phase-counters` only for proof runs.
+Expose these exact interfaces and behavior:
 
-The T2I frozen command produced by dry-run must contain:
+~~~text
+snapshot(sysfs: Path, device: Path, dataset: dict, read_device: bool = True) -> dict
+  Read declared sysfs fields, open-user list, device existence, and optional magic.
+validate(record: dict, contract: dict, dataset: dict, state: str) -> None
+  Accumulate every mismatch and raise one PreflightError if the list is nonempty.
+sampled_layout_digest(path: Path, base_offset: int, length: int,
+                      pages: int, seed: int) -> str
+  Hash page number plus 4096 bytes for deterministic random pages.
+snapshot_and_validate(contract: dict, dataset: dict, state: str,
+                      identity_evidence: dict | None = None) -> dict
+  Perform snapshot, identity comparison, state checks, and sampled digest match.
+atomic_json_write(path: Path, value: dict) -> None
+  Write sorted JSON to a sibling .tmp, fsync, and rename.
+~~~
 
-```text
-serving/search_beam --diskann-layout --vmem-dev /dev/vmem0
---vmem-offset 1181116006400 --vmem-len 20480004096
---graph-file /mnt/disk0/chukexin_motivation/serving_t2i_10m/diskann_t2i_10m.graph.bin
---id-slot-map /mnt/disk0/chukexin_motivation/serving_t2i_10m/id_to_slot_10m_extent.bin
---pq-nav --pq-pivots /mnt/disk0/chukexin_motivation/pipeann_t2i10m/idx_t2i64_pq_pivots.bin
---pq-compressed /mnt/disk0/chukexin_motivation/pipeann_t2i10m/idx_t2i64_pq_compressed.bin
---beam 400 --k 10 --threads 1 --policy P3 --pipe-w 16 --extent-run
---no-hide-warm-entry --no-direct-install --no-score-cache --no-stripe-fill
---max-q 100 --shuffle-seed 42
---eval-trace-dir /root/chukexin/CXL-ANNS-KX/results/eval/prefetcher/raw/proof/t2i10m.pq-frozen.L400.r0/trace
-```
+Open the device `O_RDONLY` only. The CLI writes a snapshot only after every
+gate passes.
 
-For `pq-oracle`, replace VMEM arguments with `--image` set to
-`artifacts.oracle_image` and `--oracle-dram`.
-For `pq-serial`, add `--no-vmem-prefetch --pipe-w 1 --no-extent-run`. For
-`pq-batch`, use `--pipe-w 16 --no-extent-run`.
+- [ ] **Step 4: Run tests and preserve the live failure**
 
-- [ ] **Step 5: Seal one run record**
+~~~bash
+python3 -m unittest experiments.eval.flashanns.tests.test_preflight -v
+python3 -m experiments.eval.flashanns.preflight --dataset t2i10m --state cold --out results/eval/flashanns/preflight/t2i-attempt.json
+~~~
 
-`run_one.py` performs this order exactly:
+Expected now: unit tests pass; live command fails closed. Do not change the
+driver or cache in response.
 
-```python
-def read_block_counters(snapshot_record):
-    totals = {"reads_completed": 0, "sectors_read": 0}
-    for device in snapshot_record["fields"]["nvme_dev"].split(","):
-        name = Path(device.strip()).name
-        values = Path("/sys/block", name, "stat").read_text().split()
-        totals["reads_completed"] += int(values[0])
-        totals["sectors_read"] += int(values[2])
-    return totals
+- [ ] **Step 5: Commit code and contract, not failed output**
 
+~~~bash
+git add experiments/eval/flashanns/preflight.py experiments/eval/flashanns/live-contract.json experiments/eval/flashanns/tests/test_preflight.py
+git commit -m "test: add 4 GiB live preflight"
+~~~
 
-before = preflight.snapshot_and_validate(contract, read_device=False,
-                                         identity_evidence=identity_evidence)
+---
+
+### Task 7: Implement the Manifest Runner and Validator
+
+**Files:**
+- Create: `experiments/eval/flashanns/schema/run.schema.json`
+- Create: `experiments/eval/flashanns/run_one.py`
+- Create: `experiments/eval/flashanns/run_matrix.py`
+- Create: `experiments/eval/flashanns/validate_run.py`
+- Create: `experiments/eval/flashanns/tests/test_runner.py`
+- Create: `experiments/eval/flashanns/tests/test_validate_run.py`
+
+- [ ] **Step 1: Write dry-run tests**
+
+Assert T2I smoke expands all internal proof systems, every command contains the
+dataset metric, 4 GiB identity contract, correct thread count, trace directory,
+and no removed flags. Assert system shuffling is deterministic per
+`(dataset, phase, L, repeat, state)`.
+
+- [ ] **Step 2: Define required run fields**
+
+The schema requires:
+
+~~~json
+[
+  "run_id", "dataset", "metric", "phase", "system", "state", "L", "k",
+  "nq", "repeat", "command", "git", "binary_sha256",
+  "artifact_manifest_sha256", "preflight_before", "preflight_after",
+  "device_before", "device_after", "metrics", "sidecars", "validation"
+]
+~~~
+
+`validation.status` is one of `pending`, `accepted`, or `rejected`.
+
+- [ ] **Step 3: Implement command expansion**
+
+Common internal flags include:
+
+~~~text
+--diskann-layout --pq-nav --metric DATASET_METRIC
+--beam L --k 10 --iters 0 --max-q NQ --shuffle-seed 42
+--cpu-affinity --policy P3 --no-hide-warm-entry
+--no-direct-install --no-score-cache --no-stripe-fill
+--expand-batch 8 --issue-ahead 1
+--eval-trace-dir RUN_DIR/trace
+~~~
+
+Append exact dataset paths and system flags. Reject duplicate/conflicting flags.
+The PipeANN adapter records its native command and emits the same sidecar
+schema; it never masquerades as the internal binary.
+
+- [ ] **Step 4: Implement execution order**
+
+`run_one.py` performs:
+
+~~~python
+before = preflight.snapshot_and_validate(contract, dataset, state, evidence)
 device_before = read_block_counters(before)
-completed = subprocess.run(command, text=True, stdout=log, stderr=subprocess.STDOUT,
-                           check=False)
-after = preflight.snapshot_and_validate(contract, read_device=False,
-                                        identity_evidence=identity_evidence)
+completed = subprocess.run(command, stdout=log, stderr=subprocess.STDOUT,
+                           text=True, check=False)
+after = preflight.snapshot_and_validate(contract, dataset, "post", evidence)
 device_after = read_block_counters(after)
-record = build_record(run_spec, command, completed.returncode, before, after,
+record = build_record(spec, completed.returncode, before, after,
                       device_before, device_after, run_dir)
-preflight.atomic_json_write(run_dir / "run.json", record)
-```
+atomic_json_write(run_dir / "run.json", record)
+~~~
 
-`build_record` receives the fully expanded `run_spec` and must populate every
-schema-required identity field, parse the stable metric lines from
-`stdout.log`, compute block deltas as `after-before`, and record sidecar paths,
-sizes, and SHA-256 hashes. It sets `validation.status="pending"`; only
-`validate_run.py` may change that state to `accepted` or `rejected`.
+The runner refuses an existing run ID and refuses reused cold-reset evidence.
 
-`identity_evidence` is the last full sampled-layout preflight record. Timed-run
-snapshots are sysfs-only so validation itself does not warm a VMEM data page.
-The runner never invokes a reset command. A cold run requires a user-supplied,
-validator-approved reset snapshot with `cache_used=0`; a warm run must directly
-follow its cold run and cite the cold `run_id`.
+- [ ] **Step 5: Implement validation**
 
-The `run_one.py` CLI requires `--dataset`, `--system`, `--L`, `--nq`,
-`--repeat`, `--state`, `--identity-evidence`, `--cold-evidence`, and `--out`.
-It rejects reused cold evidence by recording its SHA-256 in `run.json` and
-checking that no existing run under the output root contains the same hash.
+Recompute sidecar sizes, hashes, query IDs, recall, latency percentiles, command
+deltas, and all schema fields. For same-search blocks, require identical metric,
+artifact manifest, query IDs, `L`, candidate offsets, candidate IDs, returned
+IDs, and recall.
 
-- [ ] **Step 6: Implement sidecar validation**
+Reject Oracle NAND bytes, FlashANNS bounce scores, score-triggered Flash,
+incomplete queries, or a non-4-GiB preflight.
 
-`validate_run.py` must read little-endian arrays using `array.array`, check exact
-lengths (`nq`, `nq`, `nq+1`, `offsets[-1]`, `nq*k`), recompute percentiles using
-the same linear interpolation as C++, recompute recall from the dataset GT and
-query IDs, hash every sidecar, and reject:
+- [ ] **Step 6: Run tests and dry-run**
 
-```python
-if record["metrics"]["score_from_bounce"] != 0:
-    reasons.append("bounce scoring is nonzero")
-if system == "pq-oracle" and nand_bytes != 0:
-    reasons.append("oracle NAND bytes are nonzero")
-if state == "proof" and record["metrics"]["pq_nav_nand_bytes"] != 0:
-    reasons.append("PQ navigation touched NAND")
-if record["nq"] != len(query_ids):
-    reasons.append("query count mismatch")
-```
+~~~bash
+python3 -m unittest experiments.eval.flashanns.tests.test_runner experiments.eval.flashanns.tests.test_validate_run -v
+python3 -m experiments.eval.flashanns.run_matrix --dataset t2i10m --phase smoke --dry-run
+~~~
 
-Provide `compare_transfer_runs(paths)` that requires identical dataset,
-artifact manifest, query IDs, `L`, candidate offsets, candidate IDs, result
-IDs, and recall across `pq-serial`, `pq-batch`, and `pq-frozen`.
+Expected: pass and deterministic commands only; no device open or output run
+directory.
 
-- [ ] **Step 7: Run unit tests and dry-run**
+- [ ] **Step 7: Commit**
 
-```bash
-python3 -m unittest discover -s experiments/eval/prefetcher/tests -v
-python3 -m experiments.eval.prefetcher.run_matrix --phase smoke --dry-run
-```
-
-Expected: tests pass; dry-run prints four commands and performs no device open,
-process launch, reset, or output mutation outside its temporary expansion file.
-
-- [ ] **Step 8: Commit runner and validator**
-
-```bash
-git add experiments/eval/prefetcher/matrix.json experiments/eval/prefetcher/schema/run.schema.json experiments/eval/prefetcher/run_one.py experiments/eval/prefetcher/run_matrix.py experiments/eval/prefetcher/validate_run.py experiments/eval/prefetcher/tests/test_runner.py experiments/eval/prefetcher/tests/test_validate_run.py
-git commit -m "test: add manifest-driven prefetcher runner"
-```
+~~~bash
+git add experiments/eval/flashanns/schema experiments/eval/flashanns/run_one.py experiments/eval/flashanns/run_matrix.py experiments/eval/flashanns/validate_run.py experiments/eval/flashanns/tests/test_runner.py experiments/eval/flashanns/tests/test_validate_run.py
+git commit -m "test: add integrated evaluation runner"
+~~~
 
 ---
 
-### Task 8: Run the T2I-10M 100-Query Proof Gate
+### Task 8: Implement Aggregation and Q2--Q4 Plot Tests
 
 **Files:**
-- Produce: `results/eval/prefetcher/raw/proof/`
-- Produce: `results/eval/prefetcher/readiness/t2i-proof.json`
-
-- [ ] **Step 1: Re-run the live preflight**
-
-```bash
-python3 -m experiments.eval.prefetcher.preflight \
-  --contract experiments/eval/prefetcher/t2i-live-contract.json \
-  --out results/eval/prefetcher/preflight/proof-before.json
-```
-
-Expected: PASS with `dirty_bytes=0`, `io_errors=0`, empty `open_users`, exact
-dual-device identity, 100 MiB cache limit, and `image_magic=CXAN`.
-
-If it fails, stop. Report the observed field and request a separately approved
-recovery/reset procedure; do not run the matrix.
-
-- [ ] **Step 2: Capture one approved cold-reset snapshot per transfer mode**
-
-Run the separately approved cold-state procedure, then capture:
-
-```bash
-python3 -m experiments.eval.prefetcher.preflight --contract experiments/eval/prefetcher/t2i-live-contract.json --require-cache-used 0 --sysfs-only --identity-evidence results/eval/prefetcher/preflight/proof-before.json --out results/eval/prefetcher/preflight/proof-cold-pq-oracle.json
-python3 -m experiments.eval.prefetcher.preflight --contract experiments/eval/prefetcher/t2i-live-contract.json --require-cache-used 0 --sysfs-only --identity-evidence results/eval/prefetcher/preflight/proof-before.json --out results/eval/prefetcher/preflight/proof-cold-pq-serial.json
-python3 -m experiments.eval.prefetcher.preflight --contract experiments/eval/prefetcher/t2i-live-contract.json --require-cache-used 0 --sysfs-only --identity-evidence results/eval/prefetcher/preflight/proof-before.json --out results/eval/prefetcher/preflight/proof-cold-pq-batch.json
-python3 -m experiments.eval.prefetcher.preflight --contract experiments/eval/prefetcher/t2i-live-contract.json --require-cache-used 0 --sysfs-only --identity-evidence results/eval/prefetcher/preflight/proof-before.json --out results/eval/prefetcher/preflight/proof-cold-pq-frozen.json
-```
-
-Expected: `cache_used=0` and every normal preflight gate passes. This plan does
-not define or authorize the reset operation itself. Run one command, then its
-matching Step 3 system command, then perform the next separately approved reset;
-do not capture all four snapshots from one reset.
-
-- [ ] **Step 3: Execute the randomized four-system proof matrix**
-
-```bash
-python3 -m experiments.eval.prefetcher.run_one --dataset t2i10m --system pq-oracle --L 400 --nq 100 --repeat 0 --state proof --identity-evidence results/eval/prefetcher/preflight/proof-before.json --cold-evidence results/eval/prefetcher/preflight/proof-cold-pq-oracle.json --out results/eval/prefetcher/raw/proof
-python3 -m experiments.eval.prefetcher.run_one --dataset t2i10m --system pq-serial --L 400 --nq 100 --repeat 0 --state proof --identity-evidence results/eval/prefetcher/preflight/proof-before.json --cold-evidence results/eval/prefetcher/preflight/proof-cold-pq-serial.json --out results/eval/prefetcher/raw/proof
-python3 -m experiments.eval.prefetcher.run_one --dataset t2i10m --system pq-batch --L 400 --nq 100 --repeat 0 --state proof --identity-evidence results/eval/prefetcher/preflight/proof-before.json --cold-evidence results/eval/prefetcher/preflight/proof-cold-pq-batch.json --out results/eval/prefetcher/raw/proof
-python3 -m experiments.eval.prefetcher.run_one --dataset t2i10m --system pq-frozen --L 400 --nq 100 --repeat 0 --state proof --identity-evidence results/eval/prefetcher/preflight/proof-before.json --cold-evidence results/eval/prefetcher/preflight/proof-cold-pq-frozen.json --out results/eval/prefetcher/raw/proof
-```
-
-Expected: four completed runs, each with 100 queries and all five sidecars.
-
-- [ ] **Step 4: Validate the proof and transfer equality**
-
-```bash
-python3 -m experiments.eval.prefetcher.validate_run \
-  --compare-transfer \
-  results/eval/prefetcher/raw/proof/*/run.json \
-  --out results/eval/prefetcher/readiness/t2i-proof.json
-```
-
-Expected:
-
-- identical PQ candidate sidecars for all four systems;
-- identical final result sidecars for serial, batch, and frozen;
-- identical transfer-mode recall;
-- `pq_nav_nand_bytes=0`;
-- `pq-frozen score_from_bounce=0`;
-- Oracle timed NAND bytes equal zero;
-- no mandatory-page, identity, live-state, or sidecar rejection.
-
-- [ ] **Step 5: Verify post-run safety state**
-
-```bash
-python3 -m experiments.eval.prefetcher.preflight \
-  --contract experiments/eval/prefetcher/t2i-live-contract.json \
-  --allow-cache-used-nonzero \
-  --out results/eval/prefetcher/preflight/proof-after.json
-```
-
-Expected: `dirty_bytes=0`, `io_errors=0`, empty `open_users`, and unchanged
-device/image identity. Nonzero dirty bytes blocks every later live task.
-
-- [ ] **Step 6: Commit only the readiness summary**
-
-```bash
-git add results/eval/prefetcher/readiness/t2i-proof.json
-git commit -m "test: record T2I prefetcher proof gate"
-```
-
-Do not add `results/eval/prefetcher/raw/proof/`.
-
----
-
-### Task 9: Calibrate Recall and Complete T2I Milestone A
-
-**Files:**
-- Produce: `results/eval/prefetcher/raw/calibration/t2i10m/`
-- Produce: `results/eval/prefetcher/calibration/t2i10m.json`
-- Produce: `results/eval/prefetcher/raw/final/t2i10m/`
-- Produce: `results/eval/prefetcher/readiness/t2i-milestone-a.json`
-
-- [ ] **Step 1: Run the 500-query L sweep**
-
-After a passing Task 8 post-run preflight and an approved cold reset:
-
-```bash
-python3 -m experiments.eval.prefetcher.run_matrix \
-  --phase calibration \
-  --state cold \
-  --out results/eval/prefetcher/raw/calibration/t2i10m
-```
-
-Expected: each core system has `L=50,100,200,400,800,1600`; PQ-32 sensitivity
-is retained even if its recall is below 0.90.
-
-- [ ] **Step 2: Freeze anchors without plot-time selection**
-
-```bash
-python3 -m experiments.eval.prefetcher.validate_run \
-  --freeze-anchor 0.90 \
-  --extra-anchor t2i10m=0.92 \
-  results/eval/prefetcher/raw/calibration/t2i10m/*/run.json \
-  --out results/eval/prefetcher/calibration/t2i10m.json
-```
-
-Expected: a measured `L` at or above both anchors. If the base sweep misses an
-anchor, run only the predeclared 2400/3200 extension and append it before
-freezing.
-
-- [ ] **Step 3: Run five cold repetitions and paired warm passes**
-
-```bash
-python3 -m experiments.eval.prefetcher.run_matrix \
-  --phase final_t2i \
-  --anchors results/eval/prefetcher/calibration/t2i10m.json \
-  --paired-cold-warm \
-  --out results/eval/prefetcher/raw/final/t2i10m
-```
-
-Expected: for every core system/anchor, five randomized 10k-query cold runs and
-five immediate warm companions. Each cold run requires its own validated reset
-evidence; the runner never performs the reset.
-
-- [ ] **Step 4: Validate Milestone A**
-
-```bash
-python3 -m experiments.eval.prefetcher.validate_run \
-  --milestone t2i-a \
-  results/eval/prefetcher/raw/final/t2i10m/*/run.json \
-  --out results/eval/prefetcher/readiness/t2i-milestone-a.json
-```
-
-Expected: every block has five accepted cold runs, paired warm runs, identical
-transfer-mode candidates/results, and independently recomputed recall and
-latency statistics.
-
-- [ ] **Step 5: Commit calibration and readiness summaries only**
-
-```bash
-git add results/eval/prefetcher/calibration/t2i10m.json results/eval/prefetcher/readiness/t2i-milestone-a.json
-git commit -m "test: complete T2I prefetcher milestone"
-```
-
----
-
-### Task 10: Admit LAION-10M and YFCC-10M
-
-**Files:**
-- Modify: `experiments/eval/prefetcher/datasets.json`
-- Create: `experiments/eval/prefetcher/verify_dataset.py`
-- Create: `experiments/eval/prefetcher/tests/test_verify_dataset.py`
-- Produce: `results/eval/prefetcher/manifests/laion10m-artifacts.json`
-- Produce: `results/eval/prefetcher/manifests/yfcc10m-artifacts.json`
-
-- [ ] **Step 1: Add synthetic header/readback tests**
-
-Test `u8bin`, `fbin`, and `ibin` header parsing, exact file-length validation,
-native dimension/dtype preservation, 10k query-subset uniqueness, GT row
-selection, slot-map permutation bounds, and 1,024 deterministic packed-record
-readbacks.
-
-Run the focused unittest and confirm the verifier is initially absent.
-
-- [ ] **Step 2: Implement the dataset verifier**
-
-Expose these checked interfaces:
-
-```python
-def read_header(path, dtype_size):
-    with Path(path).open("rb") as handle:
-        n, dim = struct.unpack("<II", handle.read(8))
-    expected = 8 + n * dim * dtype_size
-    if Path(path).stat().st_size != expected:
-        raise DatasetError(f"{path}: size mismatch")
-    return n, dim
-
-
-def validate_query_ids(ids, available):
-    if len(ids) != 10000 or len(set(ids)) != 10000:
-        raise DatasetError("query subset must contain 10000 unique IDs")
-    if min(ids) < 0 or max(ids) >= available:
-        raise DatasetError("query subset ID out of range")
-
-
-def validate_slot_map(values, n):
-    if len(values) != n or set(values) != set(range(n)):
-        raise DatasetError("slot map is not a permutation")
-```
-
-The readback verifier compares vector bytes, neighbor count, and neighbor IDs
-for IDs produced by `random.Random(20260904).sample(range(10000000), 1024)`.
-Its CLI accepts `--source-only`, `--base`, `--queries`, optional `--gt`, and
-`--allow-missing-gt`. The last option validates source headers only and can
-never change a dataset's `ready` field.
-
-- [ ] **Step 3: Validate known source files before admitting generated artifacts**
-
-```bash
-python3 -m experiments.eval.prefetcher.verify_dataset \
-  --source-only yfcc10m \
-  --base /mnt/disk0/chukexin_motivation/data/yfcc10m/base.10M.u8bin \
-  --queries /mnt/disk0/chukexin_motivation/data/yfcc10m/query.public.100K.u8bin \
-  --gt /mnt/disk0/chukexin_motivation/data/yfcc10m/unfiltered.GT.public.ibin
-```
-
-Expected: 10M x 192 `uint8`, 100k queries, top-100 GT, L2 metric contract.
-
-Run the LAION source-only check explicitly:
-
-```bash
-python3 -m experiments.eval.prefetcher.verify_dataset \
-  --source-only laion10m \
-  --base /mnt/disk0/chukexin_motivation/diskann_data_laion25m/base.bin \
-  --queries /mnt/disk0/chukexin_motivation/diskann_data_laion25m/query.bin \
-  --allow-missing-gt
-```
-
-Expected: source header `25,000,000 x 512 float32` and query header
-`50,000 x 512 float32`. This proves the source representation only; the first
-10M subset, metric, query subset, GT, graph, PQ-64 files, and packed layout
-remain blocked until independently verified.
-
-- [ ] **Step 4: Stop if upstream serving artifacts are absent**
-
-The overall Evaluation Task 1 must provide, per dataset, an Oracle image, a 10M
-graph, frozen 10k query IDs and GT, PQ-64 pivots/codes, packed extent image,
-entry file, ID map, and slot map. This plan does not invent their paths or silently build
-different indexes.
-
-Run:
-
-```bash
-python3 -m experiments.eval.prefetcher.config --require-all-ready
-```
-
-Expected until those artifacts exist: a nonzero exit listing every concrete
-missing artifact from `blocked_on`. Pause this task and complete the upstream
-dataset/layout plan before editing `ready` to true.
-
-- [ ] **Step 5: Admit each dataset only after full verification**
-
-Replace its blocked entry with the same explicit fields used by `t2i10m`, run
-`verify_dataset --full --samples 1024`, then freeze hashes:
-
-```bash
-python3 -m experiments.eval.prefetcher.freeze_artifacts --dataset laion10m --out results/eval/prefetcher/manifests/laion10m-artifacts.json
-python3 -m experiments.eval.prefetcher.freeze_artifacts --dataset yfcc10m --out results/eval/prefetcher/manifests/yfcc10m-artifacts.json
-python3 -m experiments.eval.prefetcher.config --require-all-ready
-```
-
-Expected: both manifests are sealed and the all-ready check passes.
-
-- [ ] **Step 6: Commit admitted manifests and validator**
-
-```bash
-git add experiments/eval/prefetcher/datasets.json experiments/eval/prefetcher/verify_dataset.py experiments/eval/prefetcher/tests/test_verify_dataset.py results/eval/prefetcher/manifests/laion10m-artifacts.json results/eval/prefetcher/manifests/yfcc10m-artifacts.json
-git commit -m "test: admit LAION and YFCC prefetcher datasets"
-```
-
----
-
-### Task 11: Complete Cross-Dataset Prefetcher Runs
-
-**Files:**
-- Produce: `results/eval/prefetcher/raw/proof/{laion10m,yfcc10m}/`
-- Produce: `results/eval/prefetcher/raw/calibration/{laion10m,yfcc10m}/`
-- Produce: `results/eval/prefetcher/raw/final/{laion10m,yfcc10m}/`
-- Produce: `results/eval/prefetcher/readiness/cross-dataset.json`
-
-- [ ] **Step 1: Run and validate 100-query proofs**
-
-For each dataset, after a dataset-specific passing preflight and approved cold
-reset:
-
-```bash
-python3 -m experiments.eval.prefetcher.run_matrix --phase smoke --datasets laion10m,yfcc10m --state proof --out results/eval/prefetcher/raw/proof
-python3 -m experiments.eval.prefetcher.validate_run --compare-transfer results/eval/prefetcher/raw/proof/{laion10m,yfcc10m}/*/run.json
-```
-
-Expected: the same candidate/result, zero-PQ-NAND, zero-bounce, and Oracle gates
-as T2I.
-
-- [ ] **Step 2: Calibrate each dataset**
-
-```bash
-python3 -m experiments.eval.prefetcher.run_matrix --phase calibration --datasets laion10m,yfcc10m --state cold --out results/eval/prefetcher/raw/calibration
-python3 -m experiments.eval.prefetcher.validate_run --freeze-anchor 0.90 results/eval/prefetcher/raw/calibration/{laion10m,yfcc10m}/*/run.json --out results/eval/prefetcher/calibration/cross-dataset.json
-```
-
-Expected: a frozen measured `L` at recall@10 >= 0.90 for both datasets, with no
-plot-time selection or extrapolation.
-
-- [ ] **Step 3: Run five-repeat paired final blocks**
-
-```bash
-python3 -m experiments.eval.prefetcher.run_matrix --phase final_all --datasets laion10m,yfcc10m --anchors results/eval/prefetcher/calibration/cross-dataset.json --paired-cold-warm --out results/eval/prefetcher/raw/final
-```
-
-Expected: five accepted cold runs plus paired warm runs for every core
-system/dataset/anchor block.
-
-- [ ] **Step 4: Validate cross-dataset completion**
-
-```bash
-python3 -m experiments.eval.prefetcher.validate_run --milestone cross-dataset results/eval/prefetcher/raw/final/{laion10m,t2i10m,yfcc10m}/*/run.json --out results/eval/prefetcher/readiness/cross-dataset.json
-```
-
-Expected: every completion gate in the spec passes. A neutral or negative
-performance result remains valid and is retained.
-
-- [ ] **Step 5: Commit the readiness record**
-
-```bash
-git add results/eval/prefetcher/readiness/cross-dataset.json
-git commit -m "test: complete cross-dataset prefetcher gate"
-```
-
----
-
-### Task 12: Aggregate and Render the Revised Figure 9
-
-**Files:**
-- Create: `experiments/eval/prefetcher/aggregate.py`
-- Create: `experiments/eval/prefetcher/plot_figure9.py`
-- Create: `experiments/eval/prefetcher/tests/test_aggregate.py`
-- Produce: `results/eval/prefetcher/validated.csv`
-- Produce: `results/eval/prefetcher/figure9-provenance.json`
-- Produce: `paper/figs/eval-prefetcher.pdf`
-
-- [ ] **Step 1: Write synthetic matched-block tests**
-
-Use 15 synthetic run records (three systems x five repeats) and assert median,
-bootstrap interval determinism at seed 20260904, serial normalization to 1.0,
-and rejection when one system has four repetitions or a different candidate
-hash.
+- Create: `experiments/eval/flashanns/aggregate.py`
+- Create: `experiments/eval/flashanns/plot_q2_q4.py`
+- Create: `experiments/eval/flashanns/tests/test_aggregate.py`
+- Create: `experiments/eval/flashanns/tests/test_plots.py`
+
+- [ ] **Step 1: Write synthetic five-repeat tests**
+
+Build synthetic accepted records for three datasets and assert:
+
+- exactly five repetitions per Q2/Q3 point;
+- exactly five cold/warm pairs per Q4 point;
+- median and seed-20260904 bootstrap intervals are deterministic;
+- a four-repeat block, candidate-hash mismatch, rejected run, or missing
+  cold-parent link fails;
+- provisional single-dataset and final three-dataset modes use the same
+  aggregation code.
 
 - [ ] **Step 2: Implement deterministic aggregation**
 
-The aggregator groups by
-`(dataset,anchor,L,state,system,artifact_manifest_sha256,candidate_sidecar_sha256)`.
-It accepts exactly five cold runs per core system and uses:
+Use:
 
-```python
+~~~python
 def bootstrap_ci(values, seed=20260904, samples=10000):
     rng = random.Random(seed)
     medians = []
@@ -1661,150 +866,498 @@ def bootstrap_ci(values, seed=20260904, samples=10000):
         draw = [values[rng.randrange(len(values))] for _ in values]
         medians.append(statistics.median(draw))
     medians.sort()
-    return medians[int(0.025 * samples)], medians[int(0.975 * samples)]
-```
+    return medians[250], medians[9750]
+~~~
 
-Emit individual run IDs alongside every aggregate row.
+Emit run IDs beside every row and a provenance entry for every plotted mark.
 
-- [ ] **Step 3: Implement the three-panel figure**
+- [ ] **Step 3: Implement the fixed figure contracts**
 
-Render:
+Generate:
 
-- panel (a): matched-recall normalized QPS for serial, batch, and frozen;
-- panel (b): requested pages/query, extent-added pages/query, NAND MiB/query,
-  and useful-page percentage as aligned subaxes without a dual y-axis;
-- panel (c): mean/p99 latency and critical-wait contribution.
+~~~text
+results/eval/flashanns/figures/q2-main.pdf
+results/eval/flashanns/figures/q3-ablation.pdf
+results/eval/flashanns/figures/q4-cold-warm.pdf
+~~~
 
-Use one consistent system palette, grayscale-safe markers, visible 95% CIs,
-and dataset order LAION-10M, T2I-10M, YFCC-10M. Add the Oracle upper-bound
-marker without using it as the normalization denominator.
+Q2 is 2x2: QPS, mean/p99, critical wait, score source. Q3 has T=1 transfer and
+T=8 scheduler panels. Q4 has paired cold/warm marks for three datasets. Use no
+dual y-axis, keep system colors stable, and show 95% intervals.
 
-- [ ] **Step 4: Run aggregation and plotting**
+- [ ] **Step 4: Run tests**
 
-```bash
-MPLCONFIGDIR=/tmp/flashanns-prefetcher-mpl python3 -m experiments.eval.prefetcher.aggregate --raw results/eval/prefetcher/raw/final --out results/eval/prefetcher/validated.csv --provenance results/eval/prefetcher/figure9-provenance.json
-MPLCONFIGDIR=/tmp/flashanns-prefetcher-mpl python3 -m experiments.eval.prefetcher.plot_figure9 --csv results/eval/prefetcher/validated.csv --out paper/figs/eval-prefetcher.pdf
-pdfinfo paper/figs/eval-prefetcher.pdf | rg 'Pages|Page size'
-```
+~~~bash
+MPLCONFIGDIR=/tmp/flashanns-mpl python3 -m unittest experiments.eval.flashanns.tests.test_aggregate experiments.eval.flashanns.tests.test_plots -v
+~~~
 
-Expected: one-page vector PDF and a provenance map from every mark to five run
-IDs. No historical log or hand-entered performance value appears in the CSV.
+Expected: deterministic CSV/provenance and one-page vector PDFs.
 
-- [ ] **Step 5: Run plot tests and commit generated evidence**
+- [ ] **Step 5: Commit**
 
-```bash
-python3 -m unittest experiments.eval.prefetcher.tests.test_aggregate -v
-git add experiments/eval/prefetcher/aggregate.py experiments/eval/prefetcher/plot_figure9.py experiments/eval/prefetcher/tests/test_aggregate.py results/eval/prefetcher/validated.csv results/eval/prefetcher/figure9-provenance.json paper/figs/eval-prefetcher.pdf
-git commit -m "eval: render frozen prefetcher ablation"
-```
+~~~bash
+git add experiments/eval/flashanns/aggregate.py experiments/eval/flashanns/plot_q2_q4.py experiments/eval/flashanns/tests/test_aggregate.py experiments/eval/flashanns/tests/test_plots.py
+git commit -m "test: add Q2 Q3 Q4 evidence pipeline"
+~~~
 
 ---
 
-### Task 13: Reconcile the Overall Evaluation Contract
+### Task 9: Complete the T2I-10M Vertical Slice
 
 **Files:**
-- Modify: `docs/superpowers/specs/2026-09-03-flashanns-evaluation-design.md:221-251`
-- Modify: `docs/superpowers/plans/2026-09-03-flashanns-evaluation.md:207-226`
-- Modify: `paper/sections/eval.tex`
-- Verify: `paper/sections/intro.tex`
-- Verify: `paper/sections/design.tex`
+- Produce: `results/eval/flashanns/manifests/t2i10m.json`
+- Produce: `results/eval/flashanns/readiness/t2i-proof.json`
+- Produce: `results/eval/flashanns/calibration/t2i10m.json`
+- Produce: `results/eval/flashanns/readiness/t2i-final.json`
+- Produce: `results/eval/flashanns/provisional/t2i/`
 
-- [ ] **Step 1: Replace the stale Q4 wording**
+- [ ] **Step 1: Freeze and verify existing artifacts**
 
-Replace the optional-lookahead question with:
+~~~bash
+python3 -m experiments.eval.flashanns.verify_dataset --dataset t2i10m --full
+python3 -m experiments.eval.flashanns.freeze_artifacts --dataset t2i10m --out results/eval/flashanns/manifests/t2i10m.json
+~~~
 
-```text
-Q4 Frozen Prefetcher: Does host PQ navigation remove NAND from the best-first
-dependency chain, and do batched transfer plus extent-aware issue improve
-matched-recall throughput and p99 without changing PQ candidates or results?
-```
+Expected: exact sizes, hashes, permutation, PQ-64, and 1,024 readbacks pass.
 
-- [ ] **Step 2: Replace Figure 9 and Task 6 definitions**
+- [ ] **Step 2: Stop for the T2I live-state approval**
 
-Copy the controlled-system matrix, panels, non-claims, and completion gates from
-the approved prefetcher spec. Remove the `M` sweep and Demand/Mandatory/Wise/
-Blind labels; do not retain them as aliases for different implementations.
+Required external outcome:
 
-- [ ] **Step 3: Insert only validated figure and claims**
+~~~text
+/dev/vmem0 exists
+cache_limit=4294967296
+cache_used=0
+dirty_bytes=0
+io_errors=0
+expected two NVMe devices/BDFs
+T2I extent image sampled digest matches the host image
+~~~
 
-Reference `paper/figs/eval-prefetcher.pdf`. Every numeric sentence must map to
-`results/eval/prefetcher/figure9-provenance.json`. State that the current NUMA
-window is host DRAM unless a physical CXL-DRAM backend passed its identity gate.
+Do not perform the recovery, cache change, staging, or reset inside this plan.
 
-- [ ] **Step 4: Audit forbidden stale language**
+- [ ] **Step 3: Run the 100-query proof**
 
-```bash
-rg -n "optional lookahead|Blind|M=|M =|mandatory-only|Wise Prefetcher" docs/superpowers/specs/2026-09-03-flashanns-evaluation-design.md docs/superpowers/plans/2026-09-03-flashanns-evaluation.md paper/sections/eval.tex paper/sections/intro.tex paper/sections/design.tex
-```
+After approved state preparation:
 
-Expected: no claim that the frozen PQ path implements those mechanisms. A
-historical contrast is allowed only when explicitly labeled superseded.
+~~~bash
+python3 -m experiments.eval.flashanns.run_matrix --dataset t2i10m --phase smoke --state proof --out results/eval/flashanns/raw/t2i10m/proof
+python3 -m experiments.eval.flashanns.validate_run --compare-same-search results/eval/flashanns/raw/t2i10m/proof --out results/eval/flashanns/readiness/t2i-proof.json
+~~~
 
-- [ ] **Step 5: Build the paper and commit contract reconciliation**
+- [ ] **Step 4: Calibrate recall**
 
-```bash
+~~~bash
+python3 -m experiments.eval.flashanns.run_matrix --dataset t2i10m --phase calibration --state cold --out results/eval/flashanns/raw/t2i10m/calibration
+python3 -m experiments.eval.flashanns.validate_run --freeze-anchor 0.90 --extra-anchor 0.92 results/eval/flashanns/raw/t2i10m/calibration --out results/eval/flashanns/calibration/t2i10m.json
+~~~
+
+- [ ] **Step 5: Run Q2, Q3, and Q4 in order**
+
+~~~bash
+python3 -m experiments.eval.flashanns.run_matrix --dataset t2i10m --phase q2 --anchors results/eval/flashanns/calibration/t2i10m.json
+python3 -m experiments.eval.flashanns.run_matrix --dataset t2i10m --phase q3_t1 --anchors results/eval/flashanns/calibration/t2i10m.json
+python3 -m experiments.eval.flashanns.run_matrix --dataset t2i10m --phase q3_t8 --anchors results/eval/flashanns/calibration/t2i10m.json
+python3 -m experiments.eval.flashanns.run_matrix --dataset t2i10m --phase q4 --paired-cold-warm --anchors results/eval/flashanns/calibration/t2i10m.json
+~~~
+
+Each cold invocation consumes its own approved reset snapshot.
+
+- [ ] **Step 6: Seal and render provisional figures**
+
+~~~bash
+python3 -m experiments.eval.flashanns.validate_run --dataset-milestone t2i10m --out results/eval/flashanns/readiness/t2i-final.json
+python3 -m experiments.eval.flashanns.aggregate --datasets t2i10m --out results/eval/flashanns/provisional/t2i/validated.csv --provenance results/eval/flashanns/provisional/t2i/provenance.json
+MPLCONFIGDIR=/tmp/flashanns-mpl python3 -m experiments.eval.flashanns.plot_q2_q4 --csv results/eval/flashanns/provisional/t2i/validated.csv --out-dir results/eval/flashanns/provisional/t2i
+~~~
+
+- [ ] **Step 7: Commit only sealed evidence**
+
+~~~bash
+git add results/eval/flashanns/manifests/t2i10m.json results/eval/flashanns/calibration/t2i10m.json results/eval/flashanns/readiness/t2i-proof.json results/eval/flashanns/readiness/t2i-final.json
+git commit -m "eval: complete T2I integrated evidence"
+~~~
+
+---
+
+### Task 10: Prepare and Admit YFCC-10M
+
+**Files:**
+- Modify: `experiments/eval/flashanns/datasets.json`
+- Create: `experiments/eval/flashanns/prepare_yfcc.py`
+- Create: `experiments/eval/flashanns/tests/test_prepare_yfcc.py`
+- Produce externally: `/mnt/disk0/chukexin_motivation/serving_yfcc_10m/`
+
+- [ ] **Step 1: Test streaming uint8-to-float widening**
+
+Verify headers, exact coordinate equality, fixed first-10k query selection,
+aligned top-10 GT extraction, and native-vs-widened exact-L2 top-k equality.
+
+- [ ] **Step 2: Implement preparation without normalization**
+
+`prepare_yfcc.py` writes fbin in bounded chunks, copies query rows and GT rows
+by recorded IDs, and seals a conversion manifest. It rejects normalization,
+dimension changes, NaN, or a float value unequal to its input byte.
+
+- [ ] **Step 3: Run offline tests**
+
+~~~bash
+python3 -m unittest experiments.eval.flashanns.tests.test_prepare_yfcc -v
+python3 -m experiments.eval.flashanns.verify_dataset --dataset yfcc10m --source-only
+~~~
+
+Expected: source headers and the three known SHA-256 values pass.
+
+- [ ] **Step 4: Stop for host-artifact build approval**
+
+The approved build writes only under
+`/mnt/disk0/chukexin_motivation/serving_yfcc_10m` and produces the exact
+artifact keys in Task 2. It uses `dist_fn=l2`, `R=32`, PQ-64, deterministic
+seed 42, and the recorded query subset. No device staging occurs here.
+
+- [ ] **Step 5: Verify, freeze, and mark ready**
+
+~~~bash
+python3 -m experiments.eval.flashanns.verify_dataset --dataset yfcc10m --full
+python3 -m experiments.eval.flashanns.freeze_artifacts --dataset yfcc10m --out results/eval/flashanns/manifests/yfcc10m.json
+python3 -m unittest experiments.eval.flashanns.tests.test_config -v
+~~~
+
+- [ ] **Step 6: Commit code, ready config, and manifest**
+
+~~~bash
+git add experiments/eval/flashanns/prepare_yfcc.py experiments/eval/flashanns/tests/test_prepare_yfcc.py experiments/eval/flashanns/datasets.json results/eval/flashanns/manifests/yfcc10m.json
+git commit -m "test: admit YFCC 10M L2 dataset"
+~~~
+
+---
+
+### Task 11: Complete the YFCC-10M Vertical Slice
+
+**Files:**
+- Produce: `results/eval/flashanns/readiness/yfcc-proof.json`
+- Produce: `results/eval/flashanns/calibration/yfcc10m.json`
+- Produce: `results/eval/flashanns/readiness/yfcc-final.json`
+- Produce: `results/eval/flashanns/provisional/yfcc/`
+
+- [ ] **Step 1: Stop for YFCC staging and live-state approval**
+
+Required external outcome:
+
+~~~text
+/dev/vmem0 exists
+cache_limit=4294967296
+cache_used=0
+dirty_bytes=0
+io_errors=0
+expected two NVMe devices/BDFs
+YFCC extent image sampled digest matches the admitted host image
+~~~
+
+Do not perform staging, the cache-limit change, or reset in the runner.
+
+- [ ] **Step 2: Run and validate the 100-query L2 proof**
+
+~~~bash
+python3 -m experiments.eval.flashanns.run_matrix --dataset yfcc10m --phase smoke --state proof --out results/eval/flashanns/raw/yfcc10m/proof
+python3 -m experiments.eval.flashanns.validate_run --compare-same-search results/eval/flashanns/raw/yfcc10m/proof --out results/eval/flashanns/readiness/yfcc-proof.json
+~~~
+
+Require `metric=l2` in every command and record, identical same-search
+candidate/result sidecars, and no FlashANNS score reads from CXL.
+
+- [ ] **Step 3: Calibrate and freeze the 0.90 recall anchor**
+
+After a separately approved cold reset:
+
+~~~bash
+python3 -m experiments.eval.flashanns.run_matrix --dataset yfcc10m --phase calibration --state cold --out results/eval/flashanns/raw/yfcc10m/calibration
+python3 -m experiments.eval.flashanns.validate_run --freeze-anchor 0.90 results/eval/flashanns/raw/yfcc10m/calibration --out results/eval/flashanns/calibration/yfcc10m.json
+~~~
+
+- [ ] **Step 4: Run Q2, Q3, and Q4 in order**
+
+~~~bash
+python3 -m experiments.eval.flashanns.run_matrix --dataset yfcc10m --phase q2 --anchors results/eval/flashanns/calibration/yfcc10m.json
+python3 -m experiments.eval.flashanns.run_matrix --dataset yfcc10m --phase q3_t1 --anchors results/eval/flashanns/calibration/yfcc10m.json
+python3 -m experiments.eval.flashanns.run_matrix --dataset yfcc10m --phase q3_t8 --anchors results/eval/flashanns/calibration/yfcc10m.json
+python3 -m experiments.eval.flashanns.run_matrix --dataset yfcc10m --phase q4 --paired-cold-warm --anchors results/eval/flashanns/calibration/yfcc10m.json
+~~~
+
+Each cold invocation consumes a distinct approved reset snapshot. Require five
+accepted repetitions for every Q2/Q3 point and five accepted cold/warm pairs.
+
+- [ ] **Step 5: Seal and render provisional figures**
+
+~~~bash
+python3 -m experiments.eval.flashanns.validate_run --dataset-milestone yfcc10m --out results/eval/flashanns/readiness/yfcc-final.json
+python3 -m experiments.eval.flashanns.aggregate --datasets yfcc10m --out results/eval/flashanns/provisional/yfcc/validated.csv --provenance results/eval/flashanns/provisional/yfcc/provenance.json
+MPLCONFIGDIR=/tmp/flashanns-mpl python3 -m experiments.eval.flashanns.plot_q2_q4 --csv results/eval/flashanns/provisional/yfcc/validated.csv --out-dir results/eval/flashanns/provisional/yfcc
+~~~
+
+- [ ] **Step 6: Commit only sealed evidence**
+
+~~~bash
+git add results/eval/flashanns/calibration/yfcc10m.json results/eval/flashanns/readiness/yfcc-proof.json results/eval/flashanns/readiness/yfcc-final.json
+git commit -m "eval: complete YFCC integrated evidence"
+~~~
+
+---
+
+### Task 12: Prepare and Admit LAION-10M
+
+**Files:**
+- Modify: `experiments/eval/flashanns/datasets.json`
+- Create: `experiments/eval/flashanns/prepare_laion.py`
+- Create: `experiments/eval/flashanns/tests/test_prepare_laion.py`
+- Produce externally: `/mnt/disk0/chukexin_motivation/serving_laion_10m/`
+
+- [ ] **Step 1: Test deterministic prefix and query selection**
+
+Assert the base source is 25,000,000 x 512 float32, the selected corpus is
+exactly IDs `[0, 10000000)`, query IDs are 10,000 unique values selected with
+seed 42, and generated GT IDs stay below 10M.
+
+- [ ] **Step 2: Implement preparation metadata**
+
+`prepare_laion.py` streams the first 10M rows without rewriting values,
+records source-prefix SHA-256, and writes query-ID/GT manifests. It never treats
+the existing 25M graph or GT as valid for the 10M subset without verification.
+
+- [ ] **Step 3: Stop for host-artifact build approval**
+
+Build under `/mnt/disk0/chukexin_motivation/serving_laion_10m` using MIPS,
+`R=32`, PQ-64, seed 42, and the declared 10M subset. Generate exact GT for
+the admitted query subset before setting ready.
+
+- [ ] **Step 4: Verify, freeze, and mark ready**
+
+~~~bash
+python3 -m experiments.eval.flashanns.verify_dataset --dataset laion10m --full
+python3 -m experiments.eval.flashanns.freeze_artifacts --dataset laion10m --out results/eval/flashanns/manifests/laion10m.json
+~~~
+
+- [ ] **Step 5: Commit**
+
+~~~bash
+git add experiments/eval/flashanns/prepare_laion.py experiments/eval/flashanns/tests/test_prepare_laion.py experiments/eval/flashanns/datasets.json results/eval/flashanns/manifests/laion10m.json
+git commit -m "test: admit LAION 10M dataset"
+~~~
+
+---
+
+### Task 13: Complete the LAION-10M Vertical Slice
+
+**Files:**
+- Produce: `results/eval/flashanns/readiness/laion-proof.json`
+- Produce: `results/eval/flashanns/calibration/laion10m.json`
+- Produce: `results/eval/flashanns/readiness/laion-final.json`
+- Produce: `results/eval/flashanns/provisional/laion/`
+
+- [ ] **Step 1: Stop for LAION staging and live-state approval**
+
+Required external outcome:
+
+~~~text
+/dev/vmem0 exists
+cache_limit=4294967296
+cache_used=0
+dirty_bytes=0
+io_errors=0
+expected two NVMe devices/BDFs
+LAION extent image sampled digest matches the admitted host image
+~~~
+
+Do not perform staging, the cache-limit change, or reset in the runner.
+
+- [ ] **Step 2: Run and validate the 100-query MIPS proof**
+
+~~~bash
+python3 -m experiments.eval.flashanns.run_matrix --dataset laion10m --phase smoke --state proof --out results/eval/flashanns/raw/laion10m/proof
+python3 -m experiments.eval.flashanns.validate_run --compare-same-search results/eval/flashanns/raw/laion10m/proof --out results/eval/flashanns/readiness/laion-proof.json
+~~~
+
+Require `metric=mips` in every command and record, identical same-search
+candidate/result sidecars, and no FlashANNS score reads from CXL.
+
+- [ ] **Step 3: Calibrate and freeze the 0.90 recall anchor**
+
+After a separately approved cold reset:
+
+~~~bash
+python3 -m experiments.eval.flashanns.run_matrix --dataset laion10m --phase calibration --state cold --out results/eval/flashanns/raw/laion10m/calibration
+python3 -m experiments.eval.flashanns.validate_run --freeze-anchor 0.90 results/eval/flashanns/raw/laion10m/calibration --out results/eval/flashanns/calibration/laion10m.json
+~~~
+
+- [ ] **Step 4: Run Q2, Q3, and Q4 in order**
+
+~~~bash
+python3 -m experiments.eval.flashanns.run_matrix --dataset laion10m --phase q2 --anchors results/eval/flashanns/calibration/laion10m.json
+python3 -m experiments.eval.flashanns.run_matrix --dataset laion10m --phase q3_t1 --anchors results/eval/flashanns/calibration/laion10m.json
+python3 -m experiments.eval.flashanns.run_matrix --dataset laion10m --phase q3_t8 --anchors results/eval/flashanns/calibration/laion10m.json
+python3 -m experiments.eval.flashanns.run_matrix --dataset laion10m --phase q4 --paired-cold-warm --anchors results/eval/flashanns/calibration/laion10m.json
+~~~
+
+Each cold invocation consumes a distinct approved reset snapshot. Require five
+accepted repetitions for every Q2/Q3 point and five accepted cold/warm pairs.
+
+- [ ] **Step 5: Seal and render provisional figures**
+
+~~~bash
+python3 -m experiments.eval.flashanns.validate_run --dataset-milestone laion10m --out results/eval/flashanns/readiness/laion-final.json
+python3 -m experiments.eval.flashanns.aggregate --datasets laion10m --out results/eval/flashanns/provisional/laion/validated.csv --provenance results/eval/flashanns/provisional/laion/provenance.json
+MPLCONFIGDIR=/tmp/flashanns-mpl python3 -m experiments.eval.flashanns.plot_q2_q4 --csv results/eval/flashanns/provisional/laion/validated.csv --out-dir results/eval/flashanns/provisional/laion
+~~~
+
+- [ ] **Step 6: Commit only sealed evidence**
+
+~~~bash
+git add results/eval/flashanns/calibration/laion10m.json results/eval/flashanns/readiness/laion-proof.json results/eval/flashanns/readiness/laion-final.json
+git commit -m "eval: complete LAION integrated evidence"
+~~~
+
+---
+
+### Task 14: Aggregate and Freeze the Three Figures
+
+**Files:**
+- Produce: `results/eval/flashanns/validated.csv`
+- Produce: `results/eval/flashanns/figure-provenance.json`
+- Produce: `results/eval/flashanns/figures/q2-main.pdf`
+- Produce: `results/eval/flashanns/figures/q3-ablation.pdf`
+- Produce: `results/eval/flashanns/figures/q4-cold-warm.pdf`
+
+- [ ] **Step 1: Revalidate every run**
+
+~~~bash
+python3 -m experiments.eval.flashanns.validate_run --milestone all-three --datasets t2i10m,yfcc10m,laion10m --out results/eval/flashanns/readiness/all-three.json
+~~~
+
+- [ ] **Step 2: Aggregate**
+
+~~~bash
+python3 -m experiments.eval.flashanns.aggregate --datasets t2i10m,yfcc10m,laion10m --out results/eval/flashanns/validated.csv --provenance results/eval/flashanns/figure-provenance.json
+~~~
+
+- [ ] **Step 3: Render and inspect**
+
+~~~bash
+MPLCONFIGDIR=/tmp/flashanns-mpl python3 -m experiments.eval.flashanns.plot_q2_q4 --csv results/eval/flashanns/validated.csv --out-dir results/eval/flashanns/figures
+pdfinfo results/eval/flashanns/figures/q2-main.pdf | rg 'Pages|Page size'
+pdfinfo results/eval/flashanns/figures/q3-ablation.pdf | rg 'Pages|Page size'
+pdfinfo results/eval/flashanns/figures/q4-cold-warm.pdf | rg 'Pages|Page size'
+~~~
+
+Expected: three one-page vector PDFs and provenance for every mark.
+
+- [ ] **Step 4: Prove reproducibility**
+
+Regenerate into `/tmp/flashanns-recheck` and require byte-identical CSV and
+provenance JSON. PDF hashes are recorded; visual equivalence is checked by plot
+tests because PDF metadata may differ.
+
+- [ ] **Step 5: Commit**
+
+~~~bash
+git add results/eval/flashanns/validated.csv results/eval/flashanns/figure-provenance.json results/eval/flashanns/figures results/eval/flashanns/readiness/all-three.json
+git commit -m "eval: freeze integrated Q2 Q3 Q4 figures"
+~~~
+
+---
+
+### Task 15: Insert Figures Without Absorbing Concurrent Paper Edits
+
+**Files:**
+- Copy: Q2--Q4 PDFs to `paper/figs/`
+- Modify narrowly: `paper/sections/eval.tex`
+- Verify only: other `paper/` files
+
+- [ ] **Step 1: Capture the current paper diff**
+
+~~~bash
+git diff --binary --output=/tmp/flashanns-paper-before-figures.patch -- paper
+sha256sum /tmp/flashanns-paper-before-figures.patch
+git status --short -- paper
+~~~
+
+- [ ] **Step 2: Copy figure artifacts**
+
+Use distinct stable names:
+
+~~~text
+paper/figs/eval-q2-main.pdf
+paper/figs/eval-q3-ablation.pdf
+paper/figs/eval-q4-cold-warm.pdf
+~~~
+
+- [ ] **Step 3: Patch only the three figure blocks and validated table cells**
+
+Replace the `phbox` bodies for labels `fig:eval-main`,
+`fig:eval-ablate`, and `fig:eval-scale` with `includegraphics`. Populate
+numbers only through the validated CSV/provenance mapping. Update Setup to
+declare three 10M datasets, 4 GiB cache, metric per dataset, T=8 final system,
+and physical-versus-proxy backend truth.
+
+- [ ] **Step 4: Prove unrelated paper edits survived**
+
+Compare the before patch and final diff. Only the three figure blocks, Setup,
+validated table cells, and generated PDFs may be new evaluation changes.
+
+- [ ] **Step 5: Build and commit narrowly**
+
+~~~bash
 latexmk -g -pdf -interaction=nonstopmode -halt-on-error paper/main.tex
 rg -n "undefined references|Reference .* undefined|Citation .* undefined" paper/main.log
-git diff --check -- docs/superpowers/specs/2026-09-03-flashanns-evaluation-design.md docs/superpowers/plans/2026-09-03-flashanns-evaluation.md paper/sections/eval.tex paper/sections/intro.tex paper/sections/design.tex
-git add docs/superpowers/specs/2026-09-03-flashanns-evaluation-design.md docs/superpowers/plans/2026-09-03-flashanns-evaluation.md paper/sections/eval.tex
-git commit -m "docs: align evaluation with frozen prefetcher"
-```
+git add paper/sections/eval.tex paper/figs/eval-q2-main.pdf paper/figs/eval-q3-ablation.pdf paper/figs/eval-q4-cold-warm.pdf
+git commit -m "paper: insert validated integrated evaluation"
+~~~
 
-Expected: LaTeX succeeds and the log search returns no matches.
+Do not add other concurrent paper changes.
 
 ---
 
-### Task 14: Final Prefetcher-Only Verification
+### Task 16: Final Verification
 
 **Files:**
-- Produce: `results/eval/prefetcher/readiness/final.md`
-- Verify: all files and outputs from Tasks 1--13
+- Produce: `results/eval/flashanns/readiness/final.md`
 
-- [ ] **Step 1: Run the complete offline test suite**
+- [ ] **Step 1: Run complete offline tests**
 
-```bash
+~~~bash
 make -C serving/tests test
-python3 -m unittest discover -s experiments/eval/prefetcher/tests -v
-```
+python3 -m unittest discover -s experiments/eval/flashanns/tests -v
+~~~
 
-Expected: all C++ and Python tests pass.
+- [ ] **Step 2: Audit the freeze**
 
-- [ ] **Step 2: Revalidate every accepted run and provenance edge**
+~~~bash
+git diff --function-context 15e6632 -- serving/search_beam.cpp serving/cont_batch.hpp serving/hide_fill.hpp serving/pq_table.hpp serving/prefetch.hpp serving/metrics.hpp
+rg -n -- '--early-cl|--lookahead-k|--spec-beam-nbrs|--score-page|--pipe-drive|--admit-gap' experiments/eval/flashanns
+~~~
 
-```bash
-python3 -m experiments.eval.prefetcher.validate_run --milestone cross-dataset results/eval/prefetcher/raw/final/{laion10m,t2i10m,yfcc10m}/*/run.json --out results/eval/prefetcher/readiness/cross-dataset-recheck.json
-python3 -m experiments.eval.prefetcher.aggregate --raw results/eval/prefetcher/raw/final --out /tmp/flashanns-prefetcher-recheck.csv --provenance /tmp/flashanns-prefetcher-recheck-provenance.json
-cmp results/eval/prefetcher/validated.csv /tmp/flashanns-prefetcher-recheck.csv
-cmp results/eval/prefetcher/figure9-provenance.json /tmp/flashanns-prefetcher-recheck-provenance.json
-```
+Expected: runtime diff contains only the approved metric adapter and
+observation hooks; live configurations contain no removed flag.
 
-Expected: validation passes and both comparisons are byte-identical.
+- [ ] **Step 3: Revalidate evidence and provenance**
 
-- [ ] **Step 3: Verify the freeze and scheduling boundary**
+~~~bash
+python3 -m experiments.eval.flashanns.validate_run --milestone all-three --datasets t2i10m,yfcc10m,laion10m --out /tmp/flashanns-final-recheck.json
+cmp results/eval/flashanns/readiness/all-three.json /tmp/flashanns-final-recheck.json
+~~~
 
-```bash
-git diff a9f8447 -- serving/pq_table.hpp serving/hide_fill.hpp serving/search_beam.cpp
-rg -n -- '--cont-batch|--lookahead-k|--spec-beam-nbrs|--score-page|--pipe-drive' experiments/eval/prefetcher
-```
+- [ ] **Step 4: Write final readiness**
 
-Review the first diff manually: only approved trace/counter hooks may touch the
-frozen files. The second command must find no live matrix flag; tests may mention
-forbidden strings only as rejection cases.
+Record commit, accepted/rejected counts and reasons, all dataset/system blocks,
+metric identities, 4 GiB preflight evidence, figure hashes, provenance hash,
+backend truth label, paper build result, and every spec completion gate.
 
-- [ ] **Step 4: Write the final readiness record**
+- [ ] **Step 5: Commit**
 
-Record command outputs, commit SHA, validated run count, rejected run count and
-reasons, dataset/system block counts, figure hash, provenance hash, physical
-window label, and all eight spec completion gates in
-`results/eval/prefetcher/readiness/final.md`.
+~~~bash
+git add results/eval/flashanns/readiness/final.md
+git commit -m "eval: close integrated FlashANNS evaluation"
+~~~
 
-- [ ] **Step 5: Commit final readiness**
-
-```bash
-git add results/eval/prefetcher/readiness/final.md results/eval/prefetcher/readiness/cross-dataset-recheck.json
-git commit -m "eval: close prefetcher-first verification"
-```
-
-At this point the prefetcher evaluation is complete. Continuous Batching may
-begin from the sealed dataset manifests, run schema, and validator without
-reopening the frozen T=1 implementation or rerunning valid prefetcher blocks.
+At completion, valid experiment data remain sealed even if later paper prose
+changes. Only a runtime, artifact, metric, cache, schema, or aggregation change
+invalidates a measured block.
