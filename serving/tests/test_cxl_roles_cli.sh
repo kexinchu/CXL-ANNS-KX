@@ -41,3 +41,20 @@ case "$err3" in
 esac
 echo "$err3" | grep -qiE 'dax|refuse'
 echo "PASS refuse --cxl-dram-dev /dev/dax0.0"
+
+set +e
+err4=$("$bin" --diskann-layout --oracle-dram --dram-backend numa \
+  --entry /dev/null --queries /dev/null --nav-graph /dev/null 2>&1)
+rc4=$?
+set -e
+test "$rc4" -eq 2
+echo "$err4" | grep -qiE 'numa|refuse'
+echo "PASS refuse diskann+numa oracle"
+
+set +e
+err5=$("$bin" --diskann-layout --entry /dev/null --queries /dev/null 2>&1)
+rc5=$?
+set -e
+test "$rc5" -eq 2
+echo "$err5" | grep -qiE 'nav-graph'
+echo "PASS refuse diskann without nav-graph"

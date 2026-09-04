@@ -94,27 +94,74 @@ inline void hide_read_nbrs(Placement& pl, uint32_t id, uint32_t* out, uint32_t R
   std::memcpy(out, pl.nbrs(id), (size_t)R * sizeof(uint32_t));
 }
 
+enum class HideScore : uint8_t { Window, Bounce, Vmem };
+
+// Single-page bounce lookup. Null if missing or the range would cross a page.
+inline const uint8_t* hide_bounce_lookup(const uint64_t* pages, uint8_t* const* hosts, size_t n,
+                                         uint64_t page_off, size_t in_page, size_t len,
+                                         size_t pb) {
+  if (!pages || !hosts || in_page + len > pb) return nullptr;
+  for (size_t i = 0; i < n; ++i) {
+    if (pages[i] == page_off) return hosts[i] + in_page;
+  }
+  return nullptr;
+}
+
 struct HideInflight {
   std::vector<uint64_t> pages;
-  std::vector<std::vector<uint8_t>> host;
+  std::unique_ptr<uint8_t[]> host_mem;
+  size_t host_n = 0;
+  size_t host_pb = 0;
+  std::vector<uint8_t*> dests;
+  std::vector<size_t> frames;
   std::unique_ptr<std::atomic<uint8_t>[]> ready;
   std::vector<uint8_t> consumed;
   size_t ready_n = 0;
   uint16_t ttl = 32;
   bool active = false;
+  bool direct = false;
+  uint64_t tok = 0;
+
+  uint8_t* host_page(size_t i) { return host_mem.get() + i * host_pb; }
+  const uint8_t* host_page(size_t i) const { return host_mem.get() + i * host_pb; }
 
   void clear() {
     pages.clear();
-    host.clear();
+    host_mem.reset();
+    host_n = 0;
+    host_pb = 0;
+    dests.clear();
+    frames.clear();
     ready.reset();
     consumed.clear();
     ready_n = 0;
     active = false;
+    direct = false;
+    tok = 0;
   }
 };
 
-inline void hide_pump(HideInflight& inf, DramWindow& win) {
+inline void hide_pump(HideInflight& inf, DramWindow& win, HideScore score = HideScore::Window) {
   if (!inf.active) return;
+  if (score != HideScore::Window) {
+    for (size_t i = 0; i < inf.pages.size(); ++i) {
+      if (inf.consumed[i]) continue;
+      if (!inf.ready[i].load(std::memory_order_acquire)) continue;
+      inf.consumed[i] = 1;
+      inf.ready_n++;
+    }
+    return;
+  }
+  if (inf.direct) {
+    for (size_t i = 0; i < inf.pages.size(); ++i) {
+      if (inf.consumed[i]) continue;
+      if (!inf.ready[i].load(std::memory_order_acquire)) continue;
+      inf.consumed[i] = 1;
+      win.commit_fill(inf.pages[i], inf.frames[i], inf.ttl);
+      inf.ready_n++;
+    }
+    return;
+  }
   uint64_t offs[256];
   uint8_t* hosts[256];
   size_t n = 0;
@@ -129,7 +176,7 @@ inline void hide_pump(HideInflight& inf, DramWindow& win) {
     if (!inf.ready[i].load(std::memory_order_acquire)) continue;
     inf.consumed[i] = 1;
     offs[n] = inf.pages[i];
-    hosts[n] = inf.host[i].data();
+    hosts[n] = inf.host_page(i);
     n++;
     if (n == 256) flush();
   }
@@ -137,18 +184,19 @@ inline void hide_pump(HideInflight& inf, DramWindow& win) {
 }
 
 inline uint64_t hide_wait(HideInflight& inf, DramWindow& win, PageCopyPool& /*pool*/,
-                          const std::function<void()>* after = nullptr) {
+                          const std::function<void()>* after = nullptr,
+                          HideScore score = HideScore::Window) {
   if (!inf.active) return 0;
   auto t0 = std::chrono::steady_clock::now();
   while (inf.ready_n < inf.pages.size()) {
-    hide_pump(inf, win);
+    hide_pump(inf, win, score);
     if (after && *after) (*after)();
     if (inf.ready_n < inf.pages.size()) std::this_thread::yield();
   }
-  hide_pump(inf, win);
+  hide_pump(inf, win, score);
   if (after && *after) (*after)();
   auto t1 = std::chrono::steady_clock::now();
-  inf.clear();
+  if (score == HideScore::Window) inf.clear();
   return (uint64_t)std::chrono::duration_cast<std::chrono::nanoseconds>(t1 - t0).count();
 }
 
@@ -193,7 +241,9 @@ inline void hide_stripe_fill(std::vector<uint64_t>& pages, size_t pb, uint32_t m
 
 inline void hide_issue(HideInflight& inf, DramWindow& win, Placement& pl, PageCopyPool& pool,
                        VmemIo* vio, const std::vector<uint64_t>& pages_in, uint16_t ttl,
-                       Metrics* m, bool lookahead = false, bool extent_run = false) {
+                       Metrics* m, bool lookahead = false, bool extent_run = false,
+                       bool direct = false, bool prefetch_only = false,
+                       bool use_window = true) {
   const size_t pb = win.page_bytes;
   std::vector<uint64_t> miss;
   miss.reserve(pages_in.size());
@@ -201,43 +251,69 @@ inline void hide_issue(HideInflight& inf, DramWindow& win, Placement& pl, PageCo
   uniq.reserve(pages_in.size() * 2);
   for (uint64_t p : pages_in) {
     if (!uniq.insert(p).second) continue;
-    if (win.is_resident(pl.ssd_base, pl.ssd_base + p, 1)) continue;
+    if (use_window && win.is_resident(pl.ssd_base, pl.ssd_base + p, 1)) continue;
     miss.push_back(p);
   }
   if (extent_run) hide_extent_run(miss, pb, 32);
   if (miss.empty()) return;
   inf.clear();
-  inf.pages = std::move(miss);
-  inf.host.resize(inf.pages.size());
+  inf.direct = direct && !prefetch_only;
+  if (prefetch_only) {
+    inf.pages = std::move(miss);
+  } else if (direct) {
+    inf.pages.reserve(miss.size());
+    inf.dests.reserve(miss.size());
+    inf.frames.reserve(miss.size());
+    for (uint64_t p : miss) {
+      uint8_t* d = nullptr;
+      size_t fr = SIZE_MAX;
+      if (!win.reserve_fill(p, &d, &fr) || !d) continue;
+      inf.pages.push_back(p);
+      inf.dests.push_back(d);
+      inf.frames.push_back(fr);
+    }
+    if (inf.pages.empty()) return;
+  } else {
+    inf.pages = std::move(miss);
+    inf.host_n = inf.pages.size();
+    inf.host_pb = pb;
+    inf.host_mem.reset(new uint8_t[inf.host_n * pb]);
+    // Fault dest pages before ioctl. copy_to_user under cache_lock deadlocks on
+    // a minor fault (same as unprefaulted --direct-install).
+    for (size_t i = 0; i < inf.host_n * pb; i += pb) inf.host_mem[i] = 0;
+  }
   inf.ready.reset(new std::atomic<uint8_t>[inf.pages.size()]);
   inf.consumed.assign(inf.pages.size(), 0);
   inf.ttl = ttl;
   inf.active = true;
-  if (m) {
-    m->note_fetched_pages(inf.pages.size());
-    m->promote_bytes += inf.pages.size() * pb;
-    m->prefetch_pages += inf.pages.size();
-    m->note_pf_issue(inf.pages, lookahead);
-    for (uint64_t p : inf.pages)
-      pl.for_ids_contained_in_page(p, pb, [&](uint32_t id) { m->note_pf_slot_id(id); });
-  }
-  for (size_t i = 0; i < inf.pages.size(); ++i) {
-    inf.host[i].resize(pb);
+  for (size_t i = 0; i < inf.pages.size(); ++i)
     inf.ready[i].store(0, std::memory_order_relaxed);
-  }
   const uint8_t* base = pl.ssd_base;
   auto* pages = &inf.pages;
-  auto* host = &inf.host;
+  uint8_t* slab = inf.host_mem.get();
+  const size_t hpb = inf.host_pb;
+  auto* dests_v = &inf.dests;
+  const bool use_direct = direct && !prefetch_only;
+  const bool only_pf = prefetch_only;
   std::atomic<uint8_t>* ready = inf.ready.get();
   const size_t n = inf.pages.size();
   VmemIo* vio_c = vio;
   const size_t chunk = 32;
+  std::vector<std::function<void()>> jobs;
+  jobs.reserve((n + chunk - 1) / chunk);
   for (size_t off = 0; off < n; off += chunk) {
     const size_t n1 = n - off < chunk ? n - off : chunk;
-    pool.submit_fn([=]() {
+    jobs.emplace_back([=]() {
+      if (only_pf) {
+        if (vio_c && vio_c->fd >= 0)
+          vmem_prefetch_pages(*vio_c, pages->data() + off, (int)n1, pb);
+        for (size_t i = 0; i < n1; ++i) ready[off + i].store(1, std::memory_order_release);
+        return;
+      }
       uint8_t* dests[256];
       const size_t ncopy = n1 < 256 ? n1 : 256;
-      for (size_t i = 0; i < ncopy; ++i) dests[i] = (*host)[off + i].data();
+      for (size_t i = 0; i < ncopy; ++i)
+        dests[i] = use_direct ? (*dests_v)[off + i] : (slab + (off + i) * hpb);
       int rd = -1;
       if (vio_c && vio_c->fd >= 0)
         rd = vmem_read_pages(*vio_c, pages->data() + off, dests, (int)n1, pb);
@@ -246,11 +322,20 @@ inline void hide_issue(HideInflight& inf, DramWindow& win, Placement& pl, PageCo
           vmem_prefetch_pages(*vio_c, pages->data() + off, (int)n1, pb);
         for (size_t i = 0; i < n1; ++i) {
           const size_t j = off + i;
-          std::memcpy((*host)[j].data(), base + (*pages)[j], pb);
+          std::memcpy(dests[i], base + (*pages)[j], pb);
         }
       }
       for (size_t i = 0; i < n1; ++i) ready[off + i].store(1, std::memory_order_release);
     });
+  }
+  pool.submit_fns(std::move(jobs));
+  if (m) {
+    m->note_fetched_pages(inf.pages.size());
+    m->promote_bytes += inf.pages.size() * pb;
+    m->prefetch_pages += inf.pages.size();
+    m->note_pf_issue(inf.pages, lookahead);
+    for (uint64_t p : inf.pages)
+      pl.for_ids_contained_in_page(p, pb, [&](uint32_t id) { m->note_pf_slot_id(id); });
   }
 }
 
@@ -264,37 +349,170 @@ struct HidePipe {
   VmemIo* vio = nullptr;
   Metrics* m = nullptr;
   bool extent_run = false;
+  bool direct_install = false;
+  HideScore score = HideScore::Window;
+  uint64_t next_tok = 1;
   std::function<void()> after_pump;
+
+  bool use_window() const { return score == HideScore::Window; }
+
+  bool page_in_slot(uint64_t p) const {
+    for (int s = 0; s < kSlots; ++s) {
+      if (!slot[s].active) continue;
+      for (uint64_t q : slot[s].pages) {
+        if (q == p) return true;
+      }
+    }
+    return false;
+  }
+
+  bool page_ready(uint64_t p) const {
+    for (int s = 0; s < kSlots; ++s) {
+      if (!slot[s].active) continue;
+      for (size_t i = 0; i < slot[s].pages.size(); ++i) {
+        if (slot[s].pages[i] != p) continue;
+        if (slot[s].ready && slot[s].ready[i].load(std::memory_order_acquire)) return true;
+      }
+    }
+    return false;
+  }
+
+  bool covers(uint64_t p) const {
+    if (use_window()) return win->is_resident(pl->ssd_base, pl->ssd_base + p, 1);
+    return page_ready(p);
+  }
+
+  bool covers(const std::vector<uint64_t>& need) const {
+    for (uint64_t p : need) {
+      if (!covers(p)) return false;
+    }
+    return true;
+  }
+
+  const uint8_t* bounce_page(uint64_t page) const {
+    for (int s = 0; s < kSlots; ++s) {
+      if (!slot[s].active) continue;
+      for (size_t i = 0; i < slot[s].pages.size(); ++i) {
+        if (slot[s].pages[i] != page) continue;
+        if (slot[s].host_mem && i < slot[s].host_n) return slot[s].host_page(i);
+      }
+    }
+    return nullptr;
+  }
+
+  // In-place pointer when the vector lives on one page. Null if spanning / missing.
+  const uint8_t* vec_src(const uint8_t* ssd_vec, size_t vb) const {
+    if (score == HideScore::Vmem) return ssd_vec;
+    const size_t pb = win->page_bytes;
+    const uint64_t off = (uint64_t)(ssd_vec - pl->ssd_base);
+    const uint64_t page = off & ~(uint64_t)(pb - 1);
+    const size_t in_page = (size_t)(off - page);
+    if (in_page + vb > pb) return nullptr;
+    if (score == HideScore::Bounce) {
+      const uint8_t* base = bounce_page(page);
+      return base ? base + in_page : nullptr;
+    }
+    return win->try_ptr_resident(pl->ssd_base, ssd_vec, vb);
+  }
+
+  bool copy_vec(const uint8_t* ssd_vec, size_t vb, void* dst) const {
+    if (score == HideScore::Vmem) {
+      std::memcpy(dst, ssd_vec, vb);
+      return true;
+    }
+    if (score == HideScore::Bounce) {
+      const size_t pb = win->page_bytes;
+      const uint64_t off = (uint64_t)(ssd_vec - pl->ssd_base);
+      auto* out = static_cast<uint8_t*>(dst);
+      size_t copied = 0;
+      while (copied < vb) {
+        const uint64_t cur = off + copied;
+        const uint64_t page = cur & ~(uint64_t)(pb - 1);
+        const size_t in_page = (size_t)(cur - page);
+        const size_t k = std::min(vb - copied, pb - in_page);
+        const uint8_t* base = bounce_page(page);
+        if (!base) return false;
+        std::memcpy(out + copied, base + in_page, k);
+        copied += k;
+      }
+      return true;
+    }
+    return win->try_copy_resident(pl->ssd_base, ssd_vec, vb, dst);
+  }
+
+  void release_tok(uint64_t tok) {
+    if (use_window() || !tok) return;
+    for (int i = 0; i < kSlots; ++i) {
+      if (slot[i].active && slot[i].tok == tok) slot[i].clear();
+    }
+  }
+
+  void release_pages(const std::vector<uint64_t>& need) {
+    if (use_window() || need.empty()) return;
+    std::unordered_set<uint64_t> nset(need.begin(), need.end());
+    for (int i = 0; i < kSlots; ++i) {
+      if (!slot[i].active || slot[i].pages.empty()) continue;
+      // Owner slot: every C_L page is here (extent_run extras allowed).
+      bool owns = true;
+      for (uint64_t p : nset) {
+        bool hit = false;
+        for (uint64_t q : slot[i].pages) {
+          if (q == p) {
+            hit = true;
+            break;
+          }
+        }
+        if (!hit) {
+          owns = false;
+          break;
+        }
+      }
+      if (owns) slot[i].clear();
+    }
+  }
 
   void pump() {
     for (int i = 0; i < kSlots; ++i) {
-      hide_pump(slot[i], *win);
-      if (slot[i].active && slot[i].ready_n >= slot[i].pages.size()) slot[i].clear();
+      hide_pump(slot[i], *win, score);
+      if (use_window() && slot[i].active && slot[i].ready_n >= slot[i].pages.size())
+        slot[i].clear();
     }
   }
 
   uint64_t wait_all() {
     uint64_t ns = 0;
     const std::function<void()>* ap = after_pump ? &after_pump : nullptr;
-    for (int i = 0; i < kSlots; ++i) ns += hide_wait(slot[i], *win, *pool, ap);
+    for (int i = 0; i < kSlots; ++i) ns += hide_wait(slot[i], *win, *pool, ap, score);
     return ns;
   }
 
-  // Wait only until `need` pages are in the window. Do not drain lookahead
-  // pages that share a slot — that put NAND of hop i+1 on hop i's score path.
-  uint64_t wait_covering(const std::vector<uint64_t>& need) {
+  // Wait only until `need` pages cover. Bounce/vmem keep the slot until release_pages.
+  uint64_t wait_covering(const std::vector<uint64_t>& need,
+                         std::vector<uint64_t>* extra_toks = nullptr) {
     if (need.empty()) return 0;
     std::unordered_set<uint64_t> nset(need.begin(), need.end());
     auto t0 = std::chrono::steady_clock::now();
     for (;;) {
       pump();
       for (auto it = nset.begin(); it != nset.end();) {
-        if (win->is_resident(pl->ssd_base, pl->ssd_base + *it, 1))
+        if (covers(*it))
           it = nset.erase(it);
         else
           ++it;
       }
       if (nset.empty()) break;
+      if (!use_window()) {
+        std::vector<uint64_t> orphans;
+        orphans.reserve(nset.size());
+        for (uint64_t p : nset) {
+          if (!page_in_slot(p)) orphans.push_back(p);
+        }
+        if (!orphans.empty()) {
+          uint64_t t = issue(orphans, /*ttl=*/128, /*stall_if_full=*/true);
+          if (t && extra_toks) extra_toks->push_back(t);
+          continue;
+        }
+      }
       if (after_pump) after_pump();
       bool infl = false;
       for (int s = 0; s < kSlots; ++s) {
@@ -317,29 +535,25 @@ struct HidePipe {
     return slot[0].ready_n <= slot[1].ready_n ? slot[0] : slot[1];
   }
 
-  void issue(const std::vector<uint64_t>& pages, uint16_t ttl, bool stall_if_full = false,
-             bool lookahead = false) {
+  uint64_t issue(const std::vector<uint64_t>& pages, uint16_t ttl, bool stall_if_full = false,
+                 bool lookahead = false) {
     pump();
     std::vector<uint64_t> miss;
     miss.reserve(pages.size());
     std::unordered_set<uint64_t> uniq;
     uniq.reserve(pages.size() * 2);
+    std::unordered_set<uint64_t> inflight;
+    for (int s = 0; s < kSlots; ++s) {
+      if (!slot[s].active) continue;
+      inflight.insert(slot[s].pages.begin(), slot[s].pages.end());
+    }
     for (uint64_t p : pages) {
       if (!uniq.insert(p).second) continue;
-      if (win->is_resident(pl->ssd_base, pl->ssd_base + p, 1)) continue;
-      bool infl = false;
-      for (int s = 0; s < kSlots && !infl; ++s) {
-        if (!slot[s].active) continue;
-        for (uint64_t q : slot[s].pages) {
-          if (q == p) {
-            infl = true;
-            break;
-          }
-        }
-      }
-      if (!infl) miss.push_back(p);
+      if (use_window() && win->is_resident(pl->ssd_base, pl->ssd_base + p, 1)) continue;
+      if (inflight.count(p)) continue;
+      miss.push_back(p);
     }
-    if (miss.empty()) return;
+    if (miss.empty()) return 0;
     HideInflight* dst = nullptr;
     for (int i = 0; i < kSlots; ++i) {
       if (!slot[i].active) {
@@ -348,15 +562,35 @@ struct HidePipe {
       }
     }
     if (!dst && stall_if_full) {
-      int best = 0;
-      for (int i = 1; i < kSlots; ++i)
-        if (slot[i].ready_n >= slot[best].ready_n) best = i;
-      hide_wait(slot[best], *win, *pool, after_pump ? &after_pump : nullptr);
-      dst = &slot[best];
+      if (!use_window()) {
+        while (!dst) {
+          pump();
+          for (int i = 0; i < kSlots; ++i) {
+            if (!slot[i].active) {
+              dst = &slot[i];
+              break;
+            }
+          }
+          if (!dst) {
+            if (after_pump) after_pump();
+            std::this_thread::yield();
+          }
+        }
+      } else {
+        int best = 0;
+        for (int i = 1; i < kSlots; ++i)
+          if (slot[i].ready_n >= slot[best].ready_n) best = i;
+        hide_wait(slot[best], *win, *pool, after_pump ? &after_pump : nullptr, score);
+        dst = &slot[best];
+      }
     }
-    if (!dst) return;
+    if (!dst) return 0;
     if (miss.size() > 1024) miss.resize(1024);
-    hide_issue(*dst, *win, *pl, *pool, vio, miss, ttl, m, lookahead, extent_run);
+    hide_issue(*dst, *win, *pl, *pool, vio, miss, ttl, m, lookahead, extent_run,
+               use_window() && direct_install, score == HideScore::Vmem, use_window());
+    if (!dst->active) return 0;
+    dst->tok = next_tok++;
+    return dst->tok;
   }
 };
 

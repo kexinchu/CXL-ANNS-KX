@@ -80,6 +80,20 @@ struct PageCopyPool {
     cv.notify_one();
   }
 
+  // One C_L wave: enqueue every 32-page batch, then wake all idle workers.
+  void submit_fns(std::vector<std::function<void()>> fns) {
+    if (fns.empty()) return;
+    inflight.fetch_add(fns.size(), std::memory_order_relaxed);
+    {
+      std::lock_guard<std::mutex> g(mu);
+      compact_locked();
+      q.reserve(q.size() + fns.size());
+      for (auto& fn : fns)
+        q.push_back(Job{nullptr, nullptr, 0, nullptr, std::move(fn)});
+    }
+    cv.notify_all();
+  }
+
   void wait_idle() {
     while (inflight.load(std::memory_order_acquire) != 0) {
       std::this_thread::yield();

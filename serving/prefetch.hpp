@@ -1,5 +1,6 @@
 #pragma once
 #include "dram_window.hpp"
+#include "hide_fill.hpp"
 #include "placement.hpp"
 #include "pq_table.hpp"
 
@@ -35,8 +36,11 @@ struct Prefetch {
   bool freeze_fills = false;         // timed oracle-window pass: no new SSD fills
   bool sync_hop = false;             // oneshot-fp only: score each expand before the next
   bool extent_run = false;           // fill holes in this issue's tight page span
+  bool direct_install = false;       // READ_BATCH into window frames (skip bounce memcpy)
+  HideScore hide_score = HideScore::Window;  // default: install + from_win=100
   bool pq_nav = false;
   PqTable* pq = nullptr;
+  uint32_t early_cl_at = 0;  // 0 = off; else issue current C_L once at this expand
 
   struct Job {
     const uint8_t* ptr = nullptr;

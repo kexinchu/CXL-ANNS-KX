@@ -140,3 +140,36 @@ Fair sweep: pollute 200 MiB of pagebin @420, then B0 flags on extent @950, test-
 Opt1 reserved window frames then `READ_BATCH` into the arena; reserved frames never committed so `wait_covering` spun, and leftover D-state `search_beam` wedged `/dev/vmem0` until those PIDs exited. CLI `--direct-install` remains a no-op. Opt3 filled 2 MiB stripe holes (`span≤64`); `page_use` 100%→89%, NAND 1.53→1.93 GB, QPS fell.
 
 Final vs Oracle: **103.17 / 266.69 ≈ 0.39×** (was 99.43 / 266.69 ≈ 0.37× on the pollute baseline; 92.32 / 266.69 ≈ 0.35× on the earlier B0 row). Logs: `results/paper_figs/hide_1m_opt_*_nq500.log`.
+
+## T=8 Oracle + hide e4 a1 `--cont-batch` (2026-09-04)
+
+Same 1M / 100 MiB / extent@950 / test-500 / pollute protocol. Prefetcher frozen at e4 a1 bounce. `--cont-batch 8` = 8 work-steal threads, one 2 GiB window, one `PageCopyPool`. Does not replace 50.25 / 85.8 / T=1 103.17.
+
+| row | T | QPS | mean ms | p50 | p99 | recall | nvme GB/s | occ vs 1.56 | wall s |
+|-----|--:|----:|--------:|----:|----:|-------:|----------:|------------:|-------:|
+| Oracle host-file | 1 | **266.69** | 3.75 | 3.65 | 6.06 | 0.0882 | 0 | — | 1.875 |
+| Oracle host-file | 8 | **1329.71** | 4.15 | 3.78 | 12.72 | 0.0882 | 0 | — | 0.376 |
+| hide e4 a1 | 1 | **103.17** | **9.69** | 8.56 | 40.80 | 0.0884 | 0.315 | 20.2% | 4.847 |
+| hide e4 a1 + cont-batch | 8 | **114.15** | **61.73** | 51.94 | 203.55 | 0.0884 | 0.347 | 22.3% | 4.380 |
+
+Oracle T=8 / T=1 = **5.0×** QPS (wall 1.875→0.376). Hide T=8 / T=1 = **1.11×** (103.17→114.15). Device occupancy 20.2%→22.3%; NAND still ~1.52 GB; `from_win=99.98`, `page_use=100`. Mean latency 9.69→61.73 because 8 queries share one window lock and one SSD queue.
+
+Hide T=8 vs Oracle T=8 = **114 / 1330 ≈ 0.086×**. Hide T=8 vs Oracle T=1 = **114 / 267 ≈ 0.43×** (T=1 hide was 0.39×). Cross-query threads are busy (500×61.7 ms / 8 ≈ 3.86 s of thread time vs 4.38 s wall) but do not raise QD. Remaining bubble is shallow outstanding READ_BATCH plus `DramWindow` mutex, not empty search threads.
+
+Logs: `oracle_1m_host_T8_nq500.log`, `hide_1m_t8_e4a1_cont_nq500.log`. Script: `tools/run_hide_1m_t8_nq500.sh`.
+
+## Real continuous batching (2026-09-04 night)
+
+`--cont-batch T` is no longer “T OS threads each calling `search_one`”. It is T in-flight `P3Q` slots + one `PrefetchHub` (`serving/cont_batch.hpp`). One stepper: drain any resident pending, issue e4 waves into a merged queue, `READ_BATCH` when the round has no more pickable work. A query that cannot pick is parked; the stepper runs the others. No per-query `wait_covering`.
+
+| row | QPS | mean ms | NVMe | occ | flush_n / avg pages | notes |
+|-----|----:|--------:|-----:|----:|--------------------:|-------|
+| T=1 hide e4 a1 | **103.17** | 9.69 | 0.315 | 20.2% | — | frozen prefetcher |
+| old `--cont-batch 8` (8 blocking `search_one`) | 114.15 | 61.73 | 0.347 | 22.3% | — | thread alias, not CB |
+| 8 workers + hub (first cut) | 77.93 | 96.6 | 0.236 | 15.1% | 19803 / 55 | false idle flush |
+| 1 stepper + full-need `wait_any` | 70.27 | 111.9 | 0.212 | 13.6% | 6874 / 158 | barrier on whole wave |
+| **1 stepper + partial drain (kept)** | **97.70** | 80.2 | 0.297 | 19.0% | 6866 / 161 | `from_win=99.98`, recall 0.0882 |
+
+Did not approach **512 QPS**. Occupancy stayed ~20% — the same 4K `READ_BATCH` ceiling as T=1. Merging 8 e4 waves (~160 pages / flush) did not raise device QD on this single-disk `vmem_sw` path. crit_wait dropped to ~0.25 ms total (barrier gone) but NAND time did not. 512 needs ~1.56 GB/s; scheduling alone does not get there.
+
+Log: `hide_1m_t8_e4a1_cont_nq500.log` (last row). Unit test: `serving/tests/test_cont_batch`.

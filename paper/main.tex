@@ -37,17 +37,17 @@
 Billion-scale graph ANNS needs a flash-priced corpus and a hot path a query host can score from.
 Block-SSD systems such as DiskANN hide NAND behind asynchronous I/O and PQ navigation, but remain a per-host block serving unit.
 Full-in-memory CXL-DRAM systems such as CXL-ANNS and Cosmos remove the flash miss entirely and price the cold tail at DRAM.
-Flash-backed CXL memory (CXL-SSD) is the third point: NAND capacity behind a small memory-semantic window.
+Flash-backed CXL memory is the third point: full-precision vectors remain on Flash, a 4\,GiB CXL-DRAM page cache exposes memory-semantic access, and host DRAM keeps the adjacency graph, compact PQ codes, and a smaller scoring window.
 A unified VA does not make search usable.
 The runtime question is what must be hidden so that graph walk does not wait on NAND.
 
 We present \sys{}, a graph-ANNS runtime that splits that contract.
-\emph{Score hide}---every full-precision distance comes from bytes already in the window---is a failure if the scoring instruction touches NAND.
+\emph{Score hide} permits a host-cache or CXL-DRAM-cache hit, but no scoring access may trigger or wait for a Flash fill.
 \emph{Query hide}---the timed path also does not wait for a fill---is the oracle, not a result we claim.
-Graph and PQ live in host DRAM; only soon-to-expand frontier pages enter the window; fills are asynchronous and issued across queries so one pointer-chasing walk does not collapse device depth to one.
-On true-cold Text2Image-10M (recall@10 $\ge 0.92$, $L{=}400$), score hide holds (\texttt{from\_win}${=}100\%$) at $50.25$~QPS versus $1.64$~QPS demand, but remains $0.59\times$ an in-window oracle ($85.8$~QPS) because hop $i{+}1$ cannot issue until hop $i$ scores.
-A same-machine PipeANN block path is a named residual (oneshot full-precision versus PQ navigation).
-We evaluate an FPGA-attached NVMe plus a software memory-semantic proxy (\texttt{vmem\_sw}), do not claim a product CXL.mem SSD or $160$\,GB/s, and treat multi-host one-copy as an unevaluated Shared-FAM deployment model.
+Host-side PQ navigation first commits a bounded rerank set; wise prefetching then fetches only its missing full-precision vector pages, using co-use-aware placement and dense page requests to increase useful bytes per read, while continuous batching issues such fills across queries so one walk does not collapse device depth to one.
+The evaluation separates host-cache hits, CXL-DRAM hits, and Flash fills at iso-recall, and compares the three-tier path with demand access, block-SSD search, and a separate full-corpus CXL-DRAM Oracle.
+A same-machine PipeANN block path provides a named block-I/O comparison at matched recall.
+We evaluate a dual-NVMe Flash backing through the software memory-semantic manager \texttt{vmem\_sw}; we do not equate that manager with a product CXL.mem SSD or claim $160$\,GB/s, and we treat multi-host one-copy as an unevaluated Shared-FAM deployment model.
 \end{abstract}
 
 \begin{CCSXML}
@@ -91,8 +91,5 @@ We evaluate an FPGA-attached NVMe plus a software memory-semantic proxy (\texttt
 
 \bibliographystyle{ACM-Reference-Format}
 \bibliography{refs}
-
-\appendix
-\input{sections/appendix}
 
 \end{document}

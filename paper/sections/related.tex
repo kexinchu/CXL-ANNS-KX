@@ -10,22 +10,27 @@
 Table~\ref{tab:related} is the comparison we want a reviewer to use.
 Prose below only records the one-line difference; it does not repeat the background.
 
-\paragraph{Block-SSD and distributed graph ANNS.}
-DiskANN, FreshDiskANN, PipeANN, and SPANN~\cite{diskann,freshdiskann,pipeann,spann} optimize sector layout, PQ navigation, and I/O overlap on a block device.
-DistributedANN~\cite{distributedann} serves one logical graph from a KV store.
+\paragraph{Block-SSD ANNS}
+DiskANN, FreshDiskANN, and PipeANN optimize PQ navigation and I/O overlap on block devices~\cite{diskann,freshdiskann,pipeann}.
+SPANN and Starling provide alternative hybrid and disk-resident layouts~\cite{spann,starling}.
+SPFresh and Filtered-DiskANN extend this family toward updates and filtered search~\cite{spfresh,filtereddiskann}; production vector systems such as Milvus~\cite{milvus} broaden the serving context.
 \sys{} is not ``a better \texttt{io\_uring} scheduler.''
-Its first-class objects are a CXL-DRAM-shaped window and the fills that must finish before a hop scores.
-NVMe-oF and KV sharing still present a block/KV slow path and a per-host cache.
+Its first-class objects are a CXL-DRAM-shaped window and the committed vector-page fills that must finish before exact reranking.
 
-\paragraph{CXL-DRAM and near-memory ANNS.}
-CXL-ANNS and Cosmos~\cite{cxlanns,cxlanns-tocs,cosmos} --- and second-tier / residual designs~\cite{secondtier,fatrq,hm-ann} --- assume a DRAM- or NVM-priced far tier and optimize for $\sim$100\,ns, not for tens of microseconds of NAND plus a small polluted window.
+\paragraph{CXL-DRAM and near-memory ANNS}
+CXL-ANNS and Cosmos~\cite{cxlanns,cosmos} --- and second-tier / residual designs~\cite{secondtier,fatrq,hm-ann} --- assume a DRAM- or NVM-priced far tier and optimize for $\sim$100\,ns, not for tens of microseconds of NAND plus a small polluted window.
+Recent CXL-aware vector-database restructuring makes the same memory-class tier assumption~\cite{bauhaus}.
 Their caches and prefetchers are not transferable at that delay gap (F3).
 We do not require Type-2 / PNM compute.
 
-\paragraph{CXL-SSD hardware and generic software.}
-SkyByte, From-Block-to-Byte, CMM-H, and CXL-AnySSD~\cite{skybyte,fromblocktobyte,cmm-h,cxl-anyssd} build or evaluate the medium.
-They do not jointly manage graph-ANNS residency, bounded promotion, and stall-aware search.
-P-HNSW~\cite{phnsw} is about crash consistency on PM, not serving residency on CXL-SSD.
+\paragraph{Far-memory runtimes and CXL tiering}
+Remote paging systems manage capacity through swapping and isolation~\cite{infiniswap,canvas}, while application-integrated runtimes expose finer-grained control and prefetch~\cite{aifm,leap,rethinkingruntimes}.
+CXL tiering systems instead migrate or place hot pages across DRAM-class tiers~\cite{tpp,nomad,neomem,memtierscxl} and study the resulting throughput/capacity tradeoff~\cite{canfarmemory,pond}.
+These policies react to generic access locality; \sys{} uses PQ candidate commitment to identify the exact full-precision payload required by reranking.
+
+\paragraph{CXL-SSD hardware and generic software}
+DirectCXL and CXL memory pooling establish direct and pooled memory expansion~\cite{directcxl,memorypooling}; CXL-enabled SSD, SkyByte, From-Block-to-Byte, and CMM-H~\cite{cxlssd,skybyte,fromblocktobyte,cmmh} build or evaluate the flash-backed medium.
+They do not jointly manage graph-ANNS residency, committed-vector materialization, and stall-aware search.
 
 \begin{table*}[t]
   \caption{Related systems on the dimensions that actually differ.
@@ -41,8 +46,8 @@ P-HNSW~\cite{phnsw} is about crash consistency on PM, not serving residency on C
     Second-Tier / FaTRQ & CXL/RDMA/NVM & varies & far load & second tier holds index & 4\,KB vs.\ fine read & fine-grained far \\
     CXL-ANNS & \textbf{all CXL-DRAM} & CXL & CXL.mem $+$ DSA & pool holds corpus & $\sim$100\,ns $+$ near-data & relation cache \\
     Cosmos / PNM & device DRAM & device & on-device cores & multi-device DRAM & offload walk/dist & device place \\
-    CXL-SSD HW / AnySSD & NAND HDM & n/a & fault / generic & flash $+$ window & composable SSD, no swap & pages / OS \\
-    \textbf{\sys{}} & \textbf{CXL-SSD} & \textbf{host DRAM} & fault $+$ async fill & flash required; not all-DRAM & residency $+$ stall & record / hub / top-$M$ \\
+    CXL-SSD HW & NAND HDM & n/a & fault / generic & flash $+$ window & composable SSD, no swap & pages / OS \\
+    \textbf{\sys{}} & \textbf{CXL-SSD} & \textbf{host DRAM} & fault $+$ async fill & flash required; not all-DRAM & residency $+$ stall & committed vector pages \\
     \bottomrule
   \end{tabular*}
 \end{table*}

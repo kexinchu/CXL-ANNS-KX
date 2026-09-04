@@ -67,20 +67,6 @@ git apply /path/to/patches/diskann-no-pq-nav/diskann-no-pq-nav.patch
 
 See `motivation_exps/include/vmem_cxl.hpp` (`require_cxl_vmem_identity`): `/dev/vmem0` software backend, expected NVMe BDF, Montage `mem0`/`region0`. Adjust constants for your machine.
 
-## Frozen 10M prefetcher (do not modify)
-
-DiskANN-10M hide is **locked**: host PQ-64 beam + one end-batch FP rerank
-(`search_one_pq`). Hide/oracle is **0.69× / 0.72×** (nq=20 / nq=100).
-
-- Contract: `docs/notes/2026-09-04-prefetcher-freeze.md`
-- Paper draft (zh): `docs/notes/2026-09-04-prefetcher-paper-zh.md`
-- Recipe: `PQ_BYTES=64 PIPE=0 tools/run_10m_pq_nq100.sh hide_pqbeam`
-
-Do not retune hop width, `--pipe-drive`, codebook, or the 1100 GiB extent
-image. Historical pagebin claim rows 50.25 / 49.25 / 85.8 stay as-is.
-
 ## Status
 
-Motivation / problem framing and measurements are in progress. The DiskANN-10M
-prefetcher above is frozen. Broader system design (semantic residency + T>1)
-stays in `docs/plan/` and is out of the freeze.
+Motivation / problem framing and measurements are in progress. System design (semantic residency + stall-aware search) is specified in `docs/plan/` and not fully implemented as a production runtime yet.

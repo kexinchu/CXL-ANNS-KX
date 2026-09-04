@@ -18,6 +18,10 @@ int main() {
   pq.begin_query_ip(q);
   assert(pq.dist(0) == -2.f);
   assert(pq.dist(1) == 0.f);
+  std::vector<float> ext((size_t)pq.nchunks * PqTable::kCentroids, 0.f);
+  pq.fill_lut_ip(q, ext.data());
+  assert(pq.dist(0, ext.data()) == -2.f);
+  assert(pq.dist(1, ext.data()) == 0.f);
   std::puts("test_pq_table OK");
   return 0;
 }

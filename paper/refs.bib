@@ -1,149 +1,148 @@
-% Full author names required by ASPLOS 2027 (no "et al." in the .bib).
-% Add DOI / URL when the camera-ready bibliography is locked.
+% Source-verified bibliography. Audit: docs/notes/2026-09-03-related-work-citation-audit.md
+
+@article{hnsw,
+ author={Yury A. Malkov and Dmitry A. Yashunin}, title={Efficient and Robust Approximate Nearest Neighbor Search Using Hierarchical Navigable Small World Graphs}, journal={IEEE Transactions on Pattern Analysis and Machine Intelligence}, volume={42}, number={4}, pages={824--836}, year={2020}, doi={10.1109/TPAMI.2018.2889473}}
+
+@article{nsg,
+ author={Cong Fu and Chao Xiang and Changxu Wang and Deng Cai}, title={Fast Approximate Nearest Neighbor Search With The Navigating Spreading-out Graph}, journal={Proceedings of the VLDB Endowment}, volume={12}, number={5}, pages={461--474}, year={2019}, doi={10.14778/3303753.3303754}}
 
 @inproceedings{diskann,
-  author    = {Suhas Jayaram Subramanya and Fnu Devvrit and Harsha Vardhan Simhadri and Ravishankar Krishnawamy and Rohan Kadekodi},
-  title     = {{DiskANN}: Fast Accurate Billion-point Nearest Neighbor Search on a Single Node},
-  booktitle = {Advances in Neural Information Processing Systems},
-  year      = {2019},
-}
+ author={Suhas Jayaram Subramanya and Fnu Devvrit and Harsha Vardhan Simhadri and Ravishankar Krishnawamy and Rohan Kadekodi}, title={{DiskANN}: Fast Accurate Billion-point Nearest Neighbor Search on a Single Node}, booktitle={Advances in Neural Information Processing Systems}, volume={32}, pages={13748--13758}, year={2019}, publisher={Curran Associates, Inc.}, address={Red Hook, NY, USA}, url={https://proceedings.neurips.cc/paper/2019/hash/09853c7fb1d3f8ee67a61b6bf4a7f8e6-Abstract.html}}
 
-@inproceedings{freshdiskann,
-  author    = {Aditi Singh and Suhas Jayaram Subramanya and Rohan Kadekodi and Harsha Vardhan Simhadri},
-  title     = {{FreshDiskANN}: A Fast and Accurate Graph-Based {ANN} Index for Streaming Similarity Search},
-  booktitle = {arXiv preprint arXiv:2105.09613},
-  year      = {2021},
-}
-
-@inproceedings{pipeann,
-  author    = {Anonymous},
-  title     = {{PipeANN}: Pipelined Graph-Based Approximate Nearest Neighbor Search on {SSD}},
-  booktitle = {USENIX Symposium on Operating Systems Design and Implementation},
-  year      = {2025},
-  note      = {Replace with the camera-ready PipeANN / OSDI'25 citation.},
-}
-
-@inproceedings{cxlanns,
-  author    = {Junhyeok Jang and Hanjin Choi and Hanyeoreum Bae and Seungjun Lee and Miryeong Kwon and Myoungsoo Jung},
-  title     = {{CXL-ANNS}: Software-Hardware Collaborative Memory Disaggregation and Computation for Billion-Scale Approximate Nearest Neighbor Search},
-  booktitle = {USENIX Annual Technical Conference},
-  year      = {2023},
-}
-
-@article{cxlanns-tocs,
-  author    = {Junhyeok Jang and Hanjin Choi and Hanyeoreum Bae and Seungjun Lee and Miryeong Kwon and Myoungsoo Jung},
-  title     = {Bridging Software-Hardware for Billion-Scale {ANNS} with {CXL} Memory Disaggregation},
-  journal   = {ACM Transactions on Computer Systems},
-  year      = {2024},
-}
-
-@article{cosmos,
-  author    = {Anonymous},
-  title     = {{Cosmos}: {CXL}-Based Full In-Memory Approximate Nearest Neighbor Search with Near-Data Processing},
-  journal   = {IEEE Computer Architecture Letters},
-  year      = {2025},
-  note      = {Replace with the camera-ready Cosmos / CAL'25 citation.},
-}
-
-@article{secondtier,
-  author    = {Anonymous},
-  title     = {Second-Tier Memory for Vector Search},
-  journal   = {arXiv preprint},
-  year      = {2024},
-  note      = {Replace with the Second-Tier Memory citation.},
-}
-
-@article{fatrq,
-  author    = {Anonymous},
-  title     = {{FaTRQ}: Far-Memory-Aware Residual Quantization for Vector Search},
-  journal   = {arXiv preprint},
-  year      = {2026},
-  note      = {Replace with the camera-ready FaTRQ citation.},
-}
-
-@article{distributedann,
-  author    = {Anonymous},
-  title     = {{DistributedANN}: Serving a Logical {DiskANN} Graph over a Distributed Key-Value Store},
-  journal   = {arXiv preprint arXiv:2509.06046},
-  year      = {2025},
-}
-
-@inproceedings{hnsw,
-  author    = {Yury A. Malkov and Dmitry A. Yashunin},
-  title     = {Efficient and Robust Approximate Nearest Neighbor Search Using Hierarchical Navigable Small World Graphs},
-  booktitle = {IEEE Transactions on Pattern Analysis and Machine Intelligence},
-  year      = {2020},
-}
+@misc{freshdiskann,
+ author={Aditi Singh and Suhas Jayaram Subramanya and Ravishankar Krishnaswamy and Harsha Vardhan Simhadri}, title={{FreshDiskANN}: A Fast and Accurate Graph-Based {ANN} Index for Streaming Similarity Search}, year={2021}, eprint={2105.09613}, archiveprefix={arXiv}, doi={10.48550/arXiv.2105.09613}}
 
 @inproceedings{spann,
-  author    = {Qi Chen and Bing Zhao and Haidong Wang and Mingqin Li and Chuanjie Liu and Zengzhong Li and Mao Yang and Jingdong Wang},
-  title     = {{SPANN}: Highly-efficient Billion-scale Approximate Nearest Neighbor Search},
-  booktitle = {Advances in Neural Information Processing Systems},
-  year      = {2021},
-}
+ author={Qi Chen and Bing Zhao and Haidong Wang and Mingqin Li and Chuanjie Liu and Zengzhong Li and Mao Yang and Jingdong Wang}, title={{SPANN}: Highly-efficient Billion-scale Approximate Nearest Neighborhood Search}, booktitle={Advances in Neural Information Processing Systems}, volume={34}, pages={5199--5212}, year={2021}, publisher={Curran Associates, Inc.}, address={Red Hook, NY, USA}, url={https://proceedings.neurips.cc/paper/2021/hash/2cf49e22106c288c95c9d94bb9b0739a-Abstract.html}}
+
+@inproceedings{spfresh,
+ author={Yuming Xu and Hengyu Liang and Jin Li and Shuotao Xu and Qi Chen and Qianxi Zhang and Cheng Li and Ziyue Yang and Fan Yang and Yuqing Yang and Peng Cheng and Mao Yang}, title={{SPFresh}: Incremental In-Place Update for Billion-Scale Vector Search}, booktitle={Proceedings of the 29th ACM Symposium on Operating Systems Principles}, pages={545--561}, year={2023}, publisher={Association for Computing Machinery}, address={New York, NY, USA}, doi={10.1145/3600006.3613166}}
+
+@inproceedings{filtereddiskann,
+ author={Siddharth Gollapudi and Neel Karia and Varun Sivashankar and Ravishankar Krishnaswamy and Nikit Begwani and Swapnil Raz and Yiyong Lin and Yin Zhang and Neelam Mahapatro and Premkumar Srinivasan and Amit Singh and Harsha Vardhan Simhadri}, title={{Filtered-DiskANN}: Graph Algorithms for Approximate Nearest Neighbor Search with Filters}, booktitle={Proceedings of the ACM Web Conference 2023}, pages={3406--3416}, year={2023}, publisher={Association for Computing Machinery}, address={New York, NY, USA}, doi={10.1145/3543507.3583552}}
+
+@article{diskannlib,
+ author={Ravishankar Krishnaswamy and Magdalen Dobson Manohar and Harsha Vardhan Simhadri}, title={The {DiskANN} Library: Graph-Based Indices for Fast, Fresh and Filtered Vector Search}, journal={IEEE Data Engineering Bulletin}, volume={48}, number={3}, pages={20--42}, year={2024}, url={http://sites.computer.org/debull/A24sept/p20.pdf}}
+
+@inproceedings{pipeann,
+ author={Hao Guo and Youyou Lu}, title={Achieving Low-Latency Graph-Based Vector Search via Aligning Best-First Search Algorithm with {SSD}}, booktitle={19th USENIX Symposium on Operating Systems Design and Implementation}, pages={171--186}, year={2025}, publisher={USENIX Association}, address={USA}, url={https://www.usenix.org/conference/osdi25/presentation/guo}}
+
+@article{starling,
+ author={Mengzhao Wang and Weizhi Xu and Xiaomeng Yi and Songlin Wu and Zhangyang Peng and Xiangyu Ke and Yunjun Gao and Xiaoliang Xu and Rentong Guo and Charles Xie}, title={Starling: An {I/O}-Efficient Disk-Resident Graph Index Framework for High-Dimensional Vector Similarity Search on Data Segment}, journal={Proceedings of the ACM on Management of Data}, volume={2}, number={1}, pages={1--27}, year={2024}, doi={10.1145/3639269}}
+
+@article{faiss,
+ author={Jeff Johnson and Matthijs Douze and Herv{\'e} J{\'e}gou}, title={Billion-Scale Similarity Search with {GPU}s}, journal={IEEE Transactions on Big Data}, volume={7}, number={3}, pages={535--547}, year={2021}, doi={10.1109/TBDATA.2019.2921572}}
+
+@inproceedings{scann,
+ author={Ruiqi Guo and Philip Sun and Erik Lindgren and Quan Geng and David Simcha and Felix Chern and Sanjiv Kumar}, title={Accelerating Large-Scale Inference with Anisotropic Vector Quantization}, booktitle={Proceedings of the 37th International Conference on Machine Learning}, pages={3887--3896}, year={2020}, publisher={PMLR}, address={Online}, url={https://proceedings.mlr.press/v119/guo20h.html}}
+
+@article{pq,
+ author={Herv{\'e} J{\'e}gou and Matthijs Douze and Cordelia Schmid}, title={Product Quantization for Nearest Neighbor Search}, journal={IEEE Transactions on Pattern Analysis and Machine Intelligence}, volume={33}, number={1}, pages={117--128}, year={2011}, doi={10.1109/TPAMI.2010.57}}
+
+@inproceedings{opq,
+ author={Tiezheng Ge and Kaiming He and Qifa Ke and Jian Sun}, title={Optimized Product Quantization for Approximate Nearest Neighbor Search}, booktitle={IEEE Conference on Computer Vision and Pattern Recognition}, pages={2946--2953}, year={2013}, publisher={IEEE}, address={Los Alamitos, CA, USA}, doi={10.1109/CVPR.2013.379}}
+
+@inproceedings{annbench,
+ author={Martin Aum{\"u}ller and Erik Bernhardsson and Alexander John Faithfull}, title={{ANN-Benchmarks}: A Benchmarking Tool for Approximate Nearest Neighbor Algorithms}, booktitle={Similarity Search and Applications}, pages={34--49}, year={2017}, publisher={Springer}, address={Cham, Switzerland}, doi={10.1007/978-3-319-68474-1_3}}
+
+@inproceedings{bigannchallenge,
+ author={Harsha Vardhan Simhadri and George Williams and Martin Aum{\"u}ller and Matthijs Douze and Artem Babenko and Dmitry Baranchuk and Qi Chen and Lucas Hosseini and Ravishankar Krishnaswamy and Gopal Srinivasa and Suhas Jayaram Subramanya and Jingdong Wang}, title={Results of the NeurIPS'21 Challenge on Billion-Scale Approximate Nearest Neighbor Search}, booktitle={NeurIPS 2021 Competitions and Demonstrations Track}, pages={177--189}, year={2022}, publisher={PMLR}, address={Online}, url={https://proceedings.mlr.press/v176/simhadri22a.html}}
 
 @inproceedings{hm-ann,
-  author    = {Jie Ren and Minjia Zhang and Dong Li},
-  title     = {{HM-ANN}: Efficient Billion-Point Nearest Neighbor Search on Heterogeneous Memory},
-  booktitle = {Advances in Neural Information Processing Systems},
-  year      = {2020},
-}
+ author={Jie Ren and Minjia Zhang and Dong Li}, title={{HM-ANN}: Efficient Billion-Point Nearest Neighbor Search on Heterogeneous Memory}, booktitle={Advances in Neural Information Processing Systems}, volume={33}, pages={10672--10684}, year={2020}, publisher={Curran Associates, Inc.}, address={Red Hook, NY, USA}, url={https://proceedings.neurips.cc/paper/2020/hash/788d986905533aba051261497ecffcbb-Abstract.html}}
+
+@inproceedings{milvus,
+ author={Jianguo Wang and Xiaomeng Yi and Rentong Guo and Hai Jin and Peng Xu and Shengjun Li and Xiangyu Wang and Xiangzhou Guo and Chengming Li and Xiaohai Xu and Kun Yu and Yuxing Yuan and Yinghao Zou and Jiquan Long and Yudong Cai and Zhenxiang Li and Zhifeng Zhang and Yihua Mo and Jun Gu and Ruiyi Jiang and Yi Wei and Charles Xie}, title={Milvus: A Purpose-Built Vector Data Management System}, booktitle={Proceedings of the 2021 International Conference on Management of Data}, pages={2614--2627}, year={2021}, publisher={Association for Computing Machinery}, address={New York, NY, USA}, doi={10.1145/3448016.3457550}}
+
+@article{manu,
+ author={Rentong Guo and Xiaofan Luan and Long Xiang and Xiao Yan and Xiaomeng Yi and Jigao Luo and Qianya Cheng and Weizhi Xu and Jiarui Luo and Frank Liu and Zhenshan Cao and Yanliang Qiao and Ting Wang and Bo Tang and Charles Xie}, title={Manu: A Cloud Native Vector Database Management System}, journal={Proceedings of the VLDB Endowment}, volume={15}, number={12}, pages={3548--3561}, year={2022}, doi={10.14778/3554821.3554843}}
+
+@inproceedings{vbase,
+ author={Qianxi Zhang and Shuotao Xu and Qi Chen and Guoxin Sui and Jiadong Xie and Zhizhen Cai and Yaoqi Chen and Yinxuan He and Yuqing Yang and Fan Yang and Mao Yang and Lidong Zhou}, title={{VBASE}: Unifying Online Vector Similarity Search and Relational Queries via Relaxed Monotonicity}, booktitle={17th USENIX Symposium on Operating Systems Design and Implementation}, pages={377--395}, year={2023}, publisher={USENIX Association}, address={USA}, url={https://www.usenix.org/conference/osdi23/presentation/zhang-qianxi}}
+
+@misc{distributedann,
+ author={Philip Adams and Menghao Li and Shi Zhang and Li Tan and Qi Chen and Mingqin Li and Zengzhong Li and Knut Magne Risvik and Harsha Vardhan Simhadri}, title={{DISTRIBUTEDANN}: Efficient Scaling of a Single {DISKANN} Graph Across Thousands of Computers}, year={2025}, eprint={2509.06046}, archiveprefix={arXiv}, doi={10.48550/arXiv.2509.06046}}
+
+@misc{secondtier,
+ author={Rongxin Cheng and Yifan Peng and Xingda Wei and Hongrui Xie and Rong Chen and Sijie Shen and Haibo Chen}, title={Characterizing the Dilemma of Performance and Index Size in Billion-Scale Vector Search and Breaking It with Second-Tier Memory}, year={2024}, eprint={2405.03267}, archiveprefix={arXiv}, doi={10.48550/arXiv.2405.03267}}
+
+@misc{fatrq,
+ author={Tianqi Zhang and Flavio Ponzina and Tajana Rosing}, title={{FaTRQ}: Tiered Residual Quantization for {LLM} Vector Search in Far-Memory-Aware {ANNS} Systems}, year={2026}, eprint={2601.09985}, archiveprefix={arXiv}, doi={10.48550/arXiv.2601.09985}}
+
+@inproceedings{infiniswap,
+ author={Juncheng Gu and Youngmoon Lee and Yiwen Zhang and Mosharaf Chowdhury and Kang G. Shin}, title={Efficient Memory Disaggregation with {Infiniswap}}, booktitle={14th USENIX Symposium on Networked Systems Design and Implementation}, pages={649--667}, year={2017}, publisher={USENIX Association}, address={USA}, url={https://www.usenix.org/conference/nsdi17/technical-sessions/presentation/gu}}
+
+@inproceedings{aifm,
+ author={Zhenyuan Ruan and Malte Schwarzkopf and Marcos K. Aguilera and Adam Belay}, title={{AIFM}: High-Performance, Application-Integrated Far Memory}, booktitle={14th USENIX Symposium on Operating Systems Design and Implementation}, pages={315--332}, year={2020}, publisher={USENIX Association}, address={USA}, url={https://www.usenix.org/conference/osdi20/presentation/ruan}}
+
+@inproceedings{leap,
+ author={Hasan Al Maruf and Mosharaf Chowdhury}, title={Effectively Prefetching Remote Memory with {Leap}}, booktitle={2020 USENIX Annual Technical Conference}, pages={843--857}, year={2020}, publisher={USENIX Association}, address={USA}, url={https://www.usenix.org/conference/atc20/presentation/al-maruf}}
+
+@inproceedings{canvas,
+ author={Chenxi Wang and Yifan Qiao and Haoran Ma and Shi Liu and Yiying Zhang and Wenguang Chen and Ravi Netravali and Miryung Kim and Guoqing Harry Xu}, title={Canvas: Isolated and Adaptive Swapping for Multi-Applications on Remote Memory}, booktitle={20th USENIX Symposium on Networked Systems Design and Implementation}, pages={161--179}, year={2023}, publisher={USENIX Association}, address={USA}, url={https://www.usenix.org/conference/nsdi23/presentation/wang-chenxi}}
+
+@inproceedings{nomad,
+ author={Lingfeng Xiang and Zhen Lin and Weishu Deng and Hui Lu and Jia Rao and Yifan Yuan and Ren Wang}, title={Nomad: Non-Exclusive Memory Tiering via Transactional Page Migration}, booktitle={18th USENIX Symposium on Operating Systems Design and Implementation}, pages={19--35}, year={2024}, publisher={USENIX Association}, address={USA}, url={https://www.usenix.org/conference/osdi24/presentation/xiang}}
+
+@inproceedings{tpp,
+ author={Hasan Al Maruf and Hao Wang and Abhishek Dhanotia and Johannes Weiner and Niket Agarwal and Pallab Bhattacharya and Chris Petersen and Mosharaf Chowdhury and Shobhit O. Kanaujia and Prakash Chauhan}, title={{TPP}: Transparent Page Placement for {CXL}-Enabled Tiered-Memory}, booktitle={Proceedings of the 28th ACM International Conference on Architectural Support for Programming Languages and Operating Systems, Volume 3}, pages={742--755}, year={2023}, publisher={Association for Computing Machinery}, address={New York, NY, USA}, doi={10.1145/3582016.3582063}}
+
+@inproceedings{memtierscxl,
+ author={Yuhong Zhong and Daniel S. Berger and Carl A. Waldspurger and Ryan Wee and Ishwar Agarwal and Rajat Agarwal and Frank Hady and Karthik Kumar and Mark D. Hill and Mosharaf Chowdhury and Asaf Cidon}, title={Managing Memory Tiers with {CXL} in Virtualized Environments}, booktitle={18th USENIX Symposium on Operating Systems Design and Implementation}, pages={37--56}, year={2024}, publisher={USENIX Association}, address={USA}, url={https://www.usenix.org/conference/osdi24/presentation/zhong-yuhong}}
+
+@inproceedings{canfarmemory,
+ author={Emmanuel Amaro and Christopher Branner-Augmon and Zhihong Luo and Amy Ousterhout and Marcos K. Aguilera and Aurojit Panda and Sylvia Ratnasamy and Scott Shenker}, title={Can Far Memory Improve Job Throughput?}, booktitle={Proceedings of the Fifteenth European Conference on Computer Systems}, pages={1--16}, year={2020}, publisher={Association for Computing Machinery}, address={New York, NY, USA}, doi={10.1145/3342195.3387522}}
+
+@inproceedings{pond,
+ author={Huaicheng Li and Daniel S. Berger and Lisa Hsu and Daniel Ernst and Pantea Zardoshti and Stanko Novakovic and Monish Shah and Samir Rajadnya and Scott Lee and Ishwar Agarwal and Mark D. Hill and Marcus Fontoura and Ricardo Bianchini}, title={Pond: {CXL}-Based Memory Pooling Systems for Cloud Platforms}, booktitle={Proceedings of the 28th ACM International Conference on Architectural Support for Programming Languages and Operating Systems, Volume 2}, pages={574--587}, year={2023}, publisher={Association for Computing Machinery}, address={New York, NY, USA}, doi={10.1145/3575693.3578835}}
+
+@inproceedings{rethinkingruntimes,
+ author={Irina Calciu and M. Talha Imran and Ivan Puddu and Sanidhya Kashyap and Hasan Al Maruf and Onur Mutlu and Aasheesh Kolli}, title={Rethinking Software Runtimes for Disaggregated Memory}, booktitle={Proceedings of the 26th ACM International Conference on Architectural Support for Programming Languages and Operating Systems}, pages={79--92}, year={2021}, publisher={Association for Computing Machinery}, address={New York, NY, USA}, doi={10.1145/3445814.3446713}}
+
+@inproceedings{cxlanns,
+ author={Junhyeok Jang and Hanjin Choi and Hanyeoreum Bae and Seungjun Lee and Miryeong Kwon and Myoungsoo Jung}, title={{CXL-ANNS}: Software-Hardware Collaborative Memory Disaggregation and Computation for Billion-Scale Approximate Nearest Neighbor Search}, booktitle={2023 USENIX Annual Technical Conference}, pages={585--600}, year={2023}, publisher={USENIX Association}, address={USA}, url={https://www.usenix.org/conference/atc23/presentation/jang}}
+
+@article{cosmos,
+ author={Seoyoung Ko and Hyunjeong Shim and Wanju Doh and Sungmin Yun and Jinin So and Yongsuk Kwon and Sang-Soo Park and Si-Dong Roh and Minyong Yoon and Taeksang Song and Jung Ho Ahn}, title={Cosmos: A {CXL}-Based Full In-Memory System for Approximate Nearest Neighbor Search}, journal={IEEE Computer Architecture Letters}, volume={24}, number={1}, pages={173--176}, year={2025}, doi={10.1109/LCA.2025.3570235}}
+
+@inproceedings{cxlssd,
+ author={Shao-Peng Yang and Minjae Kim and Sanghyun Nam and Juhyung Park and Jin-yong Choi and Eyee Hyun Nam and Eunji Lee and Sungjin Lee and Bryan S. Kim}, title={Overcoming the Memory Wall with {CXL}-Enabled {SSD}s}, booktitle={2023 USENIX Annual Technical Conference}, pages={601--617}, year={2023}, publisher={USENIX Association}, address={USA}, url={https://www.usenix.org/conference/atc23/presentation/yang-shao-peng}}
 
 @inproceedings{skybyte,
-  author    = {Anonymous},
-  title     = {{SkyByte}: Architecting an Efficient Memory-Semantic {CXL}-based {SSD}},
-  booktitle = {Placeholder},
-  year      = {2025},
-  note      = {Replace with the SkyByte citation.},
-}
+ author={Haoyang Zhang and Yuqi Xue and Yirui Eric Zhou and Shaobo Li and Jian Huang}, title={SkyByte: Architecting an Efficient Memory-Semantic {CXL}-based {SSD} with {OS} and Hardware Co-design}, booktitle={2025 IEEE International Symposium on High Performance Computer Architecture}, pages={577--593}, year={2025}, publisher={IEEE}, address={Los Alamitos, CA, USA}, doi={10.1109/HPCA61900.2025.00051}}
 
-@inproceedings{fromblocktobyte,
-  author    = {Anonymous},
-  title     = {From Block to Byte: Rethinking {SSD}s with {CXL}},
-  booktitle = {Placeholder},
-  year      = {2025},
-  note      = {Replace with the From-Block-to-Byte citation.},
-}
+@article{fromblocktobyte,
+ author={Miryeong Kwon and Donghyun Gouk and Junhyeok Jang and Jinwoo Baek and Hyunwoo You and Sangyoon Ji and Hongjoo Jung and Junseok Moon and Seungkwan Kang and Seungjun Lee and Myoungsoo Jung}, title={From Block to Byte: Transforming {PCIe} Solid-State Devices With Compute Express Link Memory Protocol and Instruction Annotation}, journal={IEEE Micro}, volume={45}, number={6}, pages={46--55}, year={2025}, doi={10.1109/MM.2025.3581448}}
 
-@article{cmm-h,
-  author    = {Anonymous},
-  title     = {{CMM-H}: {CXL} Memory Module with {NAND} Backing},
-  journal   = {Placeholder},
-  year      = {2025},
-  note      = {Replace with the CMM-H citation.},
-}
+@inproceedings{hellobytes,
+ author={Myoungsoo Jung}, title={Hello Bytes, Bye Blocks: {PCIe} Storage Meets Compute Express Link for Memory Expansion ({CXL-SSD})}, booktitle={14th ACM Workshop on Hot Topics in Storage and File Systems}, pages={45--51}, year={2022}, publisher={Association for Computing Machinery}, address={New York, NY, USA}, doi={10.1145/3538643.3539745}}
 
-@article{cxl-anyssd,
-  author    = {Anonymous},
-  title     = {{CXL-AnySSD}: Composable {CXL} {SSD}s without Swapping},
-  school    = {University of Illinois Urbana-Champaign},
-  year      = {2025},
-  note      = {UIUC thesis; replace with the public citation.},
-}
+@inproceedings{cacheinhand,
+ author={Miryeong Kwon and Sangwon Lee and Myoungsoo Jung}, title={Cache in Hand: Expander-Driven {CXL} Prefetcher for Next Generation {CXL-SSD}}, booktitle={15th ACM Workshop on Hot Topics in Storage and File Systems}, pages={24--30}, year={2023}, publisher={Association for Computing Machinery}, address={New York, NY, USA}, doi={10.1145/3599691.3603406}}
+
+@inproceedings{directcxl,
+ author={Donghyun Gouk and Sangwon Lee and Miryeong Kwon and Myoungsoo Jung}, title={Direct Access, High-Performance Memory Disaggregation with {DirectCXL}}, booktitle={2022 USENIX Annual Technical Conference}, pages={287--294}, year={2022}, publisher={USENIX Association}, address={USA}, url={https://www.usenix.org/conference/atc22/presentation/gouk}}
+
+@article{cmmh,
+ author={Jianping Zeng and Shuyi Pei and Da Zhang and Yuchen Zhou and Amir Beygi and Xuebin Yao and Ramdas Kachare and Tong Zhang and Zongwang Li and Marie Nguyen and Rekha Pitchumani and Yang Soek Ki and Changhee Jung}, title={Performance Characterizations and Usage Guidelines of Samsung {CMM-H}}, journal={IEEE Micro}, volume={45}, number={5}, pages={94--102}, year={2025}, doi={10.1109/MM.2025.3591577}}
 
 @article{phnsw,
-  author    = {Anonymous},
-  title     = {{P-HNSW}: Crash-Consistent Hierarchical Navigable Small World Graphs on Persistent Memory},
-  journal   = {Placeholder},
-  year      = {2025},
-}
+ author={Haena Lee and Taeyoon Park and Yedam Na and Wook-Hee Kim}, title={{P-HNSW}: Crash-Consistent {HNSW} for Vector Databases on Persistent Memory}, journal={Applied Sciences}, volume={15}, number={19}, pages={10554}, year={2025}, doi={10.3390/app151910554}}
 
 @article{bauhaus,
-  author    = {Anonymous},
-  title     = {Bauhaus: {CXL} Memory Tiering and Stranded Capacity},
-  journal   = {Placeholder},
-  year      = {2025},
-}
+ author={Kyungbin Kim and Sungsu Ahn and Wonjung Jeong and Jongmin Kim and Sangun Choi and Minseong Gil and Minseong Kim and Dongha Jung and Yunjay Hong and Haekang Jung and Yunho Oh}, title={Bauhaus: Restructuring Vector Database for {LLM} Retrieval on {CXL}-Based Tiered Memory}, journal={IEEE Transactions on Computers}, volume={75}, number={4}, pages={1309--1322}, year={2026}, doi={10.1109/TC.2026.3656215}}
 
-@manual{cxl30,
-  title        = {{Compute Express Link} Specification, Revision 3.1},
-  organization = {CXL Consortium},
-  year         = {2023},
-}
+@inproceedings{demystifycxl,
+ author={Yan Sun and Yifan Yuan and Zeduo Yu and Reese Kuper and Chihun Song and Jinghan Huang and Houxiang Ji and Siddharth Agarwal and Jiaqi Lou and Ipoom Jeong and Ren Wang and Jung Ho Ahn and Tianyin Xu and Nam Sung Kim}, title={Demystifying {CXL} Memory with Genuine {CXL}-Ready Systems and Devices}, booktitle={56th IEEE/ACM International Symposium on Microarchitecture}, pages={105--121}, year={2023}, publisher={Association for Computing Machinery}, address={New York, NY, USA}, doi={10.1145/3613424.3614256}}
 
-@article{sigplan-empirical,
-  author  = {The {ACM SIGPLAN} Empirical Evaluation Board},
-  title   = {{SIGPLAN} Empirical Evaluation Guidelines},
-  year    = {2018},
-  url     = {https://www.sigplan.org/Resources/EmpiricalEvaluation/},
-}
+@inproceedings{neomem,
+ author={Zhe Zhou and Yiqi Chen and Tao Zhang and Yang Wang and Ran Shu and Shuotao Xu and Peng Cheng and Lei Qu and Yongqiang Xiong and Jie Zhang and Guangyu Sun}, title={{NeoMem}: Hardware/Software Co-Design for {CXL}-Native Memory Tiering}, booktitle={57th IEEE/ACM International Symposium on Microarchitecture}, pages={1518--1531}, year={2024}, publisher={IEEE}, address={Los Alamitos, CA, USA}, doi={10.1109/MICRO61859.2024.00109}}
+
+@article{memorypooling,
+ author={Donghyun Gouk and Miryeong Kwon and Hanyeoreum Bae and Sangwon Lee and Myoungsoo Jung}, title={Memory Pooling With {CXL}}, journal={IEEE Micro}, volume={43}, number={2}, pages={48--57}, year={2023}, doi={10.1109/MM.2023.3237491}}
+
+@manual{cxl31,
+ title={{Compute Express Link} Specification, Revision 3.1}, organization={Compute Express Link Consortium}, year={2023}, url={https://www.computeexpresslink.org/spec-landing-page-compute-express-link}}
+
+@inproceedings{orca,
+ author={Gyeong-In Yu and Joo Seong Jeong and Geon-Woo Kim and Soojeong Kim and Byung-Gon Chun}, title={Orca: A Distributed Serving System for {Transformer-Based} Generative Models}, booktitle={16th USENIX Symposium on Operating Systems Design and Implementation}, pages={521--538}, year={2022}, publisher={USENIX Association}, address={USA}, url={https://www.usenix.org/conference/osdi22/presentation/yu}}

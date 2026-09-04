@@ -68,6 +68,13 @@ int main() {
   u.note_pf_slot_id(5);
   u.note_pf_scored_id(1);
   assert(u.prefetch_slot_use_pct() > 19.9 && u.prefetch_slot_use_pct() < 20.1);
+  Metrics occ;
+  occ.note_page_occ_slots(0, 2);
+  occ.note_page_occ_slots(1, 2);
+  occ.note_page_occ_slots(2, 2);
+  assert(occ.page_occ_pages == 3);
+  assert(occ.page_occ_n0 == 1 && occ.page_occ_n50 == 1 && occ.page_occ_n100 == 1);
+  assert(occ.page_occ_pct() > 49.9 && occ.page_occ_pct() < 50.1);
   std::puts("test_metrics OK");
   return 0;
 }

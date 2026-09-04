@@ -9,6 +9,8 @@
 #include <string>
 #include <vector>
 
+inline thread_local const float* g_pq_tls_lut = nullptr;
+
 struct PqTable {
   static constexpr uint32_t kCentroids = 256;
 
@@ -83,10 +85,10 @@ struct PqTable {
     return true;
   }
 
-  void begin_query_ip(const float* q) {
-    std::memset(lut.data(), 0, lut.size() * sizeof(float));
+  void fill_lut_ip(const float* q, float* dst) const {
+    std::memset(dst, 0, (size_t)nchunks * kCentroids * sizeof(float));
     for (uint32_t c = 0; c < nchunks; ++c) {
-      float* chunk = lut.data() + (size_t)c * kCentroids;
+      float* chunk = dst + (size_t)c * kCentroids;
       for (uint32_t d = chunk_off[c]; d < chunk_off[c + 1]; ++d) {
         const float* centers = tables_T.data() + (size_t)d * kCentroids;
         const float qv = q[d];
@@ -95,12 +97,21 @@ struct PqTable {
     }
   }
 
-  float dist(uint32_t id) const {
+  void begin_query_ip(const float* q) {
+    thread_local std::vector<float> tls;
+    tls.resize((size_t)nchunks * kCentroids);
+    fill_lut_ip(q, tls.data());
+    g_pq_tls_lut = tls.data();
+  }
+
+  float dist(uint32_t id, const float* qlut) const {
     const uint8_t* c = codes.data() + (size_t)id * nchunks;
     float a = 0;
-    for (uint32_t ch = 0; ch < nchunks; ++ch) a += lut[(size_t)ch * kCentroids + c[ch]];
+    for (uint32_t ch = 0; ch < nchunks; ++ch) a += qlut[(size_t)ch * kCentroids + c[ch]];
     return a;
   }
+
+  float dist(uint32_t id) const { return dist(id, g_pq_tls_lut ? g_pq_tls_lut : lut.data()); }
 
   void dist_many(const uint32_t* ids, uint32_t n_ids, float* out) const {
     for (uint32_t i = 0; i < n_ids; ++i) out[i] = dist(ids[i]);

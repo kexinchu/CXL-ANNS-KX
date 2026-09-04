@@ -207,7 +207,9 @@ struct DramWindow {
     size_t fr = alloc_frame_unlocked();
     frame_filling[fr] = 1;
     frame_key[fr] = page_off;
-    if (dest) *dest = arena + fr * page_bytes;
+    uint8_t* d = arena + fr * page_bytes;
+    d[0] = 0;  // prefault so ioctl copy_to_user cannot nest under vmem cache_lock
+    if (dest) *dest = d;
     if (frame_out) *frame_out = fr;
     return true;
   }
@@ -315,6 +317,20 @@ struct DramWindow {
       if (!map.count(p)) return false;
     }
     return true;
+  }
+
+  // Pointer into a resident single page. Null if missing or the range spans pages.
+  const uint8_t* try_ptr_resident(const uint8_t* ssd_base, const uint8_t* ssd, size_t n) {
+    std::lock_guard<std::mutex> g(mu);
+    if (n == 0) return arena;
+    uint64_t off = (uint64_t)(ssd - ssd_base);
+    uint64_t end = off + n;
+    uint64_t first = off & ~(uint64_t)(page_bytes - 1);
+    uint64_t last = (end - 1) & ~(uint64_t)(page_bytes - 1);
+    if (first != last) return nullptr;
+    auto it = map.find(first);
+    if (it == map.end()) return nullptr;
+    return arena + it->second * page_bytes + (size_t)(off - first);
   }
 
   // One lock: copy if every overlapping page is already in the window. No NAND.

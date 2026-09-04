@@ -1,0 +1,24 @@
+{
+  "seed": 20260904,
+  "nq_file": 10000,
+  "dim": 200,
+  "n_build": 500,
+  "n_test": 500,
+  "overlap": 0,
+  "build_first5": [
+    2,
+    15,
+    83,
+    109,
+    132
+  ],
+  "test_first5": [
+    4,
+    29,
+    45,
+    51,
+    69
+  ],
+  "build_path": "/root/chukexin/CXL-ANNS-KX/results/paper_figs/qids_build500.bin",
+  "test_path": "/root/chukexin/CXL-ANNS-KX/results/paper_figs/qids_test500.bin"
+}

@@ -1,0 +1,31 @@
+==== hub slots=8 workers=8 issue_ahead=4 nq=500 2026-09-04T05:26:52+00:00 ====
+cache_used=104857600 evictions=29183209 limit=104857600
+mapped vmem /dev/vmem0 off=1020054732800 len=2048917504 fd=5 prefetch=1 cache_used=104857600
+nav-graph /root/chukexin/CXL-ANNS-KX/results/paper_figs/nav_1m_10k.bin n0=10000 dim=200 R=32
+id-slot-map /mnt/disk0/chukexin_motivation/serving_t2i_10m/id_to_slot_1m_extent.bin n=1000000 (physical neighbor pairing)
+diskann graph-file /mnt/disk0/chukexin_motivation/serving_t2i_10m/diskann_t2i_1m.graph.bin bytes=128000000 (host N(u), no SSD ID faults)
+vec_stride=2048 (packed=800) graph_in_dram=1 diskann=1
+mapped HOST DRAM anon+mbind node=1 len=2147483648 (fallback; not DAX)
+P3v2 softpin W=16 budget=67108864 install_top=4 fetch_top=0 page_group_b=0 install_all=0 threads=1 per_thread_window=0 cont_slots=8 cont_workers=8 score_page=0 expand_batch=4 issue_ahead=4 min_issue_use=0.00 spec_beam_nbrs=0 expand_sib=0 slot_map=1 sync_hop=0 score_cache=0 direct_install=0 stripe_fill=0 extent_run=1 pipe_drive=0 pq_nav=0
+loaded id-map new→old n=1000000 (file=40000000) from /mnt/disk0/chukexin_motivation/serving_t2i_10m/new_to_old_pagebin.bin
+query_select nq=500/10000 shuffle_seed=-1 query_ids=/root/chukexin/CXL-ANNS-KX/results/paper_figs/qids_test500.bin first=4 last=9994 flush_window=0 oneshot_fp=1 oracle_dram=0 oracle_window=0 pin_entry=1 host_used=1501356 host_cap=33554432 host_bytes=2147483648 dram_bytes=2147483648 pin_cap=67108864
+roles host_bytes=2147483648 require_cxl_dram=0 cpu_affinity=1 per_thread_window=0 cxl_dram_dev=-
+cont_sched hb live=8 fin=71 ready=0 watch=6 pipe_slots=4 q=0 ix_infl=291 chunks=8327 steps=2447
+cont_sched hb live=8 fin=160 ready=0 watch=6 pipe_slots=4 q=0 ix_infl=35 chunks=17587 steps=5359
+cont_sched hb live=8 fin=269 ready=0 watch=5 pipe_slots=4 q=0 ix_infl=105 chunks=28104 steps=8851
+cont_sched hb live=8 fin=397 ready=0 watch=7 pipe_slots=4 q=0 ix_infl=109 chunks=39155 steps=12901
+cont_sched slots=8 workers=8 park_switch=14109 hub_merged=349197 issuer_chunks=47012
+policy=P3 budget=67108864 dram_bytes=2147483648 nq=500 beam=400 k=10 iters=0 oneshot_fp=1 pin_bytes=0/67108864
+wall_s=5.439 throughput_QPS=91.93
+cxl_ssd_to_dram_promote_GBps=0.573 promote_bytes=3114516480 target=12.0
+latency_ms mean=76.190 p50=70.875 p90=122.721 p99=161.674
+recall@10=0.0886
+cxl_dram_hit_pct=0.07
+metrics queries=500 dram_hits=280 ssd_misses=380171 hit_pct=0.07 promote_bytes=3114516480 avg_promote_ns=2719.7 prefetch_pages=760138 evicts=0 dist=1302633
+hide from_win=1302391 from_cxl_dram=0 from_bounce=242 from_cache=0 from_win_pct=99.98 from_cxl_dram_pct=0.00 hide_prec=342.55 crit_wait_ns=0 device_fill_ns=0 overlap=0.00
+prefetch_use issued=379935 used=0 page_use_pct=0.00 look_issued=0 look_used=0 look_use_pct=0.00 miss_use_pct=0.00 byte_use_pct=66.94 slot_use_pct=83.09 issue_use_pct=0.00 slots_on_pages=759870 slots_scored=631404 issue_slots=0 issue_want=0 scored_vec_B=1041706400 nvme_read_B=1545347072
+issue_use_hist=[0,.2):0 [.2,.4):0 [.4,.6):0 [.6,.8):0 [.8,1]:0
+spec_beam pages=0 ids=0
+page_occ mean=83.09% pages=379935 0%=0.01 50%=33.80 100%=66.19 (n0=20 n50=128426 n100=251489 slots=759870 used=631404)
+nvme_real_GBps=0.284 occ_vs_rnd_peak=18.2% peak_GBps=1.560 page_use=0.00 slot_use=83.09 issue_use=0.00
+CSV,P3,67108864,2147483648,500,400,0,91.93,76.190,70.875,122.721,161.674,0.0886,0.07,280,380171,99.98,342.55,0,0.00

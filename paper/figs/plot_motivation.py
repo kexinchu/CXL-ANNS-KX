@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Draw Motivation Fig.3 and Fig.4 from locked LAION-200k findings."""
+"""Draw the measured Motivation latency and admission figures."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -43,7 +43,7 @@ def style_ax(ax):
 
 def fig3_cliff():
     # p50 ns/item from probe_item_cliff 2026-09-02b.
-    # CXL-DRAM = dax0.0 clflush+load; CXL-SSD = vmem0 cache miss.
+    # CXL-DRAM hit = dax0.0 clflush+load; Flash fill = vmem0 cache miss.
     datasets = ["LAION-10M", "T2I-10M"]
     dram_us = np.array([0.666, 0.281])
     ssd_us = np.array([88.713, 88.841])
@@ -61,7 +61,7 @@ def fig3_cliff():
         color=C_LIGHT,
         edgecolor="black",
         linewidth=0.8,
-        label="CXL-DRAM",
+        label="CXL-DRAM hit",
         zorder=3,
         rasterized=False,
     )
@@ -72,7 +72,7 @@ def fig3_cliff():
         color=C_DARK,
         edgecolor="black",
         linewidth=0.8,
-        label="CXL-SSD",
+        label="Flash fill",
         zorder=3,
         rasterized=False,
     )
@@ -116,94 +116,125 @@ def fig3_cliff():
 
 
 def fig4_pathology():
-    fig, axes = plt.subplots(1, 3, figsize=(7.05, 2.35))
+    fig4_rc = {
+        "font.size": 12,
+        "axes.labelsize": 12,
+        "axes.titlesize": 12,
+        "xtick.labelsize": 12,
+        "ytick.labelsize": 12,
+        "legend.fontsize": 12,
+    }
+    figsize = (6.4 * 0.8, 4.8 * 0.6)
 
-    # (a) record vs page16k — F2
-    ax = axes[0]
-    cats = ["record", "page 16 KB"]
-    qps = np.array([33.5, 9.3])
-    nand = np.array([9858, 36493])
-    x = np.arange(2)
-    w = 0.36
-    ax.bar(x - w / 2, qps, width=w, color=C_ACCENT, edgecolor="black", linewidth=0.4, label="QPS")
-    ax2 = ax.twinx()
-    ax2.bar(x + w / 2, nand / 1000.0, width=w, color=C_WARM, edgecolor="black", linewidth=0.4, label="NAND")
-    ax.set_xticks(x)
-    ax.set_xticklabels(cats)
-    ax.set_ylabel("QPS")
-    ax2.set_ylabel("NAND reads ($10^3$)")
-    ax.set_title("(a) Page vs. record")
-    ax.set_ylim(0, 42)
-    ax2.set_ylim(0, 48)
-    ax.text(0, 35.2, "33.5", ha="center", fontsize=6.5, color=C_ACCENT)
-    ax.text(1, 11.0, "9.3", ha="center", fontsize=6.5, color=C_ACCENT)
-    h1, l1 = ax.get_legend_handles_labels()
-    h2, l2 = ax2.get_legend_handles_labels()
-    ax.legend(h1 + h2, l1 + l2, loc="upper right", frameon=False, handlelength=1.0)
-    style_ax(ax)
-    ax2.spines["top"].set_visible(False)
-    ax2.tick_params(direction="out", length=3)
+    with mpl.rc_context(fig4_rc):
+        # (a) Record-granular vs. 16-KB page admission — F2.
+        fig, ax = plt.subplots(figsize=figsize, layout="constrained")
+        categories = ["Record", "Page 16 KB"]
+        qps = np.array([33.5, 9.3])
+        nand_k = np.array([9.858, 36.493])
+        x = np.arange(len(categories))
+        width = 0.34
+        qps_bars = ax.bar(
+            x - width / 2,
+            qps,
+            width=width,
+            color=C_DARK,
+            edgecolor="black",
+            linewidth=0.8,
+            label="QPS",
+            zorder=3,
+        )
+        ax2 = ax.twinx()
+        nand_bars = ax2.bar(
+            x + width / 2,
+            nand_k,
+            width=width,
+            color=C_LIGHT,
+            edgecolor="black",
+            linewidth=0.8,
+            hatch="//",
+            label="NAND reads",
+            zorder=3,
+        )
+        ax.set_xticks(x)
+        ax.set_xticklabels(categories)
+        ax.set_ylabel("Throughput (QPS)")
+        ax2.set_ylabel("NAND reads (thousands)")
+        ax.set_ylim(0, 44)
+        ax2.set_ylim(0, 48)
+        ax.set_title("(a) Coarse admission wastes fills")
+        ax.bar_label(qps_bars, labels=["33.5", "9.3"], padding=3)
+        ax2.bar_label(nand_bars, labels=["9.9", "36.5"], padding=3)
+        ax.text(
+            0.50,
+            0.76,
+            "3.6× lower QPS\n3.7× more NAND",
+            transform=ax.transAxes,
+            ha="center",
+            va="center",
+        )
+        h1, l1 = ax.get_legend_handles_labels()
+        h2, l2 = ax2.get_legend_handles_labels()
+        ax.legend(
+            h1 + h2,
+            l1 + l2,
+            loc="upper center",
+            bbox_to_anchor=(0.5, 1.01),
+            ncol=2,
+            frameon=False,
+            handlelength=1.2,
+        )
+        style_ax(ax)
+        ax2.spines["top"].set_visible(False)
+        ax2.tick_params(direction="out", length=3)
+        admission_out = OUT / "mot-pathology-admission.pdf"
+        fig.savefig(
+            admission_out,
+            format="pdf",
+            metadata={"Creator": "matplotlib vector"},
+        )
+        plt.close(fig)
 
-    # (b) demand vs sync 2-hop — F5
-    ax = axes[1]
-    names = ["demand", "top-1", "top-2", "top-8"]
-    qps_b = np.array([25.9, 21.0, 15.2, 5.0])
-    hit = np.array([57.51, 57.51, 57.51, 57.51])
-    prec = np.array([np.nan, 82.35, 68.45, 29.02])
-    x = np.arange(4)
-    ax.bar(x, qps_b, width=0.62, color=C_ACCENT, edgecolor="black", linewidth=0.4)
-    ax.set_xticks(x)
-    ax.set_xticklabels(names, rotation=15)
-    ax.set_ylabel("QPS")
-    ax.set_ylim(0, 36)
-    ax.set_title("(b) Blind sync prefetch")
-    for i, (q, h, p) in enumerate(zip(qps_b, hit, prec)):
-        label = f"hit {h:.0f}%"
-        if np.isfinite(p):
-            label += f"\nprec {p:.0f}%"
-        ax.text(i, q + 0.7, label, ha="center", va="bottom", fontsize=5.6, color=C_DARK)
-    style_ax(ax)
+        # (b) Demand vs. increasingly broad synchronous prefetch — F5.
+        fig, ax = plt.subplots(figsize=figsize, layout="constrained")
+        names = ["Demand", "Top-1", "Top-2", "Top-8"]
+        qps = np.array([25.9, 21.0, 15.2, 5.0])
+        precision = ["No prefetch", "82%", "68%", "29%"]
+        x = np.arange(len(names))
+        bars = ax.bar(
+            x,
+            qps,
+            width=0.62,
+            color=[C_LIGHT, "#b5b5b5", "#969696", C_DARK],
+            edgecolor="black",
+            linewidth=0.8,
+            zorder=3,
+        )
+        ax.set_xticks(x)
+        ax.set_xticklabels(names)
+        ax.set_ylabel("Throughput (QPS)")
+        ax.set_ylim(0, 35)
+        ax.set_title("(b) Wider prefetch fetches wrong pages")
+        for bar, value, prec in zip(bars, qps, precision):
+            ax.text(
+                bar.get_x() + bar.get_width() / 2,
+                value + 0.7,
+                f"{value:.1f}\n{prec}",
+                ha="center",
+                va="bottom",
+            )
+        ax.set_xlabel("Prefetch coverage increases $\\longrightarrow$")
+        style_ax(ax)
+        prefetch_out = OUT / "mot-pathology-prefetch.pdf"
+        fig.savefig(
+            prefetch_out,
+            format="pdf",
+            metadata={"Creator": "matplotlib vector"},
+        )
+        plt.close(fig)
 
-    # (c) beam sweep — F4
-    ax = axes[2]
-    beam = np.array([4, 8, 16, 32, 64])
-    qps_c = np.array([35.93, 27.17, 27.18, 23.94, 27.32])
-    hit_c = np.array([62.59, 60.98, 61.43, 61.01, 61.01])
-    rec = np.array([0.0938, 0.1875, 0.1750, 0.2438, 0.2438])
-    nand_c = np.array([4763, 6286, 6226, 6294, 6294])
-    ax.plot(beam, qps_c / qps_c.max(), "-o", color=C_ACCENT, ms=3.5, lw=1.1, label="QPS")
-    ax.plot(beam, nand_c / nand_c.max(), "-s", color=C_WARM, ms=3.2, lw=1.1, label="NAND")
-    ax.plot(beam, hit_c / 100.0, ":D", color=C_MID, ms=3.0, lw=1.0, label="hit")
-    ax2 = ax.twinx()
-    ax2.plot(beam, rec, "--^", color=C_DARK, ms=3.5, lw=1.1, label="recall@10")
-    ax.set_xscale("log", base=2)
-    ax.set_xticks(beam)
-    ax.xaxis.set_major_formatter(mpl.ticker.FormatStrFormatter("%d"))
-    ax.set_xlabel("beam $L$")
-    ax.set_ylabel("normalized QPS / NAND / hit")
-    ax2.set_ylabel("recall@10")
-    ax2.set_ylim(0, 0.40)
-    ax.set_ylim(0, 1.15)
-    ax.set_title("(c) Widening $L$")
-    h1, l1 = ax.get_legend_handles_labels()
-    h2, l2 = ax2.get_legend_handles_labels()
-    ax.legend(
-        h1 + h2,
-        l1 + l2,
-        loc="center right",
-        frameon=False,
-        ncol=1,
-        handlelength=1.3,
-        borderaxespad=0.2,
-    )
-    style_ax(ax)
-    ax2.spines["top"].set_visible(False)
-    ax2.tick_params(direction="out", length=3)
-
-    fig.tight_layout(pad=0.35, w_pad=0.7)
-    fig.savefig(OUT / "mot-pathology.pdf", bbox_inches="tight", pad_inches=0.03)
-    plt.close(fig)
-    print("wrote", OUT / "mot-pathology.pdf")
+    print("wrote", admission_out)
+    print("wrote", prefetch_out)
 
 
 if __name__ == "__main__":

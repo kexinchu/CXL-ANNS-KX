@@ -1,72 +1,60 @@
-# Frozen PQ-64 end-batch prefetcher (2026-09-04)
+# Frozen hide-copy prefetcher (2026-09-04)
 
-**LOCKED. Do not modify this prefetcher.** No new flags, no hop-width
-retuning, no `--pipe-drive`, no codebook regen, no restage of 1100 GiB.
-Reproduce only. Paper writing uses this contract and the rows below.
+Locked after the sequential keep/drop sweep on 1M test-500. This is the
+issue policy, not “100 MiB cache + 2 GiB window ≈ corpus”.
 
-One DiskANN-10M freeze: host PQ-64 beam + one end-batch FP rerank wave.
-PIPE stays 0. Does not replace T2I-10M claim rows 50.25 / 49.25 / 85.8.
+Does not replace T2I-10M claim rows 50.25 / 49.25 / 85.8.
 
-Canonical write-up for the paper: `docs/notes/2026-09-04-prefetcher-paper-zh.md`.
+## Core (do not regress)
 
-```
-G0 10k nav → entry
-  → PQ-64 beam L=400 (host N(u) + host codes, no SSD)
-  → issue vector pages of the L candidates (one HidePipe wave)
-  → wait_covering → install bounce → DramWindow
-  → FP MIPS rerank → top-10
-```
+1. Score only after the page is in the host `DramWindow` (`from_win ≈ 100`).
+2. Issue only committed-expand **miss** pages (`page_use = 100`). No spec-beam,
+   no `--score-page`, no `--stripe-fill`.
+3. `--no-sync-hop`: pick `expand_batch` nodes, `READ_BATCH` their miss pages,
+   then `wait_covering` / drain. Default width **e4 a1**.
+4. Bounce buffer → window memcpy. `--direct-install` is a no-op (hung).
+5. Host `--graph-file` is required on DiskANN hide so `N(u)` is not an SSD
+   mmap fault. Extract `N(u)` from the **logical** packed image (id order),
+   not `graph_R32.bin` and not a slot-order extract of a remapped file.
+6. **Page layout (query rebuild):** build-query `--dump-expands` (disjoint from
+   timed queries) → `--mode cooccur --trace-pairs` (2-in-4K from expand
+   co-issue; leftover strongest-neighbor) → `--mode extent --map-in` (each
+   expand’s still-free pages become one run; traces packed first). Search
+   must pass `--id-slot-map`. Full-graph C(R,2) cooccur is infeasible at 10M
+   (~450 new pairs/node).
+7. Search contract: G0 10k nav → entry → oneshot-fp L=400 k=10 T=1.
 
-## Invariants (do not regress)
+## Dropped
 
-1. Score FP only after the page is in the host `DramWindow` (`from_win = 100`).
-2. Issue only committed rerank **miss** pages. No mid-beam NAND. No spec-beam.
-3. Bounce buffer → window memcpy. `--direct-install` stays a no-op.
-4. Host `--graph-file` is required so `N(u)` is not an SSD mmap fault.
-5. Extent image @ 1100 GiB + `--id-slot-map` + `--extent-run` on that one wave.
-6. T=1, L=400, k=10, seed-42, cache 100 MiB, window 2 GiB host numa.
+| Opt | Why |
+|-----|-----|
+| `--direct-install` | hang after `roles` |
+| `--stripe-fill` | 103.85 → 99.09 QPS on 1M test-500 |
+| e8 a2 / e4 a2 | worse than e4 a1 |
+| `--score-cache` / 80 MiB trace pin | nq=500 WS ≫ 100 MiB |
+
+## 1M evidence (pollute baseline, extent @950, test-500)
+
+| row | QPS | mean ms | recall@10 |
+|-----|----:|--------:|----------:|
+| e1 a1 bounce | 99.43 | 10.06 | 0.0884 |
+| **e4 a1 bounce (kept)** | **103.17** | **9.69** | 0.0884 |
+| host oracle | 266.69 | 3.75 | 0.0882 |
+
+1M recall vs 10M GT is not a quality claim.
 
 ## Runtime flags
 
-DiskANN hide requires `--pq-nav` (codebook) or `--oneshot-fp` (ablation).
-`--extent-run` defaults on. There is no e4 hop-width default. Freeze path is
-`--pq-nav` + codebook, no `--oneshot-fp`.
-
 ```
---diskann-layout --pq-nav --pq-pivots … --pq-compressed …
---graph-file … --id-slot-map --extent-run
---beam 400 --k 10 --threads 1 --policy P3
+--diskann-layout --nav-graph … --graph-file … \
+--expand-batch 4 --issue-ahead 1 --no-sync-hop --no-score-page \
+--no-score-cache --no-direct-install --no-stripe-fill --no-hide-warm-entry \
+--threads 1 --shared-window --policy P3 --oneshot-fp --beam 400 --k 10
 ```
 
-Do not pass `--oneshot-fp` (that is the superseded hop path). `--pipe-drive`
-is a no-op and not part of the freeze.
+CLI defaults for DiskANN (no `--nbr-bundle`) now match e4 a1 and `--no-score-page`.
 
-Recipe: `PQ_BYTES=64 PIPE=0 tools/run_10m_pq_nq100.sh hide_pqbeam` (`NQ=20|100`).
-Oracle: `PQ_BYTES=64 tools/run_10m_pq_nq100.sh oracle`.
-
-Codebook (do not overwrite / regenerate without keep/drop vs 116.29 / 0.923):
-
-```
-/mnt/disk0/chukexin_motivation/pipeann_t2i10m/idx_t2i64_pq_pivots.bin
-/mnt/disk0/chukexin_motivation/pipeann_t2i10m/idx_t2i64_pq_compressed.bin
-```
-
-## Evidence (pollute @420, seed-42, extent @1100)
-
-| nq | hide QPS | mean | recall@10 | hide/oracle |
-|---:|---------:|-----:|----------:|------------:|
-| 20 | **110.94** | 9.01 ms | **0.925** | **0.69×** (161.63) |
-| 100 | **116.29** | 8.60 ms | **0.923** | **0.72×** (161.52) |
-
-Logs: `results/paper_figs/hide_10m_pq64beam_nopipe_nq{20,100}.log`.
-`--pipe-drive` is a DROP on this path and is not a freeze row.
-
-## Superseded hide-copy (2026-09-04 morning)
-
-Old freeze: oneshot-fp **e4 a1**, hide **25.90** QPS / **0.20×** oracle
-(NAND ~22 MB/q during the beam). **Replaced by 110.94 / 116.29.**
-
-That contract scored every expand from full-precision vectors, used hop width
-as prefetcher identity, and lived in
-`docs/notes/2026-09-04-prefetcher-10m-t1.md`. Keep the morning note as
-history. Do not treat 25.90 / e4 a1 / 0.20× as the DiskANN-10M freeze.
+10M recipe: `tools/run_hide_10m_t1.sh` (`LAYOUT=seq|extent`). Extent image at
+1100 GiB; sequential stays at 800 GiB. On seed-42 nq=100, extent QPS is flat
+vs sequential (24.75 vs 24.99); keep both. See
+`docs/notes/2026-09-04-prefetcher-10m-t1.md`.

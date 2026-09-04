@@ -1,7 +1,7 @@
 #pragma once
-// Cross-query interleave (not fat IO batching).
-// Keep T queries in flight. Issue prefetch immediately. When A cannot score,
-// a worker steals B. Per-query latency may rise; the metric is QPS.
+// Cross-query interleave, not fat IO batching.
+// Keep T queries in flight. Issue prefetch immediately. When A cannot
+// score, the stepper steals B. Per-query latency may rise; the metric is QPS.
 
 #include "hide_fill.hpp"
 
@@ -10,7 +10,118 @@
 #include <unordered_set>
 #include <vector>
 
-enum class CbSt : uint8_t { Empty, Ready, Wait, Busy, Done };
+enum class CbSt : uint8_t { Empty, Ready, Wait, Busy, Done, Hold };
+
+enum class Pipe2Act : uint8_t { Fill, Rank, Wait, Done, Pump, Issue };
+
+struct Pipe2Dec {
+  Pipe2Act act = Pipe2Act::Done;
+  int slot = -1;
+};
+
+// Per-thread D-deep interleave. Fill an empty seat first so NAND stays issued
+// during another query's beam; only then Rank a covering slot; else Wait; else Done.
+// Thread t sleeps this many microseconds before the timed loop.
+// stagger_us=0: no offset. Else t * stagger_us (thread 0 never sleeps).
+inline uint64_t pipe2_stagger_us(int t, uint32_t stagger_us) {
+  if (t <= 0 || stagger_us == 0) return 0;
+  return (uint64_t)stagger_us * (uint64_t)t;
+}
+
+inline bool issue_qd_ok(uint32_t inflight, uint32_t qd) {
+  return qd == 0 || inflight < qd;
+}
+
+// Fire one early C_L wave once expands reach `at`. at=0 disables.
+inline bool early_cl_due(uint32_t expands, uint32_t at, bool already) {
+  return at > 0 && !already && expands >= at;
+}
+
+// cli==0 means match T so NAND waves scale with compute threads.
+inline uint32_t effective_issue_qd(uint32_t cli, int nthreads) {
+  if (cli == 0) return nthreads > 0 ? (uint32_t)nthreads : 1u;
+  return cli;
+}
+
+inline bool admit_gap_ok(uint64_t now_us, uint64_t last_us, uint32_t gap_us) {
+  if (gap_us == 0) return true;
+  return now_us >= last_us && (now_us - last_us) >= (uint64_t)gap_us;
+}
+
+// Dual-queue: never block the compute thread.
+// Feed prefetch (Issue Hold) when QD has room; else Fill or Rank; else Pump.
+// admit_ok=false: do not burst-Fill empty seats (keep phases staggered).
+inline Pipe2Dec steal_decide(const CbSt* st, const bool* covering, int n, bool has_more,
+                             bool qd_ok, bool admit_ok = true) {
+  Pipe2Dec d;
+  if (n <= 0) return d;
+  if (qd_ok) {
+    for (int i = 0; i < n; ++i) {
+      if (st[i] == CbSt::Hold) {
+        d.act = Pipe2Act::Issue;
+        d.slot = i;
+        return d;
+      }
+    }
+  }
+  if (has_more && admit_ok) {
+    for (int i = 0; i < n; ++i) {
+      if (st[i] == CbSt::Empty) {
+        d.act = Pipe2Act::Fill;
+        d.slot = i;
+        return d;
+      }
+    }
+  }
+  for (int i = 0; i < n; ++i) {
+    if ((st[i] == CbSt::Wait || st[i] == CbSt::Ready) && covering && covering[i]) {
+      d.act = Pipe2Act::Rank;
+      d.slot = i;
+      return d;
+    }
+  }
+  for (int i = 0; i < n; ++i) {
+    if (st[i] == CbSt::Wait || st[i] == CbSt::Hold) {
+      d.act = Pipe2Act::Pump;
+      d.slot = i;
+      return d;
+    }
+  }
+  if (has_more) {
+    d.act = Pipe2Act::Pump;
+    d.slot = 0;
+  }
+  return d;
+}
+
+inline Pipe2Dec pipe2_decide(const CbSt* st, const bool* covering, int n, bool has_more) {
+  Pipe2Dec d;
+  if (n <= 0) return d;
+  if (has_more) {
+    for (int i = 0; i < n; ++i) {
+      if (st[i] == CbSt::Empty) {
+        d.act = Pipe2Act::Fill;
+        d.slot = i;
+        return d;
+      }
+    }
+  }
+  for (int i = 0; i < n; ++i) {
+    if ((st[i] == CbSt::Wait || st[i] == CbSt::Ready) && covering && covering[i]) {
+      d.act = Pipe2Act::Rank;
+      d.slot = i;
+      return d;
+    }
+  }
+  for (int i = 0; i < n; ++i) {
+    if (st[i] == CbSt::Wait || st[i] == CbSt::Ready) {
+      d.act = Pipe2Act::Wait;
+      d.slot = i;
+      return d;
+    }
+  }
+  return d;
+}
 
 inline std::vector<uint64_t> merge_unique_pages(const std::vector<uint64_t>* const* parts,
                                                 int n) {
@@ -32,7 +143,6 @@ inline int pick_ready(const CbSt* st, int n) {
   return -1;
 }
 
-// Prefer a query that can compute; else one that may drain. Skip Busy.
 inline int pick_steal(const CbSt* st, int n, int start = 0) {
   if (n <= 0) return -1;
   if (start < 0) start = 0;
@@ -52,7 +162,6 @@ struct PrefetchHub {
   std::mutex mu;
   uint64_t issue_n = 0;
   uint64_t issue_pages = 0;
-  uint64_t drop_n = 0;
 
   void bind(PageCopyPool* pool, DramWindow* win, Placement* pl, VmemIo* vio, Metrics* m) {
     pipe.pool = pool;
@@ -62,23 +171,40 @@ struct PrefetchHub {
     pipe.m = m;
   }
 
-  // Fire-and-forget. Never hide_wait. Retry later if the pipe is full.
-  bool submit(const std::vector<uint64_t>& pages) {
-    if (pages.empty()) return true;
+  uint64_t submit(const std::vector<uint64_t>& pages) {
+    if (pages.empty()) return 0;
     std::lock_guard<std::mutex> g(mu);
-    bool ok = pipe.issue(pages, /*ttl=*/128, /*stall_if_full=*/false);
-    if (ok) {
-      issue_n++;
-      issue_pages += pages.size();
-    } else {
-      drop_n++;
-    }
-    return ok;
+    issue_n++;
+    issue_pages += pages.size();
+    return pipe.issue(pages, /*ttl=*/128, /*stall_if_full=*/false);
+  }
+
+  uint64_t submit_block(const std::vector<uint64_t>& pages) {
+    if (pages.empty()) return 0;
+    std::lock_guard<std::mutex> g(mu);
+    issue_n++;
+    issue_pages += pages.size();
+    return pipe.issue(pages, /*ttl=*/128, /*stall_if_full=*/true);
+  }
+
+  uint64_t wait_covering(const std::vector<uint64_t>& need,
+                         std::vector<uint64_t>* extra_toks = nullptr) {
+    std::lock_guard<std::mutex> g(mu);
+    return pipe.wait_covering(need, extra_toks);
   }
 
   void pump() {
     std::lock_guard<std::mutex> g(mu);
     pipe.pump();
+  }
+
+  int free_slots() {
+    std::lock_guard<std::mutex> g(mu);
+    int n = 0;
+    for (int s = 0; s < HidePipe::kSlots; ++s) {
+      if (!pipe.slot[s].active) n++;
+    }
+    return n;
   }
 
   bool any_inflight() {

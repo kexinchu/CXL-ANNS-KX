@@ -1,6 +1,8 @@
 # FPGA CXL roles — design
 
 **Status:** Accepted 2026-09-02 — 打分窗留在 host；HPS / BAR 不作数据面  
+
+> **2026-09-03：** 回到「图+向量在 CXL-DRAM」的轨见 [新 spec](2026-09-03-cxl-dram-diskann-layout-design.md) · [plan](../plans/2026-09-03-cxl-dram-diskann-layout.md)。本文件仍描述 host-window 历史栈；50.25 / 85.8 不改。  
 **Date:** 2026-08-31（修订 2026-09-02）  
 **Repos:** `CXL-ANNS-KX` (search / claim) + `mem2nvme` (data plane)
 

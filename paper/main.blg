@@ -12,91 +12,44 @@ Reallocated glb_str_ptr (elt_size=4) to 20 items from 10.
 Reallocated global_strs (elt_size=200001) to 20 items from 10.
 Reallocated glb_str_end (elt_size=4) to 20 items from 10.
 Reallocated singl_function (elt_size=4) to 100 items from 50.
-Warning--no number and no volume in secondtier
-Warning--page numbers missing in both pages and numpages fields in secondtier
-Warning--no number and no volume in bauhaus
-Warning--page numbers missing in both pages and numpages fields in bauhaus
-Warning--no number and no volume in cmm-h
-Warning--page numbers missing in both pages and numpages fields in cmm-h
-Warning--no number and no volume in cosmos
-Warning--page numbers missing in both pages and numpages fields in cosmos
-Warning--no journal in cxl-anyssd
-Warning--no number and no volume in cxl-anyssd
-Warning--page numbers missing in both pages and numpages fields in cxl-anyssd
-Warning--no number and no volume in distributedann
-Warning--page numbers missing in both pages and numpages fields in distributedann
-Warning--empty publisher in fromblocktobyte
-Warning--empty address in fromblocktobyte
-Warning--page numbers missing in both pages and numpages fields in fromblocktobyte
-Warning--no number and no volume in phnsw
-Warning--page numbers missing in both pages and numpages fields in phnsw
-Warning--empty publisher in pipeann
-Warning--empty address in pipeann
-Warning--page numbers missing in both pages and numpages fields in pipeann
-Warning--empty publisher in skybyte
-Warning--empty address in skybyte
-Warning--page numbers missing in both pages and numpages fields in skybyte
-Warning--no number and no volume in fatrq
-Warning--page numbers missing in both pages and numpages fields in fatrq
-Warning--empty publisher in spann
-Warning--empty address in spann
-Warning--page numbers missing in both pages and numpages fields in spann
-Warning--empty publisher in cxlanns
-Warning--empty address in cxlanns
-Warning--page numbers missing in both pages and numpages fields in cxlanns
-Warning--no number and no volume in cxlanns-tocs
-Warning--page numbers missing in both pages and numpages fields in cxlanns-tocs
-Warning--empty publisher in hnsw
-Warning--empty address in hnsw
-Warning--page numbers missing in both pages and numpages fields in hnsw
-Warning--empty publisher in hm-ann
-Warning--empty address in hm-ann
-Warning--page numbers missing in both pages and numpages fields in hm-ann
-Warning--empty publisher in freshdiskann
-Warning--empty address in freshdiskann
-Warning--page numbers missing in both pages and numpages fields in freshdiskann
-Warning--empty publisher in diskann
-Warning--empty address in diskann
-Warning--page numbers missing in both pages and numpages fields in diskann
-You've used 19 entries,
+You've used 45 entries,
             6273 wiz_defined-function locations,
-            1587 strings with 20965 characters,
-and the built_in function-call counts, 17789 in all, are:
-= -- 2167
-> -- 500
+            1807 strings with 31568 characters,
+and the built_in function-call counts, 62838 in all, are:
+= -- 7223
+> -- 2846
 < -- 0
-+ -- 166
-- -- 179
-* -- 1145
-:= -- 1641
-add.period$ -- 93
-call.type$ -- 19
-change.case$ -- 122
-chr.to.int$ -- 11
-cite$ -- 65
-duplicate$ -- 1714
-empty$ -- 1241
-format.name$ -- 207
-if$ -- 4457
-int.to.chr$ -- 10
++ -- 1001
+- -- 970
+* -- 5264
+:= -- 6428
+add.period$ -- 221
+call.type$ -- 45
+change.case$ -- 498
+chr.to.int$ -- 45
+cite$ -- 45
+duplicate$ -- 5204
+empty$ -- 3632
+format.name$ -- 1142
+if$ -- 14765
+int.to.chr$ -- 2
 int.to.str$ -- 1
-missing$ -- 81
-newline$ -- 198
-num.names$ -- 118
-pop$ -- 868
+missing$ -- 194
+newline$ -- 468
+num.names$ -- 308
+pop$ -- 2173
 preamble$ -- 1
-purify$ -- 258
+purify$ -- 855
 quote$ -- 0
-skip$ -- 532
+skip$ -- 1957
 stack$ -- 0
-substring$ -- 971
-swap$ -- 86
+substring$ -- 4471
+swap$ -- 594
 text.length$ -- 0
 text.prefix$ -- 0
 top$ -- 0
-type$ -- 411
-warning$ -- 46
-while$ -- 94
+type$ -- 1196
+warning$ -- 0
+while$ -- 271
 width$ -- 0
-write$ -- 387
-(There were 46 warnings)
+write$ -- 1018

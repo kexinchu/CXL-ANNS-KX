@@ -12,7 +12,7 @@ We answer five questions:
 \begin{enumerate}
   \item[\textbf{Q1}] Does naive CXL-SSD graph ANNS fail in the ways \S\ref{sec:motivation} claimed?
   \item[\textbf{Q2}] At iso-recall, does \sys{} move FP scoring off the NAND critical path (hide), and what QPS remains vs.\ demand and vs.\ an in-window oracle?
-  \item[\textbf{Q3}] Which module (graph-in-host, bounded install, prefetch/\texttt{cont}, page-bin) moves \emph{hide} (critical-path wait, score-from-window), not only QPS?
+  \item[\textbf{Q3}] Which Wise Prefetcher decision (when, what, and how) and how much continuous batching move \emph{hide} (critical-path wait, score-from-window), not only QPS?
   \item[\textbf{Q4}] Does hide appear only after warmup (service hide), or also on a true-cold reload?
   \item[\textbf{Q5}] What remains vs.\ an in-window oracle and vs.\ PipeANN, and is the residual honest?
 \end{enumerate}
@@ -20,22 +20,24 @@ We answer five questions:
 \subsection{Setup}
 \label{sec:eval-setup}
 
+We follow established ANNS evaluation practice~\cite{annbench,bigannchallenge}: every performance comparison reports recall and uses matched-recall operating points when claiming a latency or throughput advantage.
+
 \begin{table}[t]
   \caption{Locked evaluation platform (2026-08-30, \texttt{gpu01}).}
   \label{tab:setup}
   \small
-  \begin{tabular}{@{}ll@{}}
+  \begin{tabular}{@{}p{0.28\columnwidth}p{0.65\columnwidth}@{}}
     \toprule
     Item & Configuration \\
     \midrule
     Host CPU / DRAM     & dual-socket Xeon, $\sim$64+64\,GiB host DRAM \\
     CXL-DRAM window     & \textbf{absent}; 1\,GiB DramWindow $=$ \texttt{mbind} node~1 \\
     CXL-SSD             & FPGA \texttt{nvmex}+CD8P; \texttt{/dev/vmem0}=\texttt{vmem\_sw} \\
-    Window / cache      & 1\,GiB host window, 4\,GiB \texttt{vmem\_sw} cache \\
+    Window / cache      & host scoring window; bounded \texttt{vmem\_sw} cache (reported per run) \\
     Block-SSD baseline  & PipeANN on \texttt{/mnt/disk0} (\texttt{nvme0n1}), PQ on \\
     Primary corpus      & Text2Image-10M, 200-d, MIPS \\
-    Sensitivity         & packed vs.\ page-bin; $L$ picker \\
-    Index               & Vamana $R{=}32$, oneshot FP (no PQ nav on serving) \\
+    Sensitivity         & default vs.\ co-use/extent layout; $L$ picker \\
+    Index               & Vamana $R{=}32$, host graph + PQ-64 navigation, committed FP rerank \\
     Target quality      & recall@10 $\ge 0.92$ (picker chose $L{=}400$) \\
     Protocol            & cold: \texttt{rmmod} \texttt{vmem\_sw} until \texttt{cache\_used}${}=0$ \\
     \bottomrule
@@ -74,19 +76,19 @@ If a finding does not reproduce, it is dropped from the intro, not explained awa
   \phbox{0.98\textwidth}{4.0cm}{%
     Fig.~9 money plot (hide first):\\
     stacked \texttt{crit\_wait} vs.\ compute at iso-recall;\\
-    twin axis QPS. Lines: Demand, P3 packed, P3 pagebin,\\
+    twin axis QPS. Lines: Demand, committed-page baseline, full \sys{},\\
     $-$prefetch, oracle-in-window, PipeANN $T{=}1$.}
   \caption{Hide at the primary recall floor.
     The money plot is critical-path NAND wait, not QPS alone.
     \sys{} passes only if \texttt{crit\_wait} approaches the in-window oracle.
-    QPS vs.\ PipeANN is a named residual (oneshot FP vs.\ PQ navigation).
+    QPS vs.\ PipeANN is a named memory-semantic versus block-I/O comparison.
     Until hide counters pass we write ``gap to demand,'' not ``search cannot see flash.''}
   \Description{Recall versus QPS for the proposed system and baselines.}
   \label{fig:eval-main}
 \end{figure*}
 
 \begin{table*}[t]
-  \caption{True-cold T2I-10M, $L{=}400$, $nq{=}100$, seed 42, oneshot FP.
+  \caption{True-cold T2I-10M, $L{=}400$, $nq{=}100$, seed 42, PQ-64 navigation and committed FP rerank.
     Hide cells (\texttt{crit\_wait}, score-from-window) stay \ph{} until the runtime split.
     NAND/promote columns stay \ph{} until remeasured.}
   \label{tab:eval-main}
@@ -105,25 +107,17 @@ If a finding does not reproduce, it is dropped from the intro, not explained awa
     PipeANN pipe T=1   & 0.925 & 57.6 & $1.7{\times}10^{4}$ & \ph & --- & PQ nav \\
     Oracle host DRAM ($nq{=}20$) & 0.950 & 66.5 & $4.8{\times}10^{4}$ & 0 & --- & 9.6\,GiB pop. \\
     Oracle 1\,GiB window ($nq{=}20$) & 0.925 & 85.8 & $1.5{\times}10^{4}$ & 0 & --- & WS pinned \\
-    \textbf{\sys{} hide packed} ($nq{=}20$) & 0.930 & 24.67 & $5.7{\times}10^{4}$ & \ph & 100\% win & 1\,GiB \\
-    \textbf{\sys{} hide pagebin} ($nq{=}20$, $L{=}400$) & 0.940 & 50.25 & $2.7{\times}10^{4}$ & \ph & 100\% win & 1\,GiB \\
-    \textbf{\sys{} hide pagebin} ($nq{=}100$, $L{=}400$) & 0.933 & 49.25 & $3.6{\times}10^{4}$ & \ph & 100\% win & 1\,GiB \\
-    \textbf{\sys{} P3 packed} ($nq{=}100$, pre-hide) & 0.944 & 4.08 & $2.4{\times}10^{5}$ & \ph & \ph & 1\,GiB \\
-    \textbf{\sys{} P3 pagebin} ($nq{=}100$, pre-hide) & 0.932 & 5.35 & $1.9{\times}10^{5}$ & \ph & \ph & 1\,GiB \\
+    \textbf{\sys{} committed, default layout} & \ph & \ph & \ph & \ph & \ph & \ph \\
+    \textbf{\sys{} committed, co-use layout} & \ph & \ph & \ph & \ph & \ph & \ph \\
+    \textbf{\sys{} + continuous batching} & \ph & \ph & \ph & \ph & \ph & \ph \\
     \bottomrule
   \end{tabular*}\\[2pt]
   {\footnotesize \phnote}
 \end{table*}
 
 Figure~\ref{fig:eval-main} and Table~\ref{tab:eval-main} are the submission's main result.
-On the 2026-08-30 true-cold T2I-10M boot (clock alloc, miss-only, expand-bundle pages), hide pagebin is $50.25$ QPS at $nq{=}20$ and $49.25$ at $nq{=}100$ ($L{=}400$, recall@10 $\ge 0.92$, \texttt{from\_win}${=}100\%$, bounce${}=0$, in-page slot-use $100\%$ with no extra scores).
-Neighbors of one expand share seven sequential pages; we score only those neighbors.
-Star-BFS pagebin without the bundle is $25\%$ slot-use (one of five).
-Real NVMe occupancy is sectors-read$\times$512 over the timed window over the isolated random \texttt{PREFETCH\_BATCH} peak ($1.560$\,GB/s), not ``a fill is in flight.''
-One query is $0.600/1.560=38.5\%$; four concurrent queries (private $512$\,MiB windows, $nq{=}100$) reach $1.027/1.560=65.8\%$ at $87.21$ QPS---the useful-only ceiling ($\approx 12$\,MB/q $\times 87$ QPS $\approx 1.04$\,GB/s).
-That is score-path hide; single-query service hide vs.\ the in-window oracle ($85.8$ QPS) is $50.25/85.8\approx 0.59\times$.
-QPS vs.\ PipeANN (57.6 at $L{=}2000$, PQ on, $T{=}1$) stays a named residual---oneshot FP vs.\ PQ navigation, not a hidden bar.
-We write the residual as a gap to the oracle, not ``search cannot see flash.''
+The committed-path cells stay blank until matched repetitions freeze recall, mean and tail latency, QPS, NAND traffic, and residency counters under one code and cache state.
+We report the residual to both the full-corpus Oracle and same-machine PipeANN; neither a stale oneshot result nor page touch alone is substituted for the new Wise Prefetcher path.
 
 \subsection{Q3: Each module is necessary}
 \label{sec:eval-ablate}
@@ -132,40 +126,36 @@ We write the residual as a gap to the oracle, not ``search cannot see flash.''
   \centering
   \phbox{0.98\textwidth}{3.6cm}{%
     Fig.~10 placeholder --- two panels:\\
-    (a)~leave-one-out \emph{hide} (crit-wait, score-from-window) and QPS
-    (full vs.\ $-$promote $-$prefetch $-$pagebin $-$graph-in-DRAM);
-    do not plot $-$LFU-hotset as a loss;\\
-    (b)~promote-byte / hot-set-fraction Pareto (QPS vs.\ budget).}
-  \caption{Ablation and budget Pareto.
-    Removing any contributed module must move the main metric.
-    The Pareto must show a bounded sweet spot, not ``more cache is always better.''
+    (a)~when/what: frontier issue vs.\ commit-time issue and broad vs.\ committed-page fetch;\\
+    (b)~how: default vs.\ co-use layout, with/without dense coalescing; keep continuous batching as a separate bar.}
+  \caption{Wise Prefetcher and continuous-batching ablation.
+    Prefetch variants hold candidate IDs and recall fixed; the utilization panel distinguishes page precision, vector-slot utilization, and extent utilization.
     \textbf{Fill-in:} same recall floor as Figure~\ref{fig:eval-main}.}
-  \Description{Bar ablation and a Pareto curve of cache/promote budget.}
+  \Description{A two-panel ablation of prefetch timing and target selection, followed by physical-layout and dense-read efficiency, with continuous batching reported separately.}
   \label{fig:eval-ablate}
 \end{figure*}
 
 \begin{table}[t]
-  \caption{Leave-one-out at the primary recall floor.}
+  \caption{Wise Prefetcher decisions at the primary recall floor.}
   \label{tab:ablate}
   \small
   \begin{tabular}{@{}lrrr@{}}
     \toprule
-    Variant & QPS & \texttt{crit\_wait} & From-win.\\
+    Variant & QPS & Slot use & Extent use\\
     \midrule
-    Full \sys{} (pagebin)    & 5.35 & \ph & 34\% hit \\
-    $-$ page-bin (packed)    & 4.08 & \ph & 3.1\% hit \\
-    $-$ \texttt{PREFETCH\_BATCH} & \ph & \ph & must fail hide \\
-    $-$ graph-in-host        & \ph & \ph & \ph \\
-    $-$ bounded \texttt{install\_top} & \ph & \ph & \ph \\
-    Demand only (P0)         & 1.64 & NAND-class & 1.0\% \\
-    LFU hot set (void)       & --- & --- & warm QPS collapsed \\
+    Full: Wise + continuous & \ph & \ph & \ph \\
+    Frontier-time issue     & \ph & \ph & \ph \\
+    Broad frontier payload  & \ph & \ph & \ph \\
+    Default ID layout       & \ph & \ph & \ph \\
+    No dense coalescing     & \ph & \ph & 100\% \\
+    Wise only ($-$continuous) & \ph & \ph & \ph \\
     \bottomrule
   \end{tabular}\\[2pt]
   {\footnotesize \phnote}
 \end{table}
 
 Figure~\ref{fig:eval-ablate} and Table~\ref{tab:ablate} are the falsifiability test for contribution~3.
-We also sweep promote $M$ and hot-set fraction to show the F3 lesson in a positive form: there is a budget at which precision and QPS peak, and past it they fall.
+The first two comparisons answer when and what to prefetch; the layout and coalescing comparisons answer how much of each fetched page is truly consumed; the final row isolates continuous batching without changing the prefetch set.
 
 \subsection{Q4: Cold hide versus service hide}
 \label{sec:eval-scale}

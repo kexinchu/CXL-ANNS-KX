@@ -166,6 +166,134 @@ static uint64_t nvme_read_sectors() {
   return one_dev_sectors("nvme2n1");
 }
 
+// OCC_TRACE=1: nvme GB/s vs time, and per-query PQ→C_L delay. Off by default.
+static std::atomic<int> g_occ_on{0};
+static std::chrono::steady_clock::time_point g_occ_t0;
+static std::mutex g_occ_mu;
+struct OccIss {
+  uint32_t us = 0, pq_us = 0, pages = 0, qi = 0;
+};
+struct OccNv {
+  uint32_t us = 0;
+  uint64_t sect = 0;
+};
+static std::vector<OccIss> g_occ_iss;
+static std::vector<OccNv> g_occ_nv;
+static std::atomic<bool> g_occ_stop{false};
+static std::thread g_occ_thr;
+
+static void occ_start() {
+  if (!std::getenv("OCC_TRACE")) return;
+  g_occ_on.store(1, std::memory_order_relaxed);
+  g_occ_t0 = std::chrono::steady_clock::now();
+  {
+    std::lock_guard<std::mutex> g(g_occ_mu);
+    g_occ_iss.clear();
+    g_occ_nv.clear();
+    g_occ_iss.reserve(2048);
+    g_occ_nv.reserve(512);
+  }
+  g_occ_stop.store(false, std::memory_order_relaxed);
+  g_occ_thr = std::thread([] {
+    while (!g_occ_stop.load(std::memory_order_relaxed)) {
+      auto now = std::chrono::steady_clock::now();
+      const uint32_t us =
+          (uint32_t)std::chrono::duration_cast<std::chrono::microseconds>(now - g_occ_t0)
+              .count();
+      const uint64_t sect = nvme_read_sectors();
+      {
+        std::lock_guard<std::mutex> g(g_occ_mu);
+        g_occ_nv.push_back({us, sect});
+      }
+      std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
+  });
+}
+
+static void occ_note_issue(uint32_t qi, uint32_t pages, std::chrono::steady_clock::time_point tq0) {
+  if (!g_occ_on.load(std::memory_order_relaxed)) return;
+  auto now = std::chrono::steady_clock::now();
+  OccIss ev;
+  ev.us = (uint32_t)std::chrono::duration_cast<std::chrono::microseconds>(now - g_occ_t0).count();
+  ev.pq_us = (uint32_t)std::chrono::duration_cast<std::chrono::microseconds>(now - tq0).count();
+  ev.pages = pages;
+  ev.qi = qi;
+  std::lock_guard<std::mutex> g(g_occ_mu);
+  g_occ_iss.push_back(ev);
+}
+
+static void occ_dump() {
+  if (!g_occ_on.load(std::memory_order_relaxed)) return;
+  g_occ_stop.store(true, std::memory_order_relaxed);
+  if (g_occ_thr.joinable()) g_occ_thr.join();
+  g_occ_on.store(0, std::memory_order_relaxed);
+  std::vector<OccIss> iss;
+  std::vector<OccNv> nv;
+  {
+    std::lock_guard<std::mutex> g(g_occ_mu);
+    iss.swap(g_occ_iss);
+    nv.swap(g_occ_nv);
+  }
+  const uint32_t bin_us = 20000;
+  uint32_t max_us = 0;
+  for (const auto& e : nv)
+    if (e.us > max_us) max_us = e.us;
+  for (const auto& e : iss)
+    if (e.us > max_us) max_us = e.us;
+  const uint32_t nb = max_us / bin_us + 1;
+  std::vector<uint64_t> iss_pages(nb, 0);
+  std::vector<uint32_t> iss_n(nb, 0);
+  double pq_sum = 0, pq_first = 0, pq_rest = 0;
+  uint32_t n_first = 0, n_rest = 0;
+  for (const auto& e : iss) {
+    const uint32_t b = e.us / bin_us;
+    if (b < nb) {
+      iss_pages[b] += e.pages;
+      iss_n[b]++;
+    }
+    pq_sum += e.pq_us;
+    if (e.qi < 16) {
+      pq_first += e.pq_us;
+      n_first++;
+    } else {
+      pq_rest += e.pq_us;
+      n_rest++;
+    }
+  }
+  fprintf(stderr,
+          "OCC_TRACE issues=%zu mean_pq_to_cl_ms=%.2f first16_ms=%.2f rest_ms=%.2f "
+          "wall_ms=%.1f\n",
+          iss.size(), iss.empty() ? 0 : pq_sum / 1e3 / (double)iss.size(),
+          n_first ? pq_first / 1e3 / (double)n_first : 0,
+          n_rest ? pq_rest / 1e3 / (double)n_rest : 0, max_us / 1e3);
+  const double peak = 1.560;
+  const uint32_t nvbin = 50000;
+  if (nv.size() >= 2) {
+    uint32_t b0 = 0;
+    for (uint32_t b = nvbin; b0 + 1 < nv.size(); b += nvbin) {
+      size_t lo = b0, hi = b0;
+      while (hi + 1 < nv.size() && nv[hi].us < b) hi++;
+      if (hi <= lo) {
+        b0 = hi;
+        continue;
+      }
+      const double dt = (nv[hi].us - nv[lo].us) / 1e6;
+      const uint64_t ds =
+          nv[hi].sect >= nv[lo].sect ? nv[hi].sect - nv[lo].sect : 0;
+      const double gbs = dt > 0 ? (double)ds * 512.0 / dt / 1e9 : 0;
+      const double occ = peak > 0 ? 100.0 * gbs / peak : 0;
+      fprintf(stderr, "OCC_NVME t_ms=%u..%u GBps=%.3f occ=%.1f%%\n", nv[lo].us / 1000,
+              nv[hi].us / 1000, gbs, occ);
+      b0 = hi;
+    }
+  }
+  for (uint32_t b = 0; b < nb; ++b) {
+    if (!iss_n[b]) continue;
+    fprintf(stderr, "OCC_ISSUE bin_ms=%u..%u waves=%u pages=%llu\n", b * 20, (b + 1) * 20,
+            iss_n[b], (unsigned long long)iss_pages[b]);
+  }
+}
+
 static void* map_vmem_ro(const char* dev, off_t offset, size_t len, int* out_fd = nullptr) {
   int fd = open(dev, O_RDWR);
   if (fd < 0) die("open vmem");
@@ -207,7 +335,7 @@ static void* map_dram_dax(const char* dax_dev, off_t offset, size_t bytes) {
   close(fd);
   // Fault-in window pages so first promote is not conflated with DAX fault cost.
   auto* b = static_cast<volatile char*>(p);
-  for (size_t off = 0; off < bytes; off += 2 * 1024 * 1024) b[off] = 0;
+  for (size_t off = 0; off < bytes; off += 4096) b[off] = 0;
   if (is_vmem_bar_dev(dax_dev))
     printf("mapped CXL-DRAM vmem BAR %s off=%lld len=%zu\n", dax_dev, (long long)offset,
            bytes);
@@ -225,7 +353,7 @@ static void* map_dram_numa(size_t bytes, unsigned numa_node) {
             MPOL_MF_MOVE | MPOL_MF_STRICT) != 0)
     perror("mbind warn");
   auto* b = static_cast<volatile char*>(p);
-  for (size_t off = 0; off < bytes; off += 2 * 1024 * 1024) b[off] = 0;
+  for (size_t off = 0; off < bytes; off += 4096) b[off] = 0;
   printf("mapped HOST DRAM anon+mbind node=%u len=%zu (fallback; not DAX)\n", numa_node,
          bytes);
   return p;
@@ -460,17 +588,27 @@ static std::vector<uint32_t> search_one_pq(Placement& pl, DramWindow& win, Prefe
   hpipe.vio = vio;
   hpipe.m = cur_met(win);
   hpipe.extent_run = pref.extent_run;
+  hpipe.direct_install = pref.direct_install;
+  hpipe.score = pref.hide_score;
+  uint64_t last_issue_tok = 0;
 
   auto issue_ids = [&](const std::vector<uint32_t>& ids) {
     std::vector<uint64_t> pages;
     std::unordered_set<uint64_t> ps;
     pages.reserve(ids.size() * 2);
     for (uint32_t id : ids) hide_collect_vec_pages(pl, vb, pb, id, pages, &ps);
-    if (!pages.empty()) hpipe.issue(pages, /*ttl=*/128, /*stall_if_full=*/true);
+    uint64_t tok = 0;
+    if (!pages.empty()) tok = hpipe.issue(pages, /*ttl=*/128, /*stall_if_full=*/true);
+    last_issue_tok = tok;
     return pages;
   };
 
   uint32_t expands = 0;
+  bool early_done = false;
+  std::vector<uint64_t> extra_toks;
+  const bool cl_trace = std::getenv("CL_TRACE") != nullptr;
+  std::vector<uint32_t> cl_at;
+  std::vector<std::vector<uint32_t>> cl_snaps;
   while (true) {
     hpipe.pump();
     int bi = pick_best();
@@ -479,14 +617,60 @@ static std::vector<uint32_t> search_one_pq(Placement& pl, DramWindow& win, Prefe
     uint32_t cur = cand[(size_t)bi].id;
     expanded.insert(cur);
     expands++;
+    if (cl_trace && (expands == 1 || (expands & 31u) == 0)) {
+      cl_at.push_back(expands);
+      std::vector<uint32_t> ids;
+      ids.reserve(cand.size());
+      for (const Cand& c : cand) ids.push_back(c.id);
+      cl_snaps.push_back(std::move(ids));
+    }
     expand_one(cur);
+    if (early_cl_due(expands, pref.early_cl_at, early_done)) {
+      std::vector<uint32_t> ids;
+      ids.reserve(cand.size());
+      for (const Cand& c : cand) ids.push_back(c.id);
+      issue_ids(ids);
+      if (last_issue_tok) extra_toks.push_back(last_issue_tok);
+      early_done = true;
+    }
+  }
+  if (cl_trace) {
+    std::unordered_set<uint32_t> fin;
+    std::vector<uint64_t> fpages;
+    std::unordered_set<uint64_t> fps;
+    for (const Cand& c : cand) {
+      fin.insert(c.id);
+      hide_collect_vec_pages(pl, vb, pb, c.id, fpages, &fps);
+    }
+    fprintf(stderr, "CL_TRACE expands=%u cl=%zu pages=%zu\n", expands, cand.size(),
+            fpages.size());
+    for (size_t s = 0; s < cl_snaps.size(); ++s) {
+      uint32_t hid = 0;
+      std::vector<uint64_t> sp;
+      std::unordered_set<uint64_t> sps;
+      for (uint32_t id : cl_snaps[s]) {
+        if (fin.count(id)) hid++;
+        hide_collect_vec_pages(pl, vb, pb, id, sp, &sps);
+      }
+      uint32_t hp = 0;
+      for (uint64_t p : sp) {
+        if (fps.count(p)) hp++;
+      }
+      const double frac = expands ? (double)cl_at[s] / (double)expands : 0;
+      const double id_rec = fin.empty() ? 0 : (double)hid / (double)fin.size();
+      const double pg_rec = fpages.empty() ? 0 : (double)hp / (double)fpages.size();
+      const double waste = sp.empty() ? 0 : 1.0 - (double)hp / (double)sp.size();
+      fprintf(stderr, "CL_TRACE snap expand=%u frac=%.2f id_in_final=%.3f page_in_final=%.3f waste=%.3f\n",
+              cl_at[s], frac, id_rec, pg_rec, waste);
+    }
   }
 
   std::vector<uint32_t> rerank_ids;
   rerank_ids.reserve(cand.size());
   for (const Cand& c : cand) rerank_ids.push_back(c.id);
   auto need = issue_ids(rerank_ids);
-  uint64_t wns = hpipe.wait_covering(need);
+  if (last_issue_tok) extra_toks.push_back(last_issue_tok);
+  uint64_t wns = hpipe.wait_covering(need, &extra_toks);
   if (!wns) wns = hpipe.wait_all();
   if (cur_met(win)) {
     cur_met(win)->device_fill_ns += wns;
@@ -502,18 +686,27 @@ static std::vector<uint32_t> search_one_pq(Placement& pl, DramWindow& win, Prefe
   std::vector<uint64_t> scored_pages;
   std::unordered_set<uint64_t> sps;
   for (Cand& c : cand) {
-    bool hit = win.try_copy_resident(pl.ssd_base, pl.vec(c.id), vb, buf);
-    if (!hit) win.copy_through(pl.ssd_base, pl.vec(c.id), vb, buf);
-    c.dist = vec_mips_neg(buf, qf, pl.hdr->dim, pl.hdr->vec_bytes);
+    const uint8_t* src = hpipe.vec_src(pl.vec(c.id), vb);
+    bool hit = src != nullptr;
+    if (!src) {
+      hit = hpipe.copy_vec(pl.vec(c.id), vb, buf);
+      src = buf;
+      if (!hit) win.copy_through(pl.ssd_base, pl.vec(c.id), vb, buf);
+    }
+    c.dist = vec_mips_neg(src, qf, pl.hdr->dim, pl.hdr->vec_bytes);
     if (cur_met(win)) {
       cur_met(win)->distance_comps++;
-      if (hit) cur_met(win)->note_score_from_window(1);
+      if (hpipe.score == HideScore::Bounce) cur_met(win)->note_score_from_bounce(1);
+      else if (hpipe.score == HideScore::Vmem) cur_met(win)->note_score_from_cache(1);
+      else if (hit) cur_met(win)->note_score_from_window(1);
       else cur_met(win)->note_score_from_bounce(1);
       cur_met(win)->note_pf_scored_id(c.id);
     }
     hide_collect_vec_pages(pl, vb, pb, c.id, scored_pages, &sps);
   }
   if (cur_met(win)) cur_met(win)->note_pf_used(scored_pages);
+  for (uint64_t t : extra_toks) hpipe.release_tok(t);
+  hpipe.release_pages(need);
   if (!ext_pool) pool->stop_join();
 
   std::sort(cand.begin(), cand.end(),
@@ -1340,7 +1533,8 @@ static void p3q_init(P3Q& q, Placement& pl, DramWindow& win, Prefetch& pref, con
   q.st = CbSt::Ready;
 }
 
-// Drain whatever is resident, issue one wave if pickable. No full-need barrier.
+// Drain resident scores, issue the next e4 wave if the pipe has a slot, park.
+// Never wait_covering — the stepper moves to another in-flight query.
 static bool p3q_progress(P3Q& q, Placement& pl, DramWindow& win, PrefetchHub& hub, uint32_t L,
                          uint32_t ebatch, uint32_t ahead, uint32_t iters, uint32_t Rlim) {
   const size_t vb = (size_t)pl.hdr->dim * pl.hdr->vec_bytes;
@@ -1349,7 +1543,10 @@ static bool p3q_progress(P3Q& q, Placement& pl, DramWindow& win, PrefetchHub& hu
   p3q_drain(q, pl, win, L, vb, pb);
   bool did = q.pending.size() < p0;
   uint32_t waves = 0;
-  for (uint32_t w = 0; w < (ahead ? ahead : 1); ++w) {
+  const uint32_t nwave = ahead ? ahead : 1;
+  for (uint32_t w = 0; w < nwave; ++w) {
+    if (!p3q_has_unexpanded(q, iters)) break;
+    if (hub.free_slots() <= 0) break;
     auto batch = p3q_pick(q, ebatch ? ebatch : 1, iters);
     if (batch.empty()) break;
     std::vector<uint64_t> now;
@@ -1380,6 +1577,163 @@ static bool p3q_progress(P3Q& q, Placement& pl, DramWindow& win, PrefetchHub& hu
 }
 
 static std::vector<uint32_t> p3q_finish(P3Q& q, uint32_t k) {
+  std::sort(q.cand.begin(), q.cand.end(),
+            [](const Cand& a, const Cand& b) { return a.dist < b.dist; });
+  std::vector<uint32_t> out;
+  for (size_t i = 0; i < q.cand.size() && out.size() < k; ++i) out.push_back(q.cand[i].id);
+  return out;
+}
+
+// Frozen PQ-64 end-batch, parkable: host ADC beam → one C_L issue → FP rerank.
+// Never wait_covering; another in-flight query's beam hides the materialization.
+struct PqQ {
+  uint32_t qi = 0;
+  const float* qf = nullptr;
+  std::vector<float> lut;
+  std::vector<Cand> cand;
+  std::unordered_set<uint32_t> seen;
+  std::unordered_set<uint32_t> expanded;
+  uint32_t expands = 0;
+  CbSt st = CbSt::Empty;
+  std::vector<uint64_t> need;
+  std::vector<uint64_t> fill_toks;
+  bool nand_held = false;
+  bool early_issued = false;
+  std::vector<uint8_t> fp_done;
+  uint32_t fp_n = 0;
+  std::chrono::steady_clock::time_point t0;
+};
+
+static bool pqq_covering(HidePipe& pipe, const std::vector<uint64_t>& need) {
+  return pipe.covers(need);
+}
+
+static void pqq_insert(PqQ& q, PqTable& pq, uint32_t L, uint32_t id) {
+  if (id >= pq.n) return;
+  float d = pq.dist(id, q.lut.data());
+  if (q.cand.size() >= L) {
+    auto worst = std::max_element(q.cand.begin(), q.cand.end(),
+                                  [](const Cand& a, const Cand& b) { return a.dist < b.dist; });
+    if (d >= worst->dist) return;
+    *worst = {d, id};
+  } else {
+    q.cand.push_back({d, id});
+  }
+}
+
+static void pqq_init(PqQ& q, Placement& pl, DramWindow& win, Prefetch& pref, const EntryGraph& eg,
+                     const float* qf, uint32_t qi, uint32_t L) {
+  PqTable* pq = pref.pq;
+  q = PqQ{};
+  q.qi = qi;
+  q.qf = qf;
+  q.t0 = std::chrono::steady_clock::now();
+  q.cand.reserve(L + pl.hdr->R + 8);
+  q.lut.resize((size_t)pq->nchunks * PqTable::kCentroids);
+  pq->fill_lut_ip(qf, q.lut.data());
+  pref.on_query_begin(pl, win, eg.nodes, eg.entry_id);
+  q.seen.insert(eg.entry_id);
+  pqq_insert(q, *pq, L, eg.entry_id);
+  q.st = CbSt::Ready;
+}
+
+static void pqq_early_submit(PqQ& q, Placement& pl, PrefetchHub& hub) {
+  const size_t vb = (size_t)pl.hdr->dim * pl.hdr->vec_bytes;
+  const size_t pb = hub.pipe.win->page_bytes;
+  std::vector<uint64_t> pages;
+  std::unordered_set<uint64_t> ps;
+  pages.reserve(q.cand.size() * 2);
+  for (const Cand& c : q.cand) hide_collect_vec_pages(pl, vb, pb, c.id, pages, &ps);
+  uint64_t tok = hub.submit(pages);
+  if (tok) q.fill_toks.push_back(tok);
+}
+
+static void pqq_beam(PqQ& q, Placement& pl, PqTable& pq, uint32_t L, uint32_t iters, uint32_t Rlim,
+                     PrefetchHub* hub, uint32_t early_cl_at = 0) {
+  uint32_t since_pump = 0;
+  while (true) {
+    if (iters != 0 && q.expands >= iters) break;
+    int bi = -1;
+    float bd = 0;
+    for (size_t i = 0; i < q.cand.size(); ++i) {
+      if (q.expanded.count(q.cand[i].id)) continue;
+      if (bi < 0 || q.cand[i].dist < bd) {
+        bi = (int)i;
+        bd = q.cand[i].dist;
+      }
+    }
+    if (bi < 0) break;
+    uint32_t cur = q.cand[(size_t)bi].id;
+    q.expanded.insert(cur);
+    q.expands++;
+    uint32_t nbrs_local[64];
+    hide_read_nbrs(pl, cur, nbrs_local, Rlim);
+    for (uint32_t j = 0; j < Rlim; ++j) {
+      uint32_t nb = nbrs_local[j];
+      if (nb >= pl.hdr->n || q.seen.count(nb)) continue;
+      q.seen.insert(nb);
+      pqq_insert(q, pq, L, nb);
+    }
+    if (hub && early_cl_due(q.expands, early_cl_at, q.early_issued)) {
+      pqq_early_submit(q, pl, *hub);
+      q.early_issued = true;
+    }
+    if (hub && (++since_pump & 15u) == 0) hub->pump();
+  }
+}
+
+static void pqq_issue(PqQ& q, Placement& pl, PrefetchHub& hub, bool stall = false) {
+  const size_t vb = (size_t)pl.hdr->dim * pl.hdr->vec_bytes;
+  const size_t pb = hub.pipe.win->page_bytes;
+  q.need.clear();
+  std::unordered_set<uint64_t> ps;
+  q.need.reserve(q.cand.size() * 2);
+  for (const Cand& c : q.cand) hide_collect_vec_pages(pl, vb, pb, c.id, q.need, &ps);
+  uint64_t tok = stall ? hub.submit_block(q.need) : hub.submit(q.need);
+  if (tok) q.fill_toks.push_back(tok);
+  occ_note_issue(q.qi, (uint32_t)q.need.size(), q.t0);
+  q.fp_done.assign(q.cand.size(), 0);
+  q.fp_n = 0;
+  q.st = q.need.empty() ? CbSt::Ready : CbSt::Wait;
+}
+
+// Score any covering C_L vector (window / bounce / vmem). Still commit-before-fetch:
+// only committed IDs, no mid-beam NAND.
+static bool pqq_rank(PqQ& q, Placement& pl, HidePipe& pipe) {
+  if (!pqq_covering(pipe, q.need)) return false;
+  const size_t vb = (size_t)pl.hdr->dim * pl.hdr->vec_bytes;
+  const size_t pb = pipe.win->page_bytes;
+  alignas(64) uint8_t buf[4096];
+  if (vb > sizeof(buf)) {
+    fprintf(stderr, "vec too large for score buf\n");
+    std::exit(2);
+  }
+  std::vector<uint64_t> scored_pages;
+  std::unordered_set<uint64_t> sps;
+  for (Cand& c : q.cand) {
+    const uint8_t* src = pipe.vec_src(pl.vec(c.id), vb);
+    if (!src) {
+      if (!pipe.copy_vec(pl.vec(c.id), vb, buf)) return false;
+      src = buf;
+    }
+    c.dist = vec_mips_neg(src, q.qf, pl.hdr->dim, pl.hdr->vec_bytes);
+    if (cur_met(*pipe.win)) {
+      cur_met(*pipe.win)->distance_comps++;
+      if (pipe.score == HideScore::Bounce) cur_met(*pipe.win)->note_score_from_bounce(1);
+      else if (pipe.score == HideScore::Vmem) cur_met(*pipe.win)->note_score_from_cache(1);
+      else cur_met(*pipe.win)->note_score_from_window(1);
+      cur_met(*pipe.win)->note_pf_scored_id(c.id);
+    }
+    hide_collect_vec_pages(pl, vb, pb, c.id, scored_pages, &sps);
+  }
+  if (cur_met(*pipe.win)) cur_met(*pipe.win)->note_pf_used(scored_pages);
+  for (uint64_t t : q.fill_toks) pipe.release_tok(t);
+  pipe.release_pages(q.need);
+  q.st = CbSt::Done;
+  return true;
+}
+
+static std::vector<uint32_t> pqq_finish(PqQ& q, uint32_t k) {
   std::sort(q.cand.begin(), q.cand.end(),
             [](const Cand& a, const Cand& b) { return a.dist < b.dist; });
   std::vector<uint32_t> out;
@@ -1428,6 +1782,8 @@ int main(int argc, char** argv) {
   bool page_group_b = false;
   bool install_all_fetched = false;
   bool vmem_prefetch = true;
+  bool direct_install = false;
+  HideScore hide_score = HideScore::Window;
   bool graph_in_dram = true;
   bool hide_warm_entry = true;
   const char* hide_warm_ids_path = nullptr;
@@ -1445,8 +1801,15 @@ int main(int argc, char** argv) {
   const char* graph_file = nullptr;
   const char* dump_scored = nullptr;
   int nthreads = 1;
+  int cont_inflight = 0;
   bool cont_batch_mode = false;
+  bool cont_workers_set = false;
   bool per_thread_window = true;  // each request thread owns a DramWindow (no shared lock)
+  int pipe_depth = 2;             // per-thread in-flight queries (PTW PQ path)
+  uint32_t stagger_us = 0;        // frozen steal path: no start sleep
+  bool steal_sched = true;        // frozen: dual-queue, never block compute on NAND
+  uint32_t issue_qd = 0;          // 0 = match T (steal-sched)
+  uint32_t early_cl_at = 0;       // 0 = off; issue current C_L once at this expand
   bool sync_hop = false;
   bool extent_run = false;
   bool extent_run_explicit = false;
@@ -1531,10 +1894,11 @@ int main(int argc, char** argv) {
     }
     else if (a == "--sync-hop") sync_hop = true;
     else if (a == "--no-sync-hop") sync_hop = false;
-    else if (a == "--score-cache" || a == "--no-score-cache") {
-    }
-    else if (a == "--direct-install" || a == "--no-direct-install") {
-    }
+    else if (a == "--score-bounce") hide_score = HideScore::Bounce;
+    else if (a == "--score-vmem" || a == "--score-cache") hide_score = HideScore::Vmem;
+    else if (a == "--no-score-cache") hide_score = HideScore::Window;
+    else if (a == "--direct-install") direct_install = true;
+    else if (a == "--no-direct-install") direct_install = false;
     else if (a == "--stripe-fill" || a == "--no-stripe-fill") {
     }
     else if (a == "--extent-run") {
@@ -1561,13 +1925,29 @@ int main(int argc, char** argv) {
     else if (a == "--graph-file") graph_file = need(a.c_str());
     else if (a == "--dump-scored") dump_scored = need(a.c_str());
     else if (a == "--cont-batch") {
-      nthreads = atoi(need(a.c_str()));
+      cont_inflight = atoi(need(a.c_str()));
       per_thread_window = false;
-      cont_batch_mode = nthreads > 1;
+      cont_batch_mode = cont_inflight > 0;
+      if (!cont_workers_set && cont_inflight > 0) nthreads = cont_inflight;
+    }
+    else if (a == "--cont-workers") {
+      nthreads = atoi(need(a.c_str()));
+      cont_workers_set = true;
+      per_thread_window = false;
+      if (cont_inflight > 0) cont_batch_mode = true;
     }
     else if (a == "--threads") nthreads = atoi(need(a.c_str()));
     else if (a == "--per-thread-window") per_thread_window = true;
     else if (a == "--shared-window") per_thread_window = false;
+    else if (a == "--pipe-depth") pipe_depth = atoi(need(a.c_str()));
+    else if (a == "--stagger-us") stagger_us = (uint32_t)atoi(need(a.c_str()));
+    else if (a == "--stagger-ms") stagger_us = (uint32_t)atoi(need(a.c_str())) * 1000u;
+    else if (a == "--steal-sched") steal_sched = true;
+    else if (a == "--no-steal-sched") steal_sched = false;
+    else if (a == "--issue-qd") issue_qd = (uint32_t)atoi(need(a.c_str()));
+    else if (a == "--early-cl") early_cl_at = 256;
+    else if (a == "--early-cl-at") early_cl_at = (uint32_t)atoi(need(a.c_str()));
+    else if (a == "--no-early-cl") early_cl_at = 0;
     else {
       fprintf(stderr, "unknown %s\n", a.c_str());
       return 2;
@@ -1870,6 +2250,11 @@ int main(int argc, char** argv) {
   pref.policy = parse_policy(policy_s);
   pref.budget_per_query = budget;
   pref.pin_entry = pin_entry;
+  issue_qd = effective_issue_qd(issue_qd, nthreads);
+  if (steal_sched && nthreads > 1) {
+    uint32_t io_w = issue_qd > (uint32_t)nthreads ? issue_qd : (uint32_t)nthreads;
+    if (pipe_w < io_w) pipe_w = io_w;
+  }
   pref.pipe_w = pipe_w ? pipe_w : 4;
   pref.install_top = install_top ? install_top : 4;
   pref.fetch_top = fetch_top;
@@ -1879,18 +2264,28 @@ int main(int argc, char** argv) {
   pref.issue_ahead = issue_ahead ? issue_ahead : 1;
   pref.sync_hop = sync_hop;
   pref.extent_run = extent_run;
+  pref.direct_install = direct_install;
+  pref.hide_score = hide_score;
   pref.oracle_dram = oracle_dram;
+  pref.early_cl_at = early_cl_at;
   // P2v2 is cooperative single-threaded (DAX is not safe for concurrent promote).
   if (false && pref.policy == PrefetchPolicy::P2) pref.start_async(&pl, &win);
 
   if (pref.policy == PrefetchPolicy::P3) {
     printf("P3v2 softpin W=%u budget=%zu install_top=%u fetch_top=%u page_group_b=%d "
-           "install_all=%d threads=%d per_thread_window=%d cont_batch=%d "
-           "expand_batch=%u issue_ahead=%u slot_map=%d sync_hop=%d extent_run=%d\n",
+           "install_all=%d threads=%d inflight=%d per_thread_window=%d cont_batch=%d "
+           "pipe_depth=%d expand_batch=%u issue_ahead=%u slot_map=%d sync_hop=%d extent_run=%d "
+           "direct_install=%d hide_score=%s stagger_us=%u steal_sched=%d issue_qd=%u "
+           "early_cl_at=%u\n",
            pref.pipe_w, budget, pref.install_top, pref.fetch_top, (int)page_group_b,
-           (int)install_all_fetched, nthreads, (int)per_thread_window,
-           (int)cont_batch_mode, pref.expand_batch, pref.issue_ahead,
-           (int)!pl.id_to_slot.empty(), (int)pref.sync_hop, (int)pref.extent_run);
+           (int)install_all_fetched, nthreads, cont_inflight, (int)per_thread_window,
+           (int)cont_batch_mode, pipe_depth, pref.expand_batch, pref.issue_ahead,
+           (int)!pl.id_to_slot.empty(), (int)pref.sync_hop, (int)pref.extent_run,
+           (int)pref.direct_install,
+           pref.hide_score == HideScore::Bounce ? "bounce"
+           : pref.hide_score == HideScore::Vmem ? "vmem"
+                                                 : "window",
+           stagger_us, (int)steal_sched, issue_qd, pref.early_cl_at);
   }
 
   EntryGraph eg = load_entry(entry);
@@ -2060,7 +2455,8 @@ int main(int argc, char** argv) {
   uint32_t recall_n = 0;
 
   const bool use_shared_pool =
-      pref.policy == PrefetchPolicy::P3 && !(per_thread_window && nthreads > 1);
+      pref.policy == PrefetchPolicy::P3 &&
+      (!(per_thread_window && nthreads > 1) || steal_sched);
   PageCopyPool shared_pool;
   if (use_shared_pool) shared_pool.start(pref.pipe_w);
   VmemIo vio;
@@ -2179,7 +2575,7 @@ int main(int argc, char** argv) {
       }
       c->win.init(c->dram, dram_bytes, &c->m);
       c->win.soft_pin_neighbors = page_group_b;
-      if (pref.policy == PrefetchPolicy::P3) {
+      if (pref.policy == PrefetchPolicy::P3 && !use_shared_pool) {
         c->pool.start(pref.pipe_w);
         if (hide_warm_entry && !oracle_dram) {
           hide_warm_entry_ball(pl, c->win, c->pool, &vio, hide_warm_extras, eg.entry_id,
@@ -2222,30 +2618,38 @@ int main(int argc, char** argv) {
   if (cpu_affinity) aff_cpus = list_cpu_ids();
   if (cpu_affinity && nthreads <= 1 && !aff_cpus.empty()) bind_worker_cpu(aff_cpus[0]);
   auto t0 = std::chrono::steady_clock::now();
-  const bool run_cb_sched = cont_batch_mode && nthreads > 1 &&
-                            pref.policy == PrefetchPolicy::P3 && !oracle_dram && oneshot_fp;
+  occ_start();
+  const int cb_inflight = cont_inflight > 0 ? cont_inflight : nthreads;
+  const int cb_workers = nthreads > 0 ? nthreads : 1;
+  const bool run_cb_sched = cont_batch_mode && cb_inflight > 0 && cb_workers > 0 &&
+                            pref.policy == PrefetchPolicy::P3 && !oracle_dram &&
+                            pref.pq_nav && pref.pq && !oneshot_fp;
   if (run_cb_sched) {
-    const int T = nthreads;
+    const int T = cb_inflight;
+    const int W = cb_workers;
     const uint32_t L = beam ? beam : k;
-    const uint32_t ebatch = pref.expand_batch ? pref.expand_batch : 1;
-    const uint32_t ahead = pref.issue_ahead ? pref.issue_ahead : 1;
     uint32_t Rlim = hdr->R;
     if (Rlim > 64) Rlim = 64;
     PrefetchHub hub;
     hub.bind(use_shared_pool ? &shared_pool : nullptr, &win, &pl, &vio, &metrics);
+    hub.pipe.extent_run = pref.extent_run;
+    hub.pipe.direct_install = pref.direct_install;
+    hub.pipe.score = pref.hide_score;
     if (!hub.pipe.pool) {
       fprintf(stderr, "cont-batch needs a shared PageCopyPool\n");
       return 2;
     }
-    std::vector<P3Q> slots((size_t)T);
+    std::vector<PqQ> slots((size_t)T);
     lat_ms.assign(nq, 0);
     std::vector<double> recs(nq, -1);
-    uint32_t next_q = 0;
-    uint32_t finished = 0;
-    printf("cont_batch_sched=1 inflight=%d workers=1 flush_at=%u e4a1_step=1\n", T, hub.flush_at);
+    printf("cont_batch_sched=1 pq_endbatch=1 inflight=%d workers=%d interleave=1\n", T, W);
     fflush(stdout);
-    auto finish_slot = [&](P3Q& q) {
-      auto ids = p3q_finish(q, k);
+    std::mutex sched_mu;
+    std::atomic<uint32_t> next_q{0};
+    std::atomic<uint32_t> finished{0};
+    std::atomic<int> rr{0};
+    auto finish_slot = [&](PqQ& q) {
+      auto ids = pqq_finish(q, k);
       auto tq1 = std::chrono::steady_clock::now();
       lat_ms[q.qi] = std::chrono::duration<double, std::milli>(tq1 - q.t0).count();
       if (gt_path) {
@@ -2257,54 +2661,95 @@ int main(int argc, char** argv) {
         auto g = load_gt_row(gt_all.data(), gt_k, q.qi, k);
         recs[q.qi] = recall_at_k(ids, g);
       }
-      q = P3Q{};
+      q = PqQ{};
       q.st = CbSt::Empty;
-      finished++;
+      finished.fetch_add(1, std::memory_order_relaxed);
     };
-    while (finished < nq) {
-      hub.pump();
-      bool did = false;
-      if (next_q < nq) {
-        for (int i = 0; i < T && next_q < nq; ++i) {
-          if (slots[(size_t)i].st != CbSt::Empty) continue;
-          uint32_t qi = next_q++;
-          EntryGraph qeg = eg;
-          const float* qf = qbuf.data() + (size_t)qi * qdim;
-          if (nav.loaded()) qeg.entry_id = nav.search_entry(qf, nav_l);
-          p3q_init(slots[(size_t)i], pl, win, pref, qeg, qf, qi, L);
-          did = true;
-        }
-      }
-      for (int i = 0; i < T; ++i) {
-        P3Q& q = slots[(size_t)i];
-        if (q.st == CbSt::Empty || q.st == CbSt::Done) continue;
-        if (p3q_progress(q, pl, win, hub, L, ebatch, ahead, iters, Rlim)) did = true;
-        if (q.st == CbSt::Done) finish_slot(q);
-      }
-      hub.flush();
-      if (did) continue;
-      if (finished >= nq) break;
-      bool infl = hub.any_inflight();
-      if (infl) {
-        auto t0w = std::chrono::steady_clock::now();
-        hub.pump();
-        std::this_thread::yield();
-        auto t1w = std::chrono::steady_clock::now();
-        uint64_t wns =
-            (uint64_t)std::chrono::duration_cast<std::chrono::nanoseconds>(t1w - t0w).count();
-        if (cur_met(win)) {
-          cur_met(win)->device_fill_ns += wns;
-          cur_met(win)->crit_wait_ns += wns;
-        }
-      } else {
+    auto admit = [&]() {
+      while (next_q.load(std::memory_order_relaxed) < nq) {
+        int slot = -1;
         for (int i = 0; i < T; ++i) {
-          if (slots[(size_t)i].st == CbSt::Wait && !slots[(size_t)i].need.empty())
-            hub.submit(slots[(size_t)i].need);
+          if (slots[(size_t)i].st == CbSt::Empty) {
+            slot = i;
+            break;
+          }
         }
-        hub.flush();
-        std::this_thread::yield();
+        if (slot < 0) break;
+        uint32_t qi = next_q.fetch_add(1, std::memory_order_relaxed);
+        if (qi >= nq) break;
+        EntryGraph qeg = eg;
+        const float* qf = qbuf.data() + (size_t)qi * qdim;
+        if (nav.loaded()) qeg.entry_id = nav.search_entry(qf, nav_l);
+        pqq_init(slots[(size_t)slot], pl, win, pref, qeg, qf, qi, L);
       }
+    };
+    auto pick_pq = [&]() -> int {
+      int start = rr.fetch_add(1, std::memory_order_relaxed);
+      for (int koff = 0; koff < T; ++koff) {
+        int i = (start + koff) % T;
+        if (slots[(size_t)i].st == CbSt::Ready) return i;
+      }
+      for (int koff = 0; koff < T; ++koff) {
+        int i = (start + koff) % T;
+        if (slots[(size_t)i].st == CbSt::Wait &&
+            pqq_covering(hub.pipe, slots[(size_t)i].need))
+          return i;
+      }
+      return -1;
+    };
+    std::vector<std::thread> ths;
+    std::mutex merge_mu;
+    ths.reserve((size_t)W);
+    for (int t = 0; t < W; ++t) {
+      ths.emplace_back([&, t] {
+        if (cpu_affinity) {
+          int cpu_id = aff_cpus.empty() ? t : aff_cpus[(size_t)t % aff_cpus.size()];
+          bind_worker_cpu(cpu_id);
+        }
+        Metrics local_m;
+        local_m.window_is_cxl_dram = metrics.window_is_cxl_dram;
+        tls_metrics = &local_m;
+        while (finished.load(std::memory_order_relaxed) < nq) {
+          hub.pump();
+          int idx = -1;
+          {
+            std::lock_guard<std::mutex> g(sched_mu);
+            admit();
+            idx = pick_pq();
+            if (idx >= 0) slots[(size_t)idx].st = CbSt::Busy;
+          }
+          if (idx < 0) {
+            if (!hub.any_inflight()) {
+              std::lock_guard<std::mutex> g(sched_mu);
+              for (int i = 0; i < T; ++i) {
+                if (slots[(size_t)i].st == CbSt::Wait && !slots[(size_t)i].need.empty())
+                  hub.submit(slots[(size_t)i].need);
+              }
+            }
+            std::this_thread::yield();
+            continue;
+          }
+          PqQ& q = slots[(size_t)idx];
+          // Busy replaced Ready or covering-Wait. Infer work from need/expands.
+          if (q.need.empty()) {
+            pqq_beam(q, pl, *pref.pq, L, iters, Rlim, &hub, pref.early_cl_at);
+            pqq_issue(q, pl, hub);
+            if (q.st == CbSt::Ready || pqq_covering(hub.pipe, q.need)) pqq_rank(q, pl, hub.pipe);
+          } else {
+            pqq_rank(q, pl, hub.pipe);
+          }
+          {
+            std::lock_guard<std::mutex> g(sched_mu);
+            if (q.st == CbSt::Done) finish_slot(q);
+            else if (q.st == CbSt::Busy) q.st = CbSt::Wait;
+          }
+        }
+        tls_metrics = nullptr;
+        std::lock_guard<std::mutex> g(merge_mu);
+        metrics.add_from(local_m);
+      });
     }
+    for (auto& th : ths) th.join();
     for (uint32_t qi = 0; qi < nq; ++qi) {
       if (recs[qi] >= 0) {
         recall_sum += recs[qi];
@@ -2312,9 +2757,9 @@ int main(int argc, char** argv) {
       }
       metrics.queries++;
     }
-    printf("cont_batch_hub flush_n=%llu flush_pages=%llu avg_pages=%.1f\n",
-           (unsigned long long)hub.flush_n, (unsigned long long)hub.flush_pages,
-           hub.flush_n ? (double)hub.flush_pages / (double)hub.flush_n : 0.0);
+    printf("cont_batch_hub issue_n=%llu issue_pages=%llu avg_pages=%.1f\n",
+           (unsigned long long)hub.issue_n, (unsigned long long)hub.issue_pages,
+           hub.issue_n ? (double)hub.issue_pages / (double)hub.issue_n : 0.0);
   } else if (nthreads <= 1) {
     for (uint32_t qi = 0; qi < nq; ++qi) {
       auto r = run_one_q(qi, pref, win, use_shared_pool ? &shared_pool : nullptr);
@@ -2335,6 +2780,8 @@ int main(int argc, char** argv) {
     lat_ms.assign(nq, 0);
     std::vector<double> recs(nq, -1);
     std::atomic<uint32_t> next_q{0};
+    std::atomic<uint32_t> nand_inflight{0};
+    std::mutex admit_mu;
     std::vector<std::thread> ths;
     std::mutex merge_mu;
     ths.reserve((size_t)nthreads);
@@ -2359,22 +2806,189 @@ int main(int argc, char** argv) {
         lp.issue_ahead = pref.issue_ahead;
         lp.sync_hop = pref.sync_hop;
         lp.extent_run = pref.extent_run;
+        lp.direct_install = pref.direct_install;
+        lp.hide_score = pref.hide_score;
         lp.pq_nav = pref.pq_nav;
         lp.pq = pref.pq;
         lp.neighbor_k = pref.neighbor_k;
+        lp.early_cl_at = pref.early_cl_at;
         DramWindow* tw = &win;
         PageCopyPool* pool = use_shared_pool ? &shared_pool : nullptr;
         Metrics local_m;
         if (per_thread_window) {
           tw = &thr_ctx[(size_t)t]->win;
-          pool = &thr_ctx[(size_t)t]->pool;
+          pool = use_shared_pool ? &shared_pool : &thr_ctx[(size_t)t]->pool;
           tls_metrics = &thr_ctx[(size_t)t]->m;
         } else {
           tls_metrics = &local_m;
           local_m.window_is_cxl_dram = metrics.window_is_cxl_dram;
         }
-        // require-cxl-dram: shared host + one BAR, work-steal only (no qi%T shard).
-        if (pref.freeze_fills && per_thread_window && !require_cxl_dram && !oracle_dram &&
+        const bool run_pipe2 = per_thread_window && pipe_depth >= 2 && lp.pq_nav && lp.pq &&
+                               !oneshot_fp && !oracle_dram && !oracle_window &&
+                               lp.policy == PrefetchPolicy::P3 && pool;
+        if (run_pipe2) {
+          const uint32_t L = beam ? beam : k;
+          uint32_t Rlim = hdr->R;
+          if (Rlim > 64) Rlim = 64;
+          const int D = pipe_depth > 8 ? 8 : pipe_depth;
+          PrefetchHub hub;
+          hub.bind(pool, tw, &pl, &vio, tls_metrics);
+          hub.pipe.extent_run = lp.extent_run;
+          hub.pipe.direct_install = lp.direct_install;
+          hub.pipe.score = lp.hide_score;
+          std::vector<PqQ> slots((size_t)D);
+          uint32_t next_qi = (uint32_t)t;
+          auto finish_local = [&](PqQ& q) {
+            auto ids = pqq_finish(q, k);
+            auto tq1 = std::chrono::steady_clock::now();
+            lat_ms[q.qi] = std::chrono::duration<double, std::milli>(tq1 - q.t0).count();
+            if (gt_path) {
+              if (!id_map.empty()) {
+                for (uint32_t& id : ids) {
+                  if (id < id_map.size()) id = id_map[id];
+                }
+              }
+              auto g = load_gt_row(gt_all.data(), gt_k, q.qi, k);
+              recs[q.qi] = recall_at_k(ids, g);
+            }
+            if (q.nand_held) {
+              nand_inflight.fetch_sub(1, std::memory_order_relaxed);
+              q.nand_held = false;
+            }
+            q = PqQ{};
+            q.st = CbSt::Empty;
+          };
+          auto try_issue = [&](PqQ& q) -> bool {
+            if (!issue_qd_ok(nand_inflight.load(std::memory_order_relaxed), issue_qd))
+              return false;
+            nand_inflight.fetch_add(1, std::memory_order_relaxed);
+            q.nand_held = true;
+            pqq_issue(q, pl, hub, /*stall=*/false);
+            if (q.need.empty()) {
+              nand_inflight.fetch_sub(1, std::memory_order_relaxed);
+              q.nand_held = false;
+              return true;
+            }
+            if (q.fill_toks.empty()) {
+              nand_inflight.fetch_sub(1, std::memory_order_relaxed);
+              q.nand_held = false;
+              q.st = CbSt::Hold;
+              return false;
+            }
+            return true;
+          };
+          if (steal_sched) {
+            if (t == 0) {
+              printf("steal_sched=1 depth=%d threads=%d shared_pool=1 issue_qd=%u "
+                     "admit_serial=1 early_cl_at=%u\n",
+                     D, nthreads, issue_qd, lp.early_cl_at);
+              fflush(stdout);
+            }
+            for (;;) {
+              hub.pump();
+              CbSt stbuf[8];
+              bool cov[8] = {};
+              for (int i = 0; i < D; ++i) {
+                stbuf[i] = slots[(size_t)i].st;
+                if (stbuf[i] == CbSt::Wait || stbuf[i] == CbSt::Ready)
+                  cov[i] = pqq_covering(hub.pipe, slots[(size_t)i].need);
+              }
+              const bool has_more = next_q.load(std::memory_order_relaxed) < nq;
+              const bool qd_ok =
+                  issue_qd_ok(nand_inflight.load(std::memory_order_relaxed), issue_qd);
+              auto dec = steal_decide(stbuf, cov, D, has_more, qd_ok);
+              if (dec.act == Pipe2Act::Done) break;
+              PqQ& q = slots[(size_t)dec.slot];
+              if (dec.act == Pipe2Act::Pump) {
+                std::this_thread::yield();
+                continue;
+              }
+              if (dec.act == Pipe2Act::Fill) {
+                uint32_t qi = 0;
+                {
+                  std::lock_guard<std::mutex> g(admit_mu);
+                  qi = next_q.fetch_add(1, std::memory_order_relaxed);
+                  if (qi >= nq) continue;
+                  if (flush_window) tw->flush();
+                  const float* qf = qbuf.data() + (size_t)qi * qdim;
+                  EntryGraph qeg = eg;
+                  if (nav.loaded()) qeg.entry_id = nav.search_entry(qf, nav_l);
+                  pqq_init(q, pl, *tw, lp, qeg, qf, qi, L);
+                }
+                pqq_beam(q, pl, *lp.pq, L, iters, Rlim, &hub, lp.early_cl_at);
+                if (!try_issue(q)) q.st = CbSt::Hold;
+                continue;
+              }
+              if (dec.act == Pipe2Act::Issue) {
+                if (!try_issue(q)) q.st = CbSt::Hold;
+                continue;
+              }
+              if (!pqq_covering(hub.pipe, q.need)) continue;
+              if (!pqq_rank(q, pl, hub.pipe)) {
+                q.st = CbSt::Wait;
+                continue;
+              }
+              finish_local(q);
+            }
+          } else {
+            if (t == 0) {
+              printf("pipe2_sched=1 depth=%d threads=%d per_thread_hub=1 stagger_us=%u\n", D,
+                     nthreads, stagger_us);
+              fflush(stdout);
+            }
+            {
+              const uint64_t sus = pipe2_stagger_us(t, stagger_us);
+              if (sus) std::this_thread::sleep_for(std::chrono::microseconds(sus));
+            }
+            for (;;) {
+              hub.pump();
+              CbSt stbuf[8];
+              bool cov[8] = {};
+              for (int i = 0; i < D; ++i) {
+                stbuf[i] = slots[(size_t)i].st;
+                if (stbuf[i] == CbSt::Wait || stbuf[i] == CbSt::Ready)
+                  cov[i] = pqq_covering(hub.pipe, slots[(size_t)i].need);
+              }
+              auto dec = pipe2_decide(stbuf, cov, D, next_qi < nq);
+              if (dec.act == Pipe2Act::Done) break;
+              PqQ& q = slots[(size_t)dec.slot];
+              if (dec.act == Pipe2Act::Fill) {
+                uint32_t qi = next_qi;
+                next_qi += (uint32_t)nthreads;
+                if (flush_window) tw->flush();
+                const float* qf = qbuf.data() + (size_t)qi * qdim;
+                EntryGraph qeg = eg;
+                if (nav.loaded()) qeg.entry_id = nav.search_entry(qf, nav_l);
+                pqq_init(q, pl, *tw, lp, qeg, qf, qi, L);
+                pqq_beam(q, pl, *lp.pq, L, iters, Rlim, &hub, lp.early_cl_at);
+                pqq_issue(q, pl, hub, /*stall=*/true);
+                continue;
+              }
+              if (dec.act == Pipe2Act::Wait) {
+                uint64_t wns = hub.wait_covering(q.need, &q.fill_toks);
+                if (tls_metrics) {
+                  tls_metrics->device_fill_ns += wns;
+                  tls_metrics->crit_wait_ns += wns;
+                }
+                continue;
+              }
+              if (!pqq_covering(hub.pipe, q.need)) {
+                uint64_t wns = hub.wait_covering(q.need, &q.fill_toks);
+                if (tls_metrics) {
+                  tls_metrics->device_fill_ns += wns;
+                  tls_metrics->crit_wait_ns += wns;
+                }
+              }
+              if (!pqq_rank(q, pl, hub.pipe)) {
+                uint64_t tok = hub.submit_block(q.need);
+                if (tok) q.fill_toks.push_back(tok);
+                q.st = CbSt::Wait;
+                continue;
+              }
+              finish_local(q);
+            }
+          }
+        } else if (pref.freeze_fills && per_thread_window && !require_cxl_dram && !oracle_dram &&
             !oracle_window) {
           // Same shard as the discarded pass: this window only holds qi%T==t.
           for (uint32_t qi = (uint32_t)t; qi < nq; qi += (uint32_t)nthreads) {
@@ -2408,6 +3022,7 @@ int main(int argc, char** argv) {
     }
   }
   auto t1 = std::chrono::steady_clock::now();
+  occ_dump();
   if (nthreads > 1) {
     for (auto& c : thr_ctx) {
       metrics.add_from(c->m);

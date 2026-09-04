@@ -1,292 +1,293 @@
-# FlashANNS Prefetcher-First Evaluation Design
+# Wise Prefetcher Minimal Paper Revision Plan
 
-**Status:** Approved for implementation-plan drafting
+**Status:** Revised against the current manuscript
 
 **Date:** 2026-09-04
 
-**Scope:** Evaluate the frozen PQ-64 end-batch prefetcher independently of
-Continuous Batching, first on T2I-10M and then on LAION-10M and YFCC-10M.
+**Goal:** Update only the Wise Prefetcher story to match the new PQ-guided
+implementation while preserving the paper's existing architecture:
+**Wise Prefetcher + Continuous Batching**.
 
-## Relationship to the Overall Evaluation
+## 1. Scope lock
 
-This specification is a scoped correction to
-`docs/superpowers/specs/2026-09-03-flashanns-evaluation-design.md` and
-`docs/superpowers/plans/2026-09-03-flashanns-evaluation.md`.
+This is not a new paper outline and not a full Design rewrite.
 
-It preserves their dataset identity, run-record, repetition, cold-state,
-recall, and provenance requirements. It replaces only the old Q4 / Figure 9 /
-Task 6 definition. That definition assumed live mandatory, optional-lookahead,
-and equal-byte Blind policies plus an `M={0,1,2,4,8,16}` sweep. Those policies
-do not exist in the frozen PQ-64 path: `--lookahead-k`, `--spec-beam-nbrs`, and
-`--score-page` are dropped or no-op controls, and the frozen path issues one
-rerank wave only after the host PQ beam terminates.
+The revision must preserve:
 
-Tasks 1--3 of the overall plan remain prerequisites, but they may be delivered
-as a prefetcher-only vertical slice. The T=1 recall calibration portion of Task
-4 is also required. Throughput-concurrency calibration, main continuous-mode
-runs, and Task 7 remain outside this specification.
+- the existing section order and subsection structure;
+- the C1/C2/C3 problem decomposition;
+- the four Introduction contribution bullets;
+- the overall two-mechanism design: Wise Prefetcher plus Continuous Batching;
+- the Continuous Batching motivation, scheduler, and figure;
+- Evaluation Q1--Q5 and the existing main-result/ablation structure;
+- Figure 3 and Figure 4.
 
-## Frozen Implementation Contract
-
-The evaluated implementation is the committed PQ-64 end-batch path represented
-by commit `a9f8447` and the following execution flow:
+The revision changes only the obsolete prefetcher contract:
 
 ```text
-G0 10k navigation -> entry
-  -> host PQ-64 beam with L candidates and host neighbor lists
-  -> collect nonresident full-precision vector pages for final candidates
-  -> issue one HidePipe rerank wave
-  -> copy bounce pages into DramWindow
-  -> wait until every required page is resident
-  -> full-precision MIPS rerank from DramWindow -> top 10
+old: frontier top-M -> predict soon-to-expand neighbors -> lookahead fill
+new: PQ navigation -> commit rerank candidates -> fetch their FP-vector pages
 ```
 
-The prefetcher core is frozen. Evaluation work must not change
-`search_one_pq`, `hide_fill.hpp`, the PQ-64 codebooks, the ID-to-slot map, or
-the staged 1100 GiB extent image. New tests, manifests, runners, validators,
-sidecars, and additive metrics are allowed only when they do not alter
-candidate selection, I/O scheduling, placement, or returned IDs.
+Continuous Batching remains the second mechanism. Its interface to the updated
+prefetcher is simply clearer: the Wise Prefetcher produces precise page batches;
+Continuous Batching schedules such batches across in-flight queries to sustain
+device parallelism.
 
-All runs in this specification use one admitted query and one search thread.
-They must not pass `--cont-batch`; Continuous Batching is evaluated later from
-the same validated run-record format.
+## 2. The three questions the revised prefetcher must answer
 
-## Evaluation Questions
+### Q-P1. When does FlashANNS prefetch?
 
-The prefetcher-first evaluation answers five questions:
+**Answer:** after host-side PQ navigation commits the bounded rerank candidate
+set, and before full-precision reranking begins.
 
-1. Does the host PQ beam perform zero CXL-SSD reads before the final rerank
-   candidate set is fixed?
-2. For an identical PQ-64 candidate set, how much do batched page reads improve
-   throughput and tail latency over serialized transfer?
-3. Does extent-aware issue reduce I/O commands or improve locality without
-   changing candidates, returned IDs, or recall?
-4. Are all full-precision scores computed from resident window bytes, with no
-   score attributed to a bounce buffer or implicit synchronous device read?
-5. Do the answers hold at matched recall on T2I-10M, LAION-10M, and YFCC-10M,
-   including true-cold and immediate-warm execution?
+This replaces all claims that FlashANNS predicts the next hop or prefetches the
+current frontier's likely neighbors. The trigger is a search-semantic event,
+not a fixed hop count, queue threshold, or speculative lookahead distance.
 
-## Claims and Non-Claims
+The paper should explain the timing tradeoff in one paragraph:
 
-The resulting evidence may support these claims:
+- fetching during traversal is earlier but speculative;
+- fetching on the exact-scoring load is precise but too late;
+- fetching at candidate commitment is precise and still precedes exact use.
 
-- PQ-guided end-batch issue removes NAND access from the navigation dependency
-  chain and concentrates required vector reads into one final wave.
-- Batched transfer and extent-aware issue improve performance relative to
-  same-candidate serialized and non-extent controls.
-- The frozen path preserves returned IDs across transfer controls and scores
-  full-precision vectors only after residency.
+The prefetcher does not claim that the materialization wait disappears. It
+claims that exact-scoring loads operate on already materialized pages.
 
-It must not claim:
+### Q-P2. What does FlashANNS prefetch?
 
-- mandatory/optional separation, bounded frontier lookahead, or an equal-byte
-  Blind policy;
-- a benefit from Continuous Batching;
-- physical CXL-DRAM residency when the scoring window uses NUMA host DRAM;
-- that the legacy one-shot FP hop path has identical search semantics to the
-  PQ-64 path;
-- cross-dataset completion before all three 10M datasets pass the final gates.
+**Answer:** only the missing full-precision vector pages belonging to the
+committed rerank candidates.
 
-## Controlled Systems
+The graph adjacency and PQ codes remain in host DRAM and are used to decide the
+candidate set. After commitment, FlashANNS maps candidate IDs to physical vector
+pages, removes resident and in-flight pages, deduplicates repeated page IDs, and
+issues the remaining pages. It does not prefetch graph pages, a two-hop
+neighborhood, unused siblings, or the entire approximate frontier.
 
-The core comparison holds the navigation graph, PQ-64 codebook, query order,
-candidate limit `L`, final `k=10`, CPU binding, window size, cache size, record
-layout, and returned-ID mapping fixed.
+The key invariant is:
 
-| ID | System | Transfer configuration | Role |
+> Every requested page is justified by at least one committed vector that will
+> participate in exact reranking.
+
+### Q-P3. How does FlashANNS prefetch efficiently?
+
+**Answer:** it increases useful data per Flash read through rerank-aware physical
+placement and conservative request formation.
+
+The design has three supporting steps:
+
+1. **Rerank-aware placement.** Training-query traces identify vectors that
+   frequently enter the same committed rerank set. Such vectors are placed in
+   the same or nearby 4-KiB pages. Training and evaluation queries must be
+   disjoint.
+2. **Exact online filtering.** Residency filtering, in-flight filtering, and
+   page deduplication prevent redundant reads within the committed wave.
+3. **Density-bounded coalescing.** Nearby requested pages are combined only
+   when the short run is sufficiently dense. The runtime must not fill sparse
+   stripe holes merely to increase I/O size.
+
+“Page utilization” must not be represented by one ambiguous percentage. The
+paper should distinguish:
+
+- **page precision:** fraction of fetched pages containing at least one scored
+  vector;
+- **vector-slot utilization:** scored vector slots divided by all vector slots
+  carried by fetched pages; this is the primary real-page-use metric;
+- **extent utilization:** requested pages divided by all pages actually read
+  after coalescing; this exposes hole-fill amplification.
+
+## 3. Mismatches in the current manuscript
+
+| Current location | Obsolete statement | Minimal correction | Reason |
 |---|---|---|---|
-| `pq-oracle` | PQ-64 navigation and FP rerank from a fully resident corpus | No timed NAND access | Same-search upper bound |
-| `pq-serial` | PQ-64 end-batch with one copy worker | `--no-vmem-prefetch --pipe-w 1 --no-extent-run` | Serialized transfer control |
-| `pq-batch` | PQ-64 end-batch using `READ_BATCH` | `--pipe-w 16 --no-extent-run` | Isolate batched-read contribution |
-| `pq-frozen` | PQ-64 end-batch using `READ_BATCH` and extent-aware issue | `--pipe-w 16 --extent-run` with the frozen extent layout | Final prefetcher |
+| `paper/main.tex` Abstract | complete graph-and-vector records stay on Flash; soon-to-expand pages are prefetched | graph/PQ guide host-side navigation; committed FP-vector pages are prefetched | current placement and trigger changed |
+| `paper/sections/intro.tex` system paragraph and contribution 3 | fixed records share one residency decision; frontier pages are promoted | separate search information from FP payload; preserve “Wise Prefetcher + Continuous Batching” | restore implementation truth without changing thesis |
+| Intro Figure 1(c) | graph and vectors both reside on dual Flash | host graph/PQ, Flash FP vectors, bounded CXL-side cache | figure currently contradicts D1 and code |
+| `paper/sections/motivation.tex` C2 takeaway | useful policy fetches soon-to-expand nodes | useful policy waits for candidate commitment and fetches only rerank payload | motivation must lead to the new trigger |
+| `paper/sections/design.tex` D2 | frontier top-M, byte budget, `install_top` | when/what/how contract above | D2 is the core rewrite |
+| Design D4 opening | next-hop lookahead plus continuous batching | precise committed-page batches plus continuous cross-query issue | preserve Continuous Batching, change only its input |
+| `paper/sections/impl.tex` opening | hop-ranked miss pages and bounce scoring | PQ navigation, committed page wave, residency barrier, FP rerank | implementation paragraph is stale |
+| `paper/sections/eval.tex` Setup/Q3 | serving path is oneshot FP; ablation uses old promote/pagebin labels | identify PQ path and rename only the Wise Prefetcher ablation rows/metrics | Evaluation needs synchronization, not redesign |
 
-Two diagnostic controls are kept outside the normalized core comparison:
+## 4. Section-by-section modification plan
 
-- `legacy-fp-hop`: the superseded one-shot FP e4/a1 path. It demonstrates the
-  serialized NAND pathology but is not a same-search speedup denominator.
-- `pq32-sensitivity`: the 32-byte code path on T2I-10M only. It tests why the
-  frozen contract requires PQ-64 and is not a three-dataset system.
+### Task 1: Correct Abstract and Introduction
 
-Before `pq-serial` is accepted as the serialized control, a smoke trace must
-prove that it emits no `VMEM_IOC_READ_BATCH` or `VMEM_IOC_PREFETCH_BATCH` calls
-and uses a single transfer worker. If that cannot be proven without changing
-the frozen core, the label becomes `mmap-single-worker`; the paper must not
-call it synchronous per-page Demand.
+**Files:** `paper/main.tex`, `paper/sections/intro.tex`
 
-## Dataset Rollout
+**Modify only:** the storage-placement sentence, the Wise Prefetcher definition,
+Figure 1(c), the C2 solution paragraph, and contribution 3.
 
-### Milestone A: T2I-10M vertical slice
+- Keep the problem statement, C1/C2/C3 ordering, score-hide/query-hide terms,
+  Continuous Batching paragraph, and four-bullet contribution structure.
+- Define Wise Prefetcher in one compact sentence answering when, what, and how.
+- Replace “graph and vectors share fixed records on Flash” with the actual split:
+  host graph/PQ information and Flash full-precision vector payload.
+- Preserve the combined contribution title, **A wise prefetcher plus continuous
+  batching**. Revise only its prefetcher half; retain the batching half about
+  sustaining device depth across queries.
+- Redraw only panel (c) of Figure 1 if textual edits cannot express the corrected
+  placement. Panels (a) and (b) remain unchanged.
 
-T2I-10M is first because its frozen PQ-64 codebook, graph, extent image, slot
-map, queries, and recall@10 ground truth already have a documented recipe.
-Milestone A completes the runner, schema, correctness checks, recall
-calibration, five-repeat measurement, validation, and provisional Figure 9
-using only T2I data.
+**Reason:** the first two pages currently define a different prefetcher and a
+different storage placement from the implementation. This is a contract repair,
+not a new narrative.
 
-Milestone A is not cross-dataset completion and cannot replace the final paper
-figure.
+**Acceptance:** a reviewer can answer when/what/how from the Introduction while
+still identifying Continuous Batching as the second core design.
 
-### Milestone B: cross-dataset completion
+### Task 2: Change only the C2 conclusion in Motivation
 
-LAION-10M and YFCC-10M enter the same runner only after each dataset manifest
-validates native dimensions, metric, execution datatype, record stride, graph,
-queries, ground truth, PQ-64 artifacts, packed layout, and deterministic
-readback. No vector may be truncated or projected to fit T2I's record format.
+**File:** `paper/sections/motivation.tex`
 
-Figure 9 and the prefetcher task are complete only after all three datasets
-pass the final gates.
+**Modify only:** lines corresponding to the conclusion after Figure 4, the C2
+sentence in “From measurements to constraints,” and the C2 table row.
 
-## Experiment Phases
+- Preserve all measured Figure 3/Figure 4 data, captions, files, and the negative
+  result that wider two-hop prefetch lowers precision.
+- Replace “prefetch the soon-to-expand frontier” with “delay FP-vector fetch
+  until approximate search commits the rerank candidates.”
+- Add one sentence connecting wrong-page amplification to low vector-slot
+  utilization; do not introduce implementation parameters here.
+- Leave the C3 subsection and Continuous Batching motivation untouched.
 
-### P0: identity and live-state preflight
+**Reason:** existing measurements still support the problem. Only the positive
+design conclusion derived from them has changed.
 
-Record the commit, dirty-tree hash, binary hash, command, dataset artifacts,
-PQ artifacts, graph, ID maps, and staged-image identity. Before a live VMEM
-run, fail closed unless the expected device, logical offset, image magic,
-backing devices, cache limit, dirty-byte count, open-user state, and I/O-error
-counter are known.
+**Acceptance:** C2 leads directly to D2's new trigger and target; C3 still leads
+directly to Continuous Batching.
 
-The preflight is read-only. It must not restage an image, reformat storage,
-reload a module, flush dirty data, or alter the backing-device topology. Such
-an operation requires a separate explicitly approved procedure.
+### Task 3: Rewrite D2 around when, what, and how
 
-### P1: offline contract tests
+**Files:** `paper/sections/design.tex`,
+`paper/sections/fig_design_wise.tex`
 
-Offline tests validate:
+Keep D1--D5 and their order. D2 remains the Wise Prefetcher subsection and is
+the only subsection receiving a substantial rewrite.
 
-- PQ-64 pivot/code dimensions and item counts;
-- ID permutation and slot-map bounds;
-- deterministic candidate IDs for a fixed query, `L`, and binary;
-- requested-page deduplication and extent expansion accounting;
-- separation of requested pages from extent-added pages;
-- rejection of deprecated/no-op controls by the experiment manifest;
-- schema rejection when identity, counter, latency, or returned-ID evidence is
-  absent.
+D2 should contain three short paragraphs:
 
-### P2: T2I 100-query proof run
+1. **When---candidate commitment.** PQ navigation finishes before FP payload
+   movement; prefetch begins immediately before reranking.
+2. **What---committed vector payload.** Translate committed IDs into missing,
+   unique physical pages; exclude graph/PQ and speculative neighbors.
+3. **How---useful page formation.** Use rerank-aware placement, online
+   deduplication, and density-bounded short extents to raise real slot use while
+   bounding read amplification.
 
-Run `pq-oracle`, `pq-serial`, `pq-batch`, and `pq-frozen` on the same 100 query
-IDs before any large sweep. The proof passes only if:
+Replace the D2 figure with a left-to-right diagram labeled **WHEN / WHAT / HOW**.
+The center should be `COMMIT C_L`; the right side should show the scoring window
+and exact rerank. Remove optional lookahead, frontier top-M, residual lookahead
+budget, and live precision-controller elements.
 
-- PQ candidate-ID sidecars are identical across all four systems;
-- final returned-ID sidecars are identical across the three transfer modes;
-- recall is identical across transfer modes;
-- the PQ navigation interval has zero NAND-byte and device-command deltas;
-- every required rerank page becomes resident before FP scoring;
-- `pq-frozen` reports zero bounce scores;
-- no mandatory rerank page is dropped;
-- no live-state or artifact-identity gate fails.
+**Reason:** D2 currently describes the retired implementation. A localized D2
+rewrite is smaller and clearer than redistributing the prefetcher across D1--D4.
 
-Any failed condition blocks scale-up; it is recorded rather than averaged away.
+**Acceptance:** D2 explains the three decisions without function names or a
+parameter inventory, and its figure can be understood independently.
 
-### P3: recall calibration
+### Task 4: Make only interface-level edits outside D2
 
-For each ready dataset, run 500 fixed queries with
-`L={50,100,200,400,800,1600}`. Activate `L={2400,3200}` only when the base
-sweep does not cover the common recall interval. Freeze the nearest measured
-point at or above recall@10 0.90; additionally freeze T2I's nearest point at or
-above 0.92.
+**Files:** `paper/sections/design.tex`,
+`paper/sections/fig_design_cont.tex`
 
-The final plotter may not choose `L`. `pq32-sensitivity` runs only in the T2I
-calibration and is retained even when it misses the recall anchor.
+- In the Design opening, replace the lookahead sentence with the committed-wave
+  definition; keep the following inter-query Continuous Batching sentence.
+- In D1 and its placement table, replace “frontier-top neighbors” with
+  “committed rerank vectors.” Do not restructure the table.
+- In D3, remove only stale references to `install_top` if they no longer describe
+  the committed path; retain entry/soft-pin treatment.
+- In D4, rename its prefetch input from “next-hop/lookahead pages” to
+  “committed page batches.” Preserve the fetch-level cross-query scheduling,
+  target device depth, and Continuous Batching figure structure.
+- In D5, retain score-hide observability and add vector-slot and extent
+  utilization alongside page precision.
 
-### P4: final T=1 measurements
+**Reason:** these are interface references to D2. Leaving them unchanged would
+make the Design internally inconsistent; rewriting the subsections would violate
+the minimal-change constraint.
 
-For every dataset/system/selected-`L` block:
+**Acceptance:** D1--D5 remain recognizable and Continuous Batching is neither
+removed nor demoted.
 
-- run exactly 10,000 fixed queries;
-- collect five independent measured repetitions;
-- randomize system order with a recorded seed;
-- reset and validate the device cache and DramWindow before the cold run;
-- capture one immediate warm pass before the next reset;
-- keep CPU allocation, frequency policy, NUMA placement, and resource budgets
-  fixed;
-- preserve every valid negative or neutral result.
+### Task 5: Synchronize Implementation in one compact replacement
 
-Each point reports sustained QPS; mean, p50, p95, p99, and maximum latency;
-recall@10; NAND bytes and commands per query; requested, deduplicated,
-extent-added, useful, evicted, and late pages; batch count and pages per batch;
-critical wait and copy time; score-source counts; cache/window state; and CPU
-and device utilization.
+**File:** `paper/sections/impl.tex`
 
-### P5: cross-dataset expansion
+- Replace the obsolete opening description with the actual path: host graph/PQ
+  navigation, committed candidate-to-page translation, one materialization
+  wave, residency barrier, then FP rerank.
+- Correct the placement/capacity facts required to interpret D2.
+- Keep the existing “what we measure / what is implemented / what is not
+  implemented” paragraph structure.
+- Do not expand Implementation into a second Design section.
 
-Repeat P2--P4 without changing policy definitions when LAION and YFCC pass
-their manifests. Dataset-specific record strides and absolute window sizes are
-recorded, while the paper reports both GiB and corpus percentage.
+**Reason:** a reviewer will check D2 against Implementation immediately. One
+paragraph must substantiate the revised mechanism.
 
-### P6: validation and Figure 9
+### Task 6: Apply minimal Evaluation synchronization
 
-Figure 9 is redefined as:
+**File:** `paper/sections/eval.tex`
 
-- **Panel (a):** normalized matched-recall QPS for `pq-serial`, `pq-batch`, and
-  `pq-frozen`, grouped by dataset; `pq-serial` is 1.0.
-- **Panel (b):** requested pages/query, extent-added pages/query, NAND
-  MiB/query, and useful-page percentage. These values are separate aligned
-  marks or subpanels and must not use a dual y-axis.
-- **Panel (c):** mean and p99 latency plus critical-wait contribution for the
-  same points.
+Do not add or remove evaluation questions, subsections, or main figures. Do not
+change Q1, Q2, Q4, or Q5 except where an obsolete prefetcher label appears.
 
-`pq-oracle` appears as the upper-bound marker. `legacy-fp-hop` and
-`pq32-sensitivity` are reported as negative/sensitivity results in an appendix
-or compact companion table, not in the normalized same-search bars.
+Only make these changes:
 
-## Run Records and Data Flow
+1. Update the Setup index row from oneshot FP/no-PQ navigation to the evaluated
+   PQ-guided path.
+2. Keep Q3 as the existing module-ablation section. Within its current figure
+   or table, replace obsolete `-promote/-pagebin` variants with three compact
+   Wise Prefetcher comparisons corresponding to when, what, and how.
+3. Add vector-slot utilization and extent utilization to the existing Q3
+   evidence; do not create a new utilization figure.
+4. Preserve the Continuous Batching ablation as a separate row/component in Q3.
+5. Replace stale numbers or labels only after matched reruns; do not alter the
+   recall/latency/throughput plotting contract.
 
-One declarative matrix expands into immutable run directories. Each invocation
-writes:
+**Reason:** Evaluation already asks whether each module is necessary. The new
+prefetcher implementation changes the ablation labels and explanatory metrics,
+not the evaluation architecture.
 
-```text
-run.json
-latency_ns.u64
-result_ids.u32
-candidate_ids.u32 plus per-query offsets
-device_before.json
-device_after.json
-stdout.log
-```
+**Acceptance:** the Evaluation diff is small, Q1--Q5 remain intact, and Q3 can
+validate all three prefetcher decisions without obscuring Continuous Batching.
 
-`run.json` contains artifact hashes, binary identity, full command, policy ID,
-dataset identity, query IDs, `L`, resource budgets, cold/warm state, counter
-deltas, score sources, page classes, timings, and sidecar hashes. Validation
-recomputes recall and latency percentiles from sidecars and rejects disagreement
-with stdout summaries.
+### Task 7: Bounded terminology and consistency pass
 
-Validated JSON is the only input to aggregation and plotting. Historical logs
-may guide smoke expectations but cannot be inserted into final figures.
+**Files:** `paper/sections/discussion.tex`,
+`paper/sections/conclusion.tex`, plus a global stale-term scan
 
-## Fairness and Failure Handling
+- Replace only stale prefetcher terms such as next-hop lookahead,
+  soon-to-expand pages, frontier top-M promotion, and graph/vector shared Flash
+  records.
+- Do not restructure Related Work, Discussion, or Conclusion.
+- Preserve every Continuous Batching claim not logically dependent on the old
+  lookahead interface.
+- Compile and inspect page count, references, and the revised Wise Prefetcher
+  figure at final column size.
 
-- Core speedups use only `pq-serial`, `pq-batch`, and `pq-frozen` at identical
-  candidate IDs and measured recall.
-- No extrapolation is allowed when a system misses the recall anchor.
-- The `pq-oracle` timed interval must have zero NAND bytes.
-- A point is invalid if candidate IDs or returned IDs differ across transfer
-  modes, a mandatory page is dropped, a score occurs before residency, bounce
-  scoring is nonzero, reset evidence is absent, hashes differ, the query count
-  is incomplete, or throttling/reset/I/O errors occur.
-- Invalid runs remain in the raw results with a machine-readable rejection
-  reason; they are never silently filtered or retried into the same run ID.
-- A NUMA-backed window is labeled host DRAM. A physical CXL-DRAM claim requires
-  the DAX/BAR backend and its identity evidence.
+## 5. Evaluation evidence for the three decisions
 
-## Completion Gates
+Reuse the current Q3 ablation rather than designing a new evaluation chapter:
 
-The prefetcher-first evaluation is complete only when all of the following are
-true:
+| Decision | Minimal comparison | Primary evidence |
+|---|---|---|
+| When | early/frontier issue vs. commit-time issue | wasted NAND bytes and residual materialization wait |
+| What | broad frontier payload vs. committed missing FP pages | unique pages/query and page precision |
+| How | default layout vs. rerank-aware layout, with/without dense coalescing | vector-slot utilization, extent utilization, QPS/p99 |
 
-1. Offline contract and schema-negative tests pass.
-2. T2I, LAION, and YFCC manifests and 100-query proof runs pass.
-3. Every core final point has five valid cold repetitions and paired warm runs.
-4. Candidate IDs and final returned IDs match across transfer modes at equal
-   dataset/query/`L` identity.
-5. PQ navigation has zero NAND activity, `pq-oracle` has zero timed NAND
-   activity, and `pq-frozen` has zero bounce scoring.
-6. Recall and all latency statistics are independently recomputable from
-   sidecars.
-7. Figure 9 and its provenance map contain no hand-entered measurement.
-8. The paper and overall evaluation plan no longer describe an optional
-   lookahead or Blind policy that the frozen implementation does not provide.
+All comparisons must hold candidate IDs, search budget, and recall constant.
+The current provisional T2I result may motivate the experiment but cannot yet
+support a general throughput claim for the layout.
 
-Passing Milestone A permits T2I implementation feedback and a provisional
-figure. It does not satisfy gates 2--8 for the final cross-dataset claim.
+## 6. Final reviewer test
+
+The revision succeeds only if all four statements are simultaneously true:
+
+1. The paper is still visibly about **Wise Prefetcher + Continuous Batching**.
+2. The revised Wise Prefetcher clearly answers when, what, and how.
+3. The substantial prose/figure rewrite is confined to D2, with only necessary
+   contract edits before and after it.
+4. Evaluation retains its current structure and changes only the prefetcher
+   configuration, ablation labels, and utilization metrics.

@@ -1,0 +1,70 @@
+\begin{tikzpicture}[
+  x=1cm,y=1cm,
+  lane/.style={font=\small\bfseries,anchor=east},
+  block/.style={draw=black!65,thick,rounded corners=1pt,
+                minimum height=0.58cm,align=center,font=\footnotesize},
+  expand/.style={block,fill=blue!12},
+  wait/.style={block,fill=red!8,draw=red!65!black},
+  score/.style={block,fill=green!13,draw=green!55!black},
+  issue/.style={block,fill=violet!10,draw=violet!70!black},
+  queue/.style={draw=black!70,thick,rounded corners=1.5pt,
+                minimum height=0.72cm,align=center,font=\footnotesize},
+  flow/.style={->,thick,draw=black!70},
+  wake/.style={->,thick,dashed,draw=green!55!black}
+]
+  \draw[->,black!65] (1.25,5.75)--(16.85,5.75)
+    node[anchor=west,font=\footnotesize] {time};
+  \node[lane] at (1.05,4.85) {Q0};
+  \node[lane] at (1.05,3.85) {Q1};
+  \node[lane] at (1.05,2.85) {Q2};
+  \foreach \y in {4.85,3.85,2.85}
+    \draw[black!15] (1.25,\y-0.44)--(16.75,\y-0.44);
+
+  \node[expand,minimum width=1.70cm] (q0e) at (2.20,4.85) {expand};
+  \node[issue,minimum width=1.25cm] (q0i) at (3.82,4.85) {issue};
+  \node[wait,minimum width=4.00cm] (q0w) at (6.70,4.85) {\textsc{Wait\_Fill} for $p_a,p_b$};
+  \node[score,minimum width=1.60cm] (q0s) at (10.05,4.85) {score};
+  \node[expand,minimum width=1.60cm] at (11.85,4.85) {expand};
+  \draw[flow] (q0e)--(q0i); \draw[flow] (q0i)--(q0w);
+  \draw[flow] (q0w)--(q0s);
+
+  \node[expand,minimum width=1.70cm] (q1e) at (4.05,3.85) {expand};
+  \node[issue,minimum width=1.25cm] (q1i) at (5.67,3.85) {issue};
+  \node[wait,minimum width=1.55cm] (q1w) at (7.23,3.85) {wait $p_c$};
+  \node[score,minimum width=1.60cm] (q1s) at (9.05,3.85) {score};
+  \node[expand,minimum width=1.60cm] at (10.85,3.85) {expand};
+  \draw[flow] (q1e)--(q1i); \draw[flow] (q1i)--(q1w);
+  \draw[flow] (q1w)--(q1s);
+
+  \node[expand,minimum width=1.70cm] (q2e) at (5.95,2.85) {expand};
+  \node[issue,minimum width=1.25cm] (q2i) at (7.57,2.85) {issue};
+  \node[wait,minimum width=1.55cm] (q2w) at (9.13,2.85) {wait $p_b$};
+  \node[score,minimum width=1.60cm] (q2s) at (10.95,2.85) {score};
+  \node[block,fill=black!5,minimum width=1.20cm] at (12.55,2.85) {done};
+  \draw[flow] (q2e)--(q2i); \draw[flow] (q2i)--(q2w);
+  \draw[flow] (q2w)--(q2s);
+
+  \node[queue,fill=red!8,draw=red!65!black,minimum width=2.75cm] (mq)
+    at (2.80,1.25) {committed-page queue\\ready for issue};
+  \node[queue,fill=orange!9,draw=orange!80!black,dashed,minimum width=2.75cm] (oq)
+    at (2.80,0.35) {new-query queue\\continuous admission};
+  \node[queue,fill=blue!8,minimum width=2.65cm] (dedup)
+    at (6.35,0.80) {global 4\,KiB dedup\\$p_b$: Q0 + Q2};
+  \node[queue,fill=violet!10,draw=violet!70!black,minimum width=2.45cm] (engine)
+    at (9.65,0.80) {shared Flash$\rightarrow$CXL\\fill engine};
+  \node[queue,fill=green!12,draw=green!55!black,minimum width=2.80cm] (fan)
+    at (13.10,0.80) {CXL-resident once + fan-out\\host admit / wake waiters};
+
+  \draw[flow,draw=red!65!black] (mq.east)--(dedup.west);
+  \draw[flow,draw=orange!80!black,dashed] (oq.east)--(dedup.west);
+  \draw[flow] (dedup)--(engine);
+  \draw[flow] (engine)--(fan);
+
+  \draw[->,violet!70!black,thick] (q0i.south) -- ++(0,-0.45) -| (mq.north);
+  \draw[->,violet!70!black,thick] (q1i.south) -- ++(0,-0.28) -| (mq.north);
+  \draw[->,violet!70!black,thick] (q2i.south) -- ++(0,-0.20) -| (mq.north);
+  \draw[wake] (fan.north) -- ++(0,0.40) -| (q0s.south);
+  \draw[wake] (fan.north) -- ++(0,0.25) -| (q1s.south);
+  \draw[wake] (fan.north) -- ++(0,0.10) -| (q2s.south);
+
+\end{tikzpicture}
