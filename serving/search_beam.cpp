@@ -338,6 +338,12 @@ static float vec_mips_neg(const uint8_t* raw, const float* q, uint32_t dim, uint
   return -s;
 }
 
+static float vec_distance(const uint8_t* raw, const float* q, uint32_t dim, uint32_t vec_bytes,
+                          DistanceMetric metric) {
+  return metric == DistanceMetric::Mips ? vec_mips_neg(raw, q, dim, vec_bytes)
+                                        : vec_l2(raw, q, dim, vec_bytes);
+}
+
 static Metrics* cur_met(DramWindow& win) {
   return tls_metrics ? tls_metrics : win.metrics;
 }
@@ -362,7 +368,7 @@ static std::vector<uint32_t> search_one_pq(Placement& pl, DramWindow& win, Prefe
     fprintf(stderr, "pq-nav needs loaded --pq-pivots/--pq-compressed\n");
     std::exit(2);
   }
-  pq->begin_query_ip(qf);
+  pq->begin_query(qf, pref.metric);
   pref.on_query_begin(pl, win, eg.nodes, eg.entry_id);
 
   const size_t vb = (size_t)pl.hdr->dim * pl.hdr->vec_bytes;
@@ -421,7 +427,7 @@ static std::vector<uint32_t> search_one_pq(Placement& pl, DramWindow& win, Prefe
 
   auto fp_rerank_dram = [&]() {
     for (Cand& c : cand) {
-      c.dist = vec_mips_neg(pl.vec(c.id), qf, pl.hdr->dim, pl.hdr->vec_bytes);
+      c.dist = vec_distance(pl.vec(c.id), qf, pl.hdr->dim, pl.hdr->vec_bytes, pref.metric);
       if (cur_met(win)) {
         cur_met(win)->distance_comps++;
         cur_met(win)->note_score_from_window(1);
@@ -516,7 +522,7 @@ static std::vector<uint32_t> search_one_pq(Placement& pl, DramWindow& win, Prefe
       src = buf;
       if (!hit) win.copy_through(pl.ssd_base, pl.vec(c.id), vb, buf);
     }
-    c.dist = vec_mips_neg(src, qf, pl.hdr->dim, pl.hdr->vec_bytes);
+    c.dist = vec_distance(src, qf, pl.hdr->dim, pl.hdr->vec_bytes, pref.metric);
     if (cur_met(win)) {
       cur_met(win)->distance_comps++;
       if (hpipe.score == HideScore::Bounce) cur_met(win)->note_score_from_bounce(1);
@@ -1412,6 +1418,7 @@ static std::vector<uint32_t> p3q_finish(P3Q& q, uint32_t k) {
 struct PqQ {
   uint32_t qi = 0;
   const float* qf = nullptr;
+  DistanceMetric metric = DistanceMetric::Mips;
   std::vector<float> lut;
   std::vector<Cand> cand;
   std::unordered_set<uint32_t> seen;
@@ -1449,10 +1456,11 @@ static void pqq_init(PqQ& q, Placement& pl, DramWindow& win, Prefetch& pref, con
   q = PqQ{};
   q.qi = qi;
   q.qf = qf;
+  q.metric = pref.metric;
   q.t0 = std::chrono::steady_clock::now();
   q.cand.reserve(L + pl.hdr->R + 8);
   q.lut.resize((size_t)pq->nchunks * PqTable::kCentroids);
-  pq->fill_lut_ip(qf, q.lut.data());
+  pq->fill_lut(qf, q.lut.data(), q.metric);
   pref.on_query_begin(pl, win, eg.nodes, eg.entry_id);
   q.seen.insert(eg.entry_id);
   pqq_insert(q, *pq, L, eg.entry_id);
@@ -1522,7 +1530,7 @@ static bool pqq_rank(PqQ& q, Placement& pl, HidePipe& pipe) {
       if (!pipe.copy_vec(pl.vec(c.id), vb, buf)) return false;
       src = buf;
     }
-    c.dist = vec_mips_neg(src, q.qf, pl.hdr->dim, pl.hdr->vec_bytes);
+    c.dist = vec_distance(src, q.qf, pl.hdr->dim, pl.hdr->vec_bytes, q.metric);
     if (cur_met(*pipe.win)) {
       cur_met(*pipe.win)->distance_comps++;
       if (pipe.score == HideScore::Bounce) cur_met(*pipe.win)->note_score_from_bounce(1);
@@ -1562,6 +1570,7 @@ int main(int argc, char** argv) {
                                             : 0;
   size_t vmem_len = 0;
   std::string policy_s = "P0";
+  std::string metric_s = "mips";
   std::string dram_backend = getenv("CXAN_DRAM_BACKEND") ? getenv("CXAN_DRAM_BACKEND") : "numa";
   // numa = HOST scoring window (default). dax / --require-cxl-dram = BAR path (HPS).
   size_t budget = 64ull << 20;  // hide: 64 MiB lookahead budget default
@@ -1648,6 +1657,7 @@ int main(int argc, char** argv) {
     else if (a == "--cpu-affinity") cpu_affinity = true;
     else if (a == "--dram-numa") dram_numa = (unsigned)atoi(need(a.c_str()));
     else if (a == "--policy") policy_s = need(a.c_str());
+    else if (a == "--metric") metric_s = need(a.c_str());
     else if (a == "--budget") budget = strtoull(need(a.c_str()), nullptr, 10);
     else if (a == "--pipe-w") pipe_w = (uint32_t)atoi(need(a.c_str()));
     else if (a == "--install-top") install_top = (uint32_t)atoi(need(a.c_str()));
@@ -1756,6 +1766,13 @@ int main(int argc, char** argv) {
     }
   }
   if (oneshot_fp) rerank = false;
+  DistanceMetric metric;
+  try {
+    metric = parse_distance_metric(metric_s);
+  } catch (const std::invalid_argument& e) {
+    fprintf(stderr, "bad --metric %s: %s\n", metric_s.c_str(), e.what());
+    return 2;
+  }
   if (dump_expands_path && dump_expands_path[0]) {
     g_expand_dump = std::fopen(dump_expands_path, "wb");
     if (!g_expand_dump) {
@@ -2050,6 +2067,7 @@ int main(int argc, char** argv) {
 
   Prefetch pref;
   pref.policy = parse_policy(policy_s);
+  pref.metric = metric;
   pref.budget_per_query = budget;
   pref.pin_entry = pin_entry;
   issue_qd = effective_issue_qd(issue_qd, nthreads);
@@ -2069,6 +2087,7 @@ int main(int argc, char** argv) {
   pref.direct_install = direct_install;
   pref.hide_score = hide_score;
   pref.oracle_dram = oracle_dram;
+  printf("metric=%s\n", distance_metric_name(pref.metric));
   // P2v2 is cooperative single-threaded (DAX is not safe for concurrent promote).
   if (false && pref.policy == PrefetchPolicy::P2) pref.start_async(&pl, &win);
 
@@ -2592,6 +2611,7 @@ int main(int argc, char** argv) {
         }
         Prefetch lp;
         lp.policy = pref.policy;
+        lp.metric = pref.metric;
         lp.budget_per_query = pref.budget_per_query;
         lp.pin_entry = pref.pin_entry;
         lp.pipe_w = pref.pipe_w;

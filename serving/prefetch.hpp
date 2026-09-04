@@ -20,6 +20,7 @@ enum class PrefetchPolicy { P0, P1, P2, P3 };
 // Prefetch neighbor *vector* pages into the CXL-DRAM window (one-shot FP path).
 struct Prefetch {
   PrefetchPolicy policy = PrefetchPolicy::P0;
+  DistanceMetric metric = DistanceMetric::Mips;
   size_t budget_per_query = 256 * 1024;
   size_t budget_left = 0;
   uint32_t neighbor_k = 64;

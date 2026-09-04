@@ -2,6 +2,8 @@
 // DiskANN / PipeANN FixedChunk PQ (MIPS ADC). Codes are stored in search-ID
 // order. If the file is old-id (mem_R32), pass new_to_old to permute.
 
+#include "distance_metric.hpp"
+
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
@@ -18,9 +20,10 @@ struct PqTable {
   uint32_t dim = 0;
   uint32_t nchunks = 0;
   std::vector<float> tables_T;   // dim * 256, col-major per dim
+  std::vector<float> centroid;   // full-dimensional pivot centroid
   std::vector<uint32_t> chunk_off;
   std::vector<uint8_t> codes;    // n * nchunks
-  std::vector<float> lut;        // nchunks * 256, filled by begin_query_ip
+  std::vector<float> lut;        // nchunks * 256, filled by begin_query
 
   bool loaded() const { return n && nchunks && !codes.empty() && !lut.empty(); }
 
@@ -38,7 +41,6 @@ struct PqTable {
     if (!read_bin_at(in, offs[0], tables_row_, nr, nc)) return false;
     if (nr != kCentroids) return false;
     dim = nc;
-    std::vector<float> centroid;
     uint32_t cr = 0, cc = 0;
     if (!read_bin_at(in, offs[1], centroid, cr, cc)) return false;
     if (cr != dim || cc != 1) return false;
@@ -97,10 +99,31 @@ struct PqTable {
     }
   }
 
-  void begin_query_ip(const float* q) {
+  void fill_lut_l2(const float* q, float* dst) const {
+    std::memset(dst, 0, (size_t)nchunks * kCentroids * sizeof(float));
+    for (uint32_t c = 0; c < nchunks; ++c) {
+      float* chunk = dst + (size_t)c * kCentroids;
+      for (uint32_t d = chunk_off[c]; d < chunk_off[c + 1]; ++d) {
+        const float* centers = tables_T.data() + (size_t)d * kCentroids;
+        for (uint32_t i = 0; i < kCentroids; ++i) {
+          const float delta = q[d] - centroid[d] - centers[i];
+          chunk[i] += delta * delta;
+        }
+      }
+    }
+  }
+
+  void fill_lut(const float* q, float* dst, DistanceMetric metric) const {
+    if (metric == DistanceMetric::Mips)
+      fill_lut_ip(q, dst);
+    else
+      fill_lut_l2(q, dst);
+  }
+
+  void begin_query(const float* q, DistanceMetric metric) {
     thread_local std::vector<float> tls;
     tls.resize((size_t)nchunks * kCentroids);
-    fill_lut_ip(q, tls.data());
+    fill_lut(q, tls.data(), metric);
     g_pq_tls_lut = tls.data();
   }
 

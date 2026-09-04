@@ -3,13 +3,14 @@ CXXFLAGS ?= -O0 -g -std=c++17 -I../..
 
 .PHONY: test clean
 
-test: test_metrics test_placement test_hot_set test_diskann_entry test_nav_graph test_score_cache test_pq_table test_extent_run test_cont_batch test_dram_window test_page_copy_pool
+test: test_metrics test_placement test_hot_set test_diskann_entry test_nav_graph test_score_cache test_distance_metric test_pq_table test_extent_run test_cont_batch test_dram_window test_page_copy_pool
 	./test_metrics
 	./test_placement
 	./test_hot_set
 	./test_diskann_entry
 	./test_nav_graph
 	./test_score_cache
+	./test_distance_metric
 	./test_pq_table
 	./test_extent_run
 	./test_cont_batch
@@ -34,7 +35,10 @@ test_nav_graph: test_nav_graph.cpp ../../serving/nav_graph.hpp ../../serving/pla
 test_score_cache: test_score_cache.cpp ../../serving/score_cache.hpp ../../serving/placement.hpp
 	$(CXX) $(CXXFLAGS) -o $@ test_score_cache.cpp
 
-test_pq_table: test_pq_table.cpp ../../serving/pq_table.hpp
+test_distance_metric: test_distance_metric.cpp ../../serving/distance_metric.hpp
+	$(CXX) $(CXXFLAGS) -o $@ test_distance_metric.cpp
+
+test_pq_table: test_pq_table.cpp ../../serving/pq_table.hpp ../../serving/distance_metric.hpp
 	$(CXX) $(CXXFLAGS) -o $@ test_pq_table.cpp
 
 test_extent_run: test_extent_run.cpp ../../serving/hide_fill.hpp
@@ -50,4 +54,4 @@ test_page_copy_pool: test_page_copy_pool.cpp ../../serving/page_copy_pool.hpp
 	$(CXX) $(CXXFLAGS) -pthread -o $@ test_page_copy_pool.cpp
 
 clean:
-	rm -f test_metrics test_placement test_hot_set test_diskann_entry test_nav_graph test_score_cache test_pq_table test_extent_run test_cont_batch test_page_copy_pool
+	rm -f test_metrics test_placement test_hot_set test_diskann_entry test_nav_graph test_score_cache test_distance_metric test_pq_table test_extent_run test_cont_batch test_dram_window test_page_copy_pool
