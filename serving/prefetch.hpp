@@ -40,7 +40,6 @@ struct Prefetch {
   HideScore hide_score = HideScore::Window;  // default: install + from_win=100
   bool pq_nav = false;
   PqTable* pq = nullptr;
-  uint32_t early_cl_at = 0;  // 0 = off; else issue current C_L once at this expand
 
   struct Job {
     const uint8_t* ptr = nullptr;

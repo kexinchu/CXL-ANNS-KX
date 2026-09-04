@@ -32,27 +32,16 @@ inline bool issue_qd_ok(uint32_t inflight, uint32_t qd) {
   return qd == 0 || inflight < qd;
 }
 
-// Fire one early C_L wave once expands reach `at`. at=0 disables.
-inline bool early_cl_due(uint32_t expands, uint32_t at, bool already) {
-  return at > 0 && !already && expands >= at;
-}
-
 // cli==0 means match T so NAND waves scale with compute threads.
 inline uint32_t effective_issue_qd(uint32_t cli, int nthreads) {
   if (cli == 0) return nthreads > 0 ? (uint32_t)nthreads : 1u;
   return cli;
 }
 
-inline bool admit_gap_ok(uint64_t now_us, uint64_t last_us, uint32_t gap_us) {
-  if (gap_us == 0) return true;
-  return now_us >= last_us && (now_us - last_us) >= (uint64_t)gap_us;
-}
-
 // Dual-queue: never block the compute thread.
 // Feed prefetch (Issue Hold) when QD has room; else Fill or Rank; else Pump.
-// admit_ok=false: do not burst-Fill empty seats (keep phases staggered).
 inline Pipe2Dec steal_decide(const CbSt* st, const bool* covering, int n, bool has_more,
-                             bool qd_ok, bool admit_ok = true) {
+                             bool qd_ok) {
   Pipe2Dec d;
   if (n <= 0) return d;
   if (qd_ok) {
@@ -64,7 +53,7 @@ inline Pipe2Dec steal_decide(const CbSt* st, const bool* covering, int n, bool h
       }
     }
   }
-  if (has_more && admit_ok) {
+  if (has_more) {
     for (int i = 0; i < n; ++i) {
       if (st[i] == CbSt::Empty) {
         d.act = Pipe2Act::Fill;
@@ -86,10 +75,6 @@ inline Pipe2Dec steal_decide(const CbSt* st, const bool* covering, int n, bool h
       d.slot = i;
       return d;
     }
-  }
-  if (has_more) {
-    d.act = Pipe2Act::Pump;
-    d.slot = 0;
   }
   return d;
 }

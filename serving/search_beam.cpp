@@ -166,134 +166,6 @@ static uint64_t nvme_read_sectors() {
   return one_dev_sectors("nvme2n1");
 }
 
-// OCC_TRACE=1: nvme GB/s vs time, and per-query PQ→C_L delay. Off by default.
-static std::atomic<int> g_occ_on{0};
-static std::chrono::steady_clock::time_point g_occ_t0;
-static std::mutex g_occ_mu;
-struct OccIss {
-  uint32_t us = 0, pq_us = 0, pages = 0, qi = 0;
-};
-struct OccNv {
-  uint32_t us = 0;
-  uint64_t sect = 0;
-};
-static std::vector<OccIss> g_occ_iss;
-static std::vector<OccNv> g_occ_nv;
-static std::atomic<bool> g_occ_stop{false};
-static std::thread g_occ_thr;
-
-static void occ_start() {
-  if (!std::getenv("OCC_TRACE")) return;
-  g_occ_on.store(1, std::memory_order_relaxed);
-  g_occ_t0 = std::chrono::steady_clock::now();
-  {
-    std::lock_guard<std::mutex> g(g_occ_mu);
-    g_occ_iss.clear();
-    g_occ_nv.clear();
-    g_occ_iss.reserve(2048);
-    g_occ_nv.reserve(512);
-  }
-  g_occ_stop.store(false, std::memory_order_relaxed);
-  g_occ_thr = std::thread([] {
-    while (!g_occ_stop.load(std::memory_order_relaxed)) {
-      auto now = std::chrono::steady_clock::now();
-      const uint32_t us =
-          (uint32_t)std::chrono::duration_cast<std::chrono::microseconds>(now - g_occ_t0)
-              .count();
-      const uint64_t sect = nvme_read_sectors();
-      {
-        std::lock_guard<std::mutex> g(g_occ_mu);
-        g_occ_nv.push_back({us, sect});
-      }
-      std::this_thread::sleep_for(std::chrono::milliseconds(5));
-    }
-  });
-}
-
-static void occ_note_issue(uint32_t qi, uint32_t pages, std::chrono::steady_clock::time_point tq0) {
-  if (!g_occ_on.load(std::memory_order_relaxed)) return;
-  auto now = std::chrono::steady_clock::now();
-  OccIss ev;
-  ev.us = (uint32_t)std::chrono::duration_cast<std::chrono::microseconds>(now - g_occ_t0).count();
-  ev.pq_us = (uint32_t)std::chrono::duration_cast<std::chrono::microseconds>(now - tq0).count();
-  ev.pages = pages;
-  ev.qi = qi;
-  std::lock_guard<std::mutex> g(g_occ_mu);
-  g_occ_iss.push_back(ev);
-}
-
-static void occ_dump() {
-  if (!g_occ_on.load(std::memory_order_relaxed)) return;
-  g_occ_stop.store(true, std::memory_order_relaxed);
-  if (g_occ_thr.joinable()) g_occ_thr.join();
-  g_occ_on.store(0, std::memory_order_relaxed);
-  std::vector<OccIss> iss;
-  std::vector<OccNv> nv;
-  {
-    std::lock_guard<std::mutex> g(g_occ_mu);
-    iss.swap(g_occ_iss);
-    nv.swap(g_occ_nv);
-  }
-  const uint32_t bin_us = 20000;
-  uint32_t max_us = 0;
-  for (const auto& e : nv)
-    if (e.us > max_us) max_us = e.us;
-  for (const auto& e : iss)
-    if (e.us > max_us) max_us = e.us;
-  const uint32_t nb = max_us / bin_us + 1;
-  std::vector<uint64_t> iss_pages(nb, 0);
-  std::vector<uint32_t> iss_n(nb, 0);
-  double pq_sum = 0, pq_first = 0, pq_rest = 0;
-  uint32_t n_first = 0, n_rest = 0;
-  for (const auto& e : iss) {
-    const uint32_t b = e.us / bin_us;
-    if (b < nb) {
-      iss_pages[b] += e.pages;
-      iss_n[b]++;
-    }
-    pq_sum += e.pq_us;
-    if (e.qi < 16) {
-      pq_first += e.pq_us;
-      n_first++;
-    } else {
-      pq_rest += e.pq_us;
-      n_rest++;
-    }
-  }
-  fprintf(stderr,
-          "OCC_TRACE issues=%zu mean_pq_to_cl_ms=%.2f first16_ms=%.2f rest_ms=%.2f "
-          "wall_ms=%.1f\n",
-          iss.size(), iss.empty() ? 0 : pq_sum / 1e3 / (double)iss.size(),
-          n_first ? pq_first / 1e3 / (double)n_first : 0,
-          n_rest ? pq_rest / 1e3 / (double)n_rest : 0, max_us / 1e3);
-  const double peak = 1.560;
-  const uint32_t nvbin = 50000;
-  if (nv.size() >= 2) {
-    uint32_t b0 = 0;
-    for (uint32_t b = nvbin; b0 + 1 < nv.size(); b += nvbin) {
-      size_t lo = b0, hi = b0;
-      while (hi + 1 < nv.size() && nv[hi].us < b) hi++;
-      if (hi <= lo) {
-        b0 = hi;
-        continue;
-      }
-      const double dt = (nv[hi].us - nv[lo].us) / 1e6;
-      const uint64_t ds =
-          nv[hi].sect >= nv[lo].sect ? nv[hi].sect - nv[lo].sect : 0;
-      const double gbs = dt > 0 ? (double)ds * 512.0 / dt / 1e9 : 0;
-      const double occ = peak > 0 ? 100.0 * gbs / peak : 0;
-      fprintf(stderr, "OCC_NVME t_ms=%u..%u GBps=%.3f occ=%.1f%%\n", nv[lo].us / 1000,
-              nv[hi].us / 1000, gbs, occ);
-      b0 = hi;
-    }
-  }
-  for (uint32_t b = 0; b < nb; ++b) {
-    if (!iss_n[b]) continue;
-    fprintf(stderr, "OCC_ISSUE bin_ms=%u..%u waves=%u pages=%llu\n", b * 20, (b + 1) * 20,
-            iss_n[b], (unsigned long long)iss_pages[b]);
-  }
-}
-
 static void* map_vmem_ro(const char* dev, off_t offset, size_t len, int* out_fd = nullptr) {
   int fd = open(dev, O_RDWR);
   if (fd < 0) die("open vmem");
@@ -604,11 +476,6 @@ static std::vector<uint32_t> search_one_pq(Placement& pl, DramWindow& win, Prefe
   };
 
   uint32_t expands = 0;
-  bool early_done = false;
-  std::vector<uint64_t> extra_toks;
-  const bool cl_trace = std::getenv("CL_TRACE") != nullptr;
-  std::vector<uint32_t> cl_at;
-  std::vector<std::vector<uint32_t>> cl_snaps;
   while (true) {
     hpipe.pump();
     int bi = pick_best();
@@ -617,58 +484,14 @@ static std::vector<uint32_t> search_one_pq(Placement& pl, DramWindow& win, Prefe
     uint32_t cur = cand[(size_t)bi].id;
     expanded.insert(cur);
     expands++;
-    if (cl_trace && (expands == 1 || (expands & 31u) == 0)) {
-      cl_at.push_back(expands);
-      std::vector<uint32_t> ids;
-      ids.reserve(cand.size());
-      for (const Cand& c : cand) ids.push_back(c.id);
-      cl_snaps.push_back(std::move(ids));
-    }
     expand_one(cur);
-    if (early_cl_due(expands, pref.early_cl_at, early_done)) {
-      std::vector<uint32_t> ids;
-      ids.reserve(cand.size());
-      for (const Cand& c : cand) ids.push_back(c.id);
-      issue_ids(ids);
-      if (last_issue_tok) extra_toks.push_back(last_issue_tok);
-      early_done = true;
-    }
-  }
-  if (cl_trace) {
-    std::unordered_set<uint32_t> fin;
-    std::vector<uint64_t> fpages;
-    std::unordered_set<uint64_t> fps;
-    for (const Cand& c : cand) {
-      fin.insert(c.id);
-      hide_collect_vec_pages(pl, vb, pb, c.id, fpages, &fps);
-    }
-    fprintf(stderr, "CL_TRACE expands=%u cl=%zu pages=%zu\n", expands, cand.size(),
-            fpages.size());
-    for (size_t s = 0; s < cl_snaps.size(); ++s) {
-      uint32_t hid = 0;
-      std::vector<uint64_t> sp;
-      std::unordered_set<uint64_t> sps;
-      for (uint32_t id : cl_snaps[s]) {
-        if (fin.count(id)) hid++;
-        hide_collect_vec_pages(pl, vb, pb, id, sp, &sps);
-      }
-      uint32_t hp = 0;
-      for (uint64_t p : sp) {
-        if (fps.count(p)) hp++;
-      }
-      const double frac = expands ? (double)cl_at[s] / (double)expands : 0;
-      const double id_rec = fin.empty() ? 0 : (double)hid / (double)fin.size();
-      const double pg_rec = fpages.empty() ? 0 : (double)hp / (double)fpages.size();
-      const double waste = sp.empty() ? 0 : 1.0 - (double)hp / (double)sp.size();
-      fprintf(stderr, "CL_TRACE snap expand=%u frac=%.2f id_in_final=%.3f page_in_final=%.3f waste=%.3f\n",
-              cl_at[s], frac, id_rec, pg_rec, waste);
-    }
   }
 
   std::vector<uint32_t> rerank_ids;
   rerank_ids.reserve(cand.size());
   for (const Cand& c : cand) rerank_ids.push_back(c.id);
   auto need = issue_ids(rerank_ids);
+  std::vector<uint64_t> extra_toks;
   if (last_issue_tok) extra_toks.push_back(last_issue_tok);
   uint64_t wns = hpipe.wait_covering(need, &extra_toks);
   if (!wns) wns = hpipe.wait_all();
@@ -1598,7 +1421,6 @@ struct PqQ {
   std::vector<uint64_t> need;
   std::vector<uint64_t> fill_toks;
   bool nand_held = false;
-  bool early_issued = false;
   std::vector<uint8_t> fp_done;
   uint32_t fp_n = 0;
   std::chrono::steady_clock::time_point t0;
@@ -1637,19 +1459,8 @@ static void pqq_init(PqQ& q, Placement& pl, DramWindow& win, Prefetch& pref, con
   q.st = CbSt::Ready;
 }
 
-static void pqq_early_submit(PqQ& q, Placement& pl, PrefetchHub& hub) {
-  const size_t vb = (size_t)pl.hdr->dim * pl.hdr->vec_bytes;
-  const size_t pb = hub.pipe.win->page_bytes;
-  std::vector<uint64_t> pages;
-  std::unordered_set<uint64_t> ps;
-  pages.reserve(q.cand.size() * 2);
-  for (const Cand& c : q.cand) hide_collect_vec_pages(pl, vb, pb, c.id, pages, &ps);
-  uint64_t tok = hub.submit(pages);
-  if (tok) q.fill_toks.push_back(tok);
-}
-
 static void pqq_beam(PqQ& q, Placement& pl, PqTable& pq, uint32_t L, uint32_t iters, uint32_t Rlim,
-                     PrefetchHub* hub, uint32_t early_cl_at = 0) {
+                     PrefetchHub* hub) {
   uint32_t since_pump = 0;
   while (true) {
     if (iters != 0 && q.expands >= iters) break;
@@ -1674,10 +1485,6 @@ static void pqq_beam(PqQ& q, Placement& pl, PqTable& pq, uint32_t L, uint32_t it
       q.seen.insert(nb);
       pqq_insert(q, pq, L, nb);
     }
-    if (hub && early_cl_due(q.expands, early_cl_at, q.early_issued)) {
-      pqq_early_submit(q, pl, *hub);
-      q.early_issued = true;
-    }
     if (hub && (++since_pump & 15u) == 0) hub->pump();
   }
 }
@@ -1691,7 +1498,6 @@ static void pqq_issue(PqQ& q, Placement& pl, PrefetchHub& hub, bool stall = fals
   for (const Cand& c : q.cand) hide_collect_vec_pages(pl, vb, pb, c.id, q.need, &ps);
   uint64_t tok = stall ? hub.submit_block(q.need) : hub.submit(q.need);
   if (tok) q.fill_toks.push_back(tok);
-  occ_note_issue(q.qi, (uint32_t)q.need.size(), q.t0);
   q.fp_done.assign(q.cand.size(), 0);
   q.fp_n = 0;
   q.st = q.need.empty() ? CbSt::Ready : CbSt::Wait;
@@ -1809,7 +1615,6 @@ int main(int argc, char** argv) {
   uint32_t stagger_us = 0;        // frozen steal path: no start sleep
   bool steal_sched = true;        // frozen: dual-queue, never block compute on NAND
   uint32_t issue_qd = 0;          // 0 = match T (steal-sched)
-  uint32_t early_cl_at = 0;       // 0 = off; issue current C_L once at this expand
   bool sync_hop = false;
   bool extent_run = false;
   bool extent_run_explicit = false;
@@ -1945,9 +1750,6 @@ int main(int argc, char** argv) {
     else if (a == "--steal-sched") steal_sched = true;
     else if (a == "--no-steal-sched") steal_sched = false;
     else if (a == "--issue-qd") issue_qd = (uint32_t)atoi(need(a.c_str()));
-    else if (a == "--early-cl") early_cl_at = 256;
-    else if (a == "--early-cl-at") early_cl_at = (uint32_t)atoi(need(a.c_str()));
-    else if (a == "--no-early-cl") early_cl_at = 0;
     else {
       fprintf(stderr, "unknown %s\n", a.c_str());
       return 2;
@@ -2267,7 +2069,6 @@ int main(int argc, char** argv) {
   pref.direct_install = direct_install;
   pref.hide_score = hide_score;
   pref.oracle_dram = oracle_dram;
-  pref.early_cl_at = early_cl_at;
   // P2v2 is cooperative single-threaded (DAX is not safe for concurrent promote).
   if (false && pref.policy == PrefetchPolicy::P2) pref.start_async(&pl, &win);
 
@@ -2275,8 +2076,7 @@ int main(int argc, char** argv) {
     printf("P3v2 softpin W=%u budget=%zu install_top=%u fetch_top=%u page_group_b=%d "
            "install_all=%d threads=%d inflight=%d per_thread_window=%d cont_batch=%d "
            "pipe_depth=%d expand_batch=%u issue_ahead=%u slot_map=%d sync_hop=%d extent_run=%d "
-           "direct_install=%d hide_score=%s stagger_us=%u steal_sched=%d issue_qd=%u "
-           "early_cl_at=%u\n",
+           "direct_install=%d hide_score=%s stagger_us=%u steal_sched=%d issue_qd=%u\n",
            pref.pipe_w, budget, pref.install_top, pref.fetch_top, (int)page_group_b,
            (int)install_all_fetched, nthreads, cont_inflight, (int)per_thread_window,
            (int)cont_batch_mode, pipe_depth, pref.expand_batch, pref.issue_ahead,
@@ -2285,7 +2085,7 @@ int main(int argc, char** argv) {
            pref.hide_score == HideScore::Bounce ? "bounce"
            : pref.hide_score == HideScore::Vmem ? "vmem"
                                                  : "window",
-           stagger_us, (int)steal_sched, issue_qd, pref.early_cl_at);
+           stagger_us, (int)steal_sched, issue_qd);
   }
 
   EntryGraph eg = load_entry(entry);
@@ -2618,7 +2418,6 @@ int main(int argc, char** argv) {
   if (cpu_affinity) aff_cpus = list_cpu_ids();
   if (cpu_affinity && nthreads <= 1 && !aff_cpus.empty()) bind_worker_cpu(aff_cpus[0]);
   auto t0 = std::chrono::steady_clock::now();
-  occ_start();
   const int cb_inflight = cont_inflight > 0 ? cont_inflight : nthreads;
   const int cb_workers = nthreads > 0 ? nthreads : 1;
   const bool run_cb_sched = cont_batch_mode && cb_inflight > 0 && cb_workers > 0 &&
@@ -2732,7 +2531,7 @@ int main(int argc, char** argv) {
           PqQ& q = slots[(size_t)idx];
           // Busy replaced Ready or covering-Wait. Infer work from need/expands.
           if (q.need.empty()) {
-            pqq_beam(q, pl, *pref.pq, L, iters, Rlim, &hub, pref.early_cl_at);
+            pqq_beam(q, pl, *pref.pq, L, iters, Rlim, &hub);
             pqq_issue(q, pl, hub);
             if (q.st == CbSt::Ready || pqq_covering(hub.pipe, q.need)) pqq_rank(q, pl, hub.pipe);
           } else {
@@ -2811,7 +2610,6 @@ int main(int argc, char** argv) {
         lp.pq_nav = pref.pq_nav;
         lp.pq = pref.pq;
         lp.neighbor_k = pref.neighbor_k;
-        lp.early_cl_at = pref.early_cl_at;
         DramWindow* tw = &win;
         PageCopyPool* pool = use_shared_pool ? &shared_pool : nullptr;
         Metrics local_m;
@@ -2880,8 +2678,8 @@ int main(int argc, char** argv) {
           if (steal_sched) {
             if (t == 0) {
               printf("steal_sched=1 depth=%d threads=%d shared_pool=1 issue_qd=%u "
-                     "admit_serial=1 early_cl_at=%u\n",
-                     D, nthreads, issue_qd, lp.early_cl_at);
+                     "admit_serial=1\n",
+                     D, nthreads, issue_qd);
               fflush(stdout);
             }
             for (;;) {
@@ -2915,7 +2713,7 @@ int main(int argc, char** argv) {
                   if (nav.loaded()) qeg.entry_id = nav.search_entry(qf, nav_l);
                   pqq_init(q, pl, *tw, lp, qeg, qf, qi, L);
                 }
-                pqq_beam(q, pl, *lp.pq, L, iters, Rlim, &hub, lp.early_cl_at);
+                pqq_beam(q, pl, *lp.pq, L, iters, Rlim, &hub);
                 if (!try_issue(q)) q.st = CbSt::Hold;
                 continue;
               }
@@ -2960,7 +2758,7 @@ int main(int argc, char** argv) {
                 EntryGraph qeg = eg;
                 if (nav.loaded()) qeg.entry_id = nav.search_entry(qf, nav_l);
                 pqq_init(q, pl, *tw, lp, qeg, qf, qi, L);
-                pqq_beam(q, pl, *lp.pq, L, iters, Rlim, &hub, lp.early_cl_at);
+                pqq_beam(q, pl, *lp.pq, L, iters, Rlim, &hub);
                 pqq_issue(q, pl, hub, /*stall=*/true);
                 continue;
               }
@@ -3022,7 +2820,6 @@ int main(int argc, char** argv) {
     }
   }
   auto t1 = std::chrono::steady_clock::now();
-  occ_dump();
   if (nthreads > 1) {
     for (auto& c : thr_ctx) {
       metrics.add_from(c->m);

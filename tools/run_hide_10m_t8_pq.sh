@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
-# Frozen PQ-64 end-batch + continuous batching on 10M.
-# Multi-thread hide (ptw): steal-sched, issue_qd=0 (match T), pipe_depth=2, no stagger.
+# Frozen: PQ-64 end-batch + steal CB + 2-deep pipeline on 10M.
+# T=8 PTW: steal-sched, issue_qd=T, pipe_depth=2, 32-page C_L waves, no stagger.
 # T=1 stays search_one_pq / from_win=100 (no steal).
 # Does not replace 50.25 / 49.25 / 85.8 / T=1 110.94 / 116.29.
+# See docs/notes/2026-09-04-hide-t8-steal-freeze.md
 set -euo pipefail
 ROOT=/root/chukexin/CXL-ANNS-KX
 BIN=$ROOT/serving/search_beam
@@ -66,7 +67,7 @@ score_flags() {
 }
 
 summarize() {
-  grep -E 'pq-nav|hide_score=|stagger_us=|steal_sched=|early_cl_at=|cont_batch_sched|pipe2_sched|throughput_QPS|latency_ms mean|recall@10|from_win=|from_bounce=|from_cache=|nvme_real_GBps|page_use=' "$1" | head -30
+  grep -E 'pq-nav|hide_score=|steal_sched=|cont_batch_sched|pipe2_sched|throughput_QPS|latency_ms mean|recall@10|from_win=|from_bounce=|from_cache=|nvme_real_GBps|page_use=' "$1" | head -30
 }
 
 oracle() {
@@ -92,19 +93,11 @@ oracle() {
 hide_t1() {
   fuser /dev/vmem0 2>/dev/null && echo "WARN vmem busy" >&2 || true
   pollute
-  local ecl=()
   local log=$OUT/hide_10m_pq64_T1_nq${NQ}.log
-  if [[ -n "${EARLY_CL_AT:-}" ]]; then
-    ecl=(--early-cl-at "$EARLY_CL_AT")
-    log=$OUT/hide_10m_pq64_T1_ecl${EARLY_CL_AT}_nq${NQ}.log
-  elif [[ "${EARLY_CL:-0}" == "1" ]]; then
-    ecl=(--early-cl)
-    log=$OUT/hide_10m_pq64_T1_ecl256_nq${NQ}.log
-  fi
   echo "==== hide 10M PQ-64 T=1 nq=$NQ $(date -Is) ====" | tee "$log"
   echo "cache_used=$(cat /sys/class/vmem/vmem0/cache_used) evictions=$(cat /sys/class/vmem/vmem0/evictions)" | tee -a "$log"
   numactl --cpunodebind=0 --membind=0 "$BIN" \
-    $(hide_common) --threads 1 $(score_flags) "${ecl[@]}" \
+    $(hide_common) --threads 1 $(score_flags) \
     $(pq_flags) \
     2>&1 | tee -a "$log"
   echo "---- hide T=1 PQ-64 ----"
@@ -121,39 +114,12 @@ hide_threads() {
   if [[ "$ptw" == "1" ]]; then
     local wb=$((WIN_MIB * 1024 * 1024))
     extra=(--per-thread-window --dram-bytes "$wb" --host-bytes "$wb" --dram-numa 0
-           --pipe-depth "${PIPE_DEPTH:-2}")
-    if [[ -n "${STAGGER_MS:-}" ]]; then
-      extra+=(--stagger-ms "$STAGGER_MS")
-      tag_st="_st${STAGGER_MS}"
-    elif [[ -n "${STAGGER_US:-}" ]]; then
-      extra+=(--stagger-us "$STAGGER_US")
-      tag_st="_su${STAGGER_US}"
+           --pipe-depth "${PIPE_DEPTH:-2}" --no-direct-install --steal-sched --stagger-us 0
+           --issue-qd "${ISSUE_QD:-0}")
+    if [[ -n "${ISSUE_QD:-}" && "${ISSUE_QD}" != "0" ]]; then
+      tag="thr${th}_ptw${WIN_MIB}_d${PIPE_DEPTH:-2}_steal_qd${ISSUE_QD}"
     else
-      tag_st=""
-    fi
-    if [[ "${DIRECT:-0}" == "1" ]]; then
-      extra+=(--direct-install)
-      tag="thr${th}_ptw${WIN_MIB}_d${PIPE_DEPTH:-2}_di${tag_st}"
-    else
-      extra+=(--no-direct-install)
-      tag="thr${th}_ptw${WIN_MIB}_d${PIPE_DEPTH:-2}${tag_st}"
-    fi
-    if [[ "${STEAL:-1}" == "1" ]]; then
-      extra+=(--steal-sched --stagger-us 0 --issue-qd "${ISSUE_QD:-0}")
-      if [[ -n "${ISSUE_QD:-}" && "${ISSUE_QD}" != "0" ]]; then
-        tag="${tag}_steal_qd${ISSUE_QD}"
-      else
-        tag="${tag}_steal_qdT"
-      fi
-    else
-      extra+=(--no-steal-sched)
-    fi
-    if [[ -n "${EARLY_CL_AT:-}" ]]; then
-      extra+=(--early-cl-at "$EARLY_CL_AT")
-      tag="${tag}_ecl${EARLY_CL_AT}"
-    elif [[ "${EARLY_CL:-0}" == "1" ]]; then
-      extra+=(--early-cl)
-      tag="${tag}_ecl256"
+      tag="thr${th}_ptw${WIN_MIB}_d${PIPE_DEPTH:-2}_steal_qdT"
     fi
     if [[ "${SCORE:-}" == "bounce" ]]; then tag="${tag}_sb"; fi
     if [[ "${SCORE:-}" == "vmem" || "${SCORE:-}" == "cache" ]]; then tag="${tag}_sv"; fi
@@ -186,25 +152,22 @@ hide_cb() {
   summarize "$log"
 }
 
-cmd=${1:-all}
+cmd=${1:-t8}
 case "$cmd" in
   oracle) oracle 1 ;;
   oracle8) oracle 8 ;;
   t1) hide_t1 ;;
-  hide|t8|cb) hide_cb "$T" "$W" ;;
+  t8)
+    # Frozen method: steal-sched + PTW 128 MiB + depth 2 + issue_qd=T.
+    PTW=1 hide_threads "${W:-8}"
+    ;;
+  cb) hide_cb "$T" "$W" ;;
   thr) hide_threads "${W:-8}" ;;
-  ptw) PTW=1 hide_threads "${W:-12}" ;;
-  sweep)
-    oracle 1
+  ptw) PTW=1 hide_threads "${W:-8}" ;;
+  sweep|all)
     oracle 8
     hide_t1
-    hide_cb 8 1
-    hide_cb 8 8
-    hide_cb 16 8
-    hide_cb 32 8
-    hide_cb 16 1
-    hide_cb 16 4
+    PTW=1 hide_threads 8
     ;;
-  all) oracle 8; hide_cb 8 8; hide_cb 16 8; hide_cb 32 8 ;;
-  *) echo "usage: NQ=100 T=16 W=8 PTW=1 WIN_MIB=128 $0 oracle|oracle8|t1|cb|thr|ptw|sweep|all"; exit 2 ;;
+  *) echo "usage: NQ=500 W=8 WIN_MIB=128 $0 oracle|oracle8|t1|t8|cb|thr|ptw|sweep|all"; exit 2 ;;
 esac

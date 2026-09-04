@@ -119,24 +119,6 @@ int main() {
     auto d = steal_decide(st, cov, 2, false, true);
     assert(d.act == Pipe2Act::Done);
   }
-  {
-    // Admit budget full: do not burst-Fill; keep the thread alive.
-    CbSt st[2] = {CbSt::Empty, CbSt::Empty};
-    bool cov[2] = {false, false};
-    auto d = steal_decide(st, cov, 2, true, true, /*admit_ok=*/false);
-    assert(d.act == Pipe2Act::Pump);
-  }
-  {
-    CbSt st[2] = {CbSt::Wait, CbSt::Empty};
-    bool cov[2] = {true, false};
-    auto d = steal_decide(st, cov, 2, true, false, /*admit_ok=*/false);
-    assert(d.act == Pipe2Act::Rank && d.slot == 0);
-  }
-  assert(admit_gap_ok(1000, 0, 0));
-  assert(admit_gap_ok(1500, 0, 1500));
-  assert(!admit_gap_ok(1499, 0, 1500));
-  assert(admit_gap_ok(3000, 1500, 1500));
-  assert(!admit_gap_ok(2500, 1500, 1500));
   assert(!issue_qd_ok(4, 4));
   assert(issue_qd_ok(3, 4));
   assert(issue_qd_ok(0, 2));
@@ -144,13 +126,6 @@ int main() {
   assert(effective_issue_qd(0, 16) == 16);
   assert(effective_issue_qd(8, 16) == 8);
   assert(effective_issue_qd(0, 0) == 1);
-
-  // Late-beam C_L: one shot at `at`, never when disabled or already fired.
-  assert(!early_cl_due(256, 0, false));
-  assert(!early_cl_due(255, 256, false));
-  assert(early_cl_due(256, 256, false));
-  assert(early_cl_due(320, 256, false));
-  assert(!early_cl_due(256, 256, true));
 
   std::puts("test_cont_batch OK");
   return 0;

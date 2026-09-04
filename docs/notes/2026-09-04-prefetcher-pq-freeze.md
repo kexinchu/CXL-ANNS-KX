@@ -140,5 +140,9 @@ random-read QD (nvme ≈ 0.17 GB/s on that wave). Hide/oracle moves from
 
 ## Out of scope (unchanged)
 
-T=8 PrefetchHub, `--direct-install`, restaging a larger trace set, replacing
-50.25 / 85.8, writing 420 / 460 / 800 / 900 / 930 / 950 / 1100.
+Restaging a larger trace set, replacing 50.25 / 85.8, writing 420 / 460 /
+800 / 900 / 930 / 950 / 1100.
+
+T=8 steal / continuous batching / pipeline is frozen separately in
+`docs/notes/2026-09-04-hide-t8-steal-freeze.md` (689 QPS / 64% occ). Do not
+fold those knobs back into this T=1 contract.
