@@ -48,6 +48,13 @@ struct Metrics {
   uint64_t page_occ_pages = 0;
   uint64_t page_occ_used_slots = 0;
   uint64_t page_occ_slots = 0;
+  uint64_t pf_requested_page_events = 0;
+  uint64_t pf_issued_page_events = 0;
+  uint64_t pf_extent_extra_page_events = 0;
+  uint64_t issue_command_events = 0;
+  uint64_t inflight_depth_sum = 0;
+  uint64_t inflight_depth_samples = 0;
+  uint64_t inflight_depth_max = 0;
 
   void reset() {
     const bool keep_cxl = window_is_cxl_dram;
@@ -64,6 +71,17 @@ struct Metrics {
   void note_score_from_bounce(uint64_t n = 1) { score_from_bounce += n; }
   void note_score_from_cache(uint64_t n = 1) { score_from_cache += n; }
   void note_fetched_pages(uint64_t n) { fetched_pages += n; }
+  void note_pf_issue_event(uint64_t requested, uint64_t issued) {
+    pf_requested_page_events += requested;
+    pf_issued_page_events += issued;
+    pf_extent_extra_page_events += issued > requested ? issued - requested : 0;
+    if (issued) issue_command_events++;
+  }
+  void note_inflight_depth(uint64_t depth) {
+    inflight_depth_sum += depth;
+    inflight_depth_samples++;
+    if (depth > inflight_depth_max) inflight_depth_max = depth;
+  }
 
   void note_pf_issue(const std::vector<uint64_t>& pages, bool lookahead) {
     for (uint64_t p : pages) {
@@ -193,6 +211,13 @@ struct Metrics {
     page_occ_pages += o.page_occ_pages;
     page_occ_used_slots += o.page_occ_used_slots;
     page_occ_slots += o.page_occ_slots;
+    pf_requested_page_events += o.pf_requested_page_events;
+    pf_issued_page_events += o.pf_issued_page_events;
+    pf_extent_extra_page_events += o.pf_extent_extra_page_events;
+    issue_command_events += o.issue_command_events;
+    inflight_depth_sum += o.inflight_depth_sum;
+    inflight_depth_samples += o.inflight_depth_samples;
+    if (o.inflight_depth_max > inflight_depth_max) inflight_depth_max = o.inflight_depth_max;
   }
 
   void print(FILE* f = stdout) const {
@@ -249,5 +274,19 @@ struct Metrics {
             (unsigned long long)page_occ_n0, (unsigned long long)page_occ_n50,
             (unsigned long long)page_occ_n100, (unsigned long long)page_occ_slots,
             (unsigned long long)page_occ_used_slots);
+    const double inflight_mean = inflight_depth_samples
+                                     ? (double)inflight_depth_sum / (double)inflight_depth_samples
+                                     : 0.0;
+    fprintf(f,
+            "eval_events requested_pages=%llu issued_pages=%llu extent_extra_pages=%llu "
+            "issue_commands=%llu inflight_depth_sum=%llu inflight_depth_samples=%llu "
+            "inflight_depth_max=%llu inflight_depth_mean=%.3f\n",
+            (unsigned long long)pf_requested_page_events,
+            (unsigned long long)pf_issued_page_events,
+            (unsigned long long)pf_extent_extra_page_events,
+            (unsigned long long)issue_command_events,
+            (unsigned long long)inflight_depth_sum,
+            (unsigned long long)inflight_depth_samples,
+            (unsigned long long)inflight_depth_max, inflight_mean);
   }
 };

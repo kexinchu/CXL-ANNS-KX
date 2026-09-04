@@ -127,6 +127,14 @@ int main() {
   assert(effective_issue_qd(8, 16) == 8);
   assert(effective_issue_qd(0, 0) == 1);
 
+  Metrics scheduler_metrics;
+  note_scheduler_inflight(&scheduler_metrics, 3);
+  note_scheduler_inflight(&scheduler_metrics, 7);
+  note_scheduler_inflight(nullptr, 99);
+  assert(scheduler_metrics.inflight_depth_samples == 2);
+  assert(scheduler_metrics.inflight_depth_sum == 10);
+  assert(scheduler_metrics.inflight_depth_max == 7);
+
   std::puts("test_cont_batch OK");
   return 0;
 }

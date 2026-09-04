@@ -2757,8 +2757,9 @@ int main(int argc, char** argv) {
                   cov[i] = pqq_covering(hub.pipe, slots[(size_t)i].need);
               }
               const bool has_more = next_q.load(std::memory_order_relaxed) < nq;
-              const bool qd_ok =
-                  issue_qd_ok(nand_inflight.load(std::memory_order_relaxed), issue_qd);
+              const uint32_t inflight_now = nand_inflight.load(std::memory_order_relaxed);
+              note_scheduler_inflight(tls_metrics, inflight_now);
+              const bool qd_ok = issue_qd_ok(inflight_now, issue_qd);
               auto dec = steal_decide(stbuf, cov, D, has_more, qd_ok);
               if (dec.act == Pipe2Act::Done) break;
               PqQ& q = slots[(size_t)dec.slot];

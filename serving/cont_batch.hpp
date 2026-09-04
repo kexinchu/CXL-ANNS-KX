@@ -38,6 +38,10 @@ inline uint32_t effective_issue_qd(uint32_t cli, int nthreads) {
   return cli;
 }
 
+inline void note_scheduler_inflight(Metrics* metrics, uint32_t inflight) {
+  if (metrics) metrics->note_inflight_depth(inflight);
+}
+
 // Dual-queue: never block the compute thread.
 // Feed prefetch (Issue Hold) when QD has room; else Fill or Rank; else Pump.
 inline Pipe2Dec steal_decide(const CbSt* st, const bool* covering, int n, bool has_more,

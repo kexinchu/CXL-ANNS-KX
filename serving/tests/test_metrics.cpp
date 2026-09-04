@@ -51,6 +51,31 @@ int main() {
   assert(a.score_from_window == 3);
   assert(a.score_from_bounce == 4);
 
+  Metrics events;
+  events.note_pf_issue_event(7, 10);
+  events.note_pf_issue_event(3, 3);
+  assert(events.pf_requested_page_events == 10);
+  assert(events.pf_issued_page_events == 13);
+  assert(events.pf_extent_extra_page_events == 3);
+  assert(events.issue_command_events == 2);
+  events.note_inflight_depth(0);
+  events.note_inflight_depth(8);
+  assert(events.inflight_depth_sum == 8);
+  assert(events.inflight_depth_samples == 2);
+  assert(events.inflight_depth_max == 8);
+
+  Metrics more_events;
+  more_events.note_pf_issue_event(4, 6);
+  more_events.note_inflight_depth(5);
+  events.add_from(more_events);
+  assert(events.pf_requested_page_events == 14);
+  assert(events.pf_issued_page_events == 19);
+  assert(events.pf_extent_extra_page_events == 5);
+  assert(events.issue_command_events == 3);
+  assert(events.inflight_depth_sum == 13);
+  assert(events.inflight_depth_samples == 3);
+  assert(events.inflight_depth_max == 8);
+
   Metrics u;
   u.note_pf_issue(std::vector<uint64_t>{4096, 8192, 12288}, true);
   u.note_pf_issue(std::vector<uint64_t>{16384}, false);

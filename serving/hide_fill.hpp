@@ -254,8 +254,12 @@ inline void hide_issue(HideInflight& inf, DramWindow& win, Placement& pl, PageCo
     if (use_window && win.is_resident(pl.ssd_base, pl.ssd_base + p, 1)) continue;
     miss.push_back(p);
   }
+  const uint64_t requested_pages = miss.size();
   if (extent_run) hide_extent_run(miss, pb, 32);
-  if (miss.empty()) return;
+  if (miss.empty()) {
+    if (m) m->note_pf_issue_event(requested_pages, 0);
+    return;
+  }
   inf.clear();
   inf.direct = direct && !prefetch_only;
   if (prefetch_only) {
@@ -272,7 +276,10 @@ inline void hide_issue(HideInflight& inf, DramWindow& win, Placement& pl, PageCo
       inf.dests.push_back(d);
       inf.frames.push_back(fr);
     }
-    if (inf.pages.empty()) return;
+    if (inf.pages.empty()) {
+      if (m) m->note_pf_issue_event(requested_pages, 0);
+      return;
+    }
   } else {
     inf.pages = std::move(miss);
     inf.host_n = inf.pages.size();
@@ -330,6 +337,7 @@ inline void hide_issue(HideInflight& inf, DramWindow& win, Placement& pl, PageCo
   }
   pool.submit_fns(std::move(jobs));
   if (m) {
+    m->note_pf_issue_event(requested_pages, inf.pages.size());
     m->note_fetched_pages(inf.pages.size());
     m->promote_bytes += inf.pages.size() * pb;
     m->prefetch_pages += inf.pages.size();
