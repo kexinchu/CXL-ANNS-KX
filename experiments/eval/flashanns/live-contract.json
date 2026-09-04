@@ -1,0 +1,19 @@
+{
+  "device": "/dev/vmem0",
+  "sysfs": "/sys/class/vmem/vmem0",
+  "cache_limit": 4294967296,
+  "required_dirty_bytes": 0,
+  "required_io_errors": 0,
+  "sample_pages": 32,
+  "sample_seed": 20260904,
+  "backend": "software",
+  "backing_count": 2,
+  "nvme_dev": [
+    "/dev/nvme1n1",
+    "/dev/nvme2n1"
+  ],
+  "target_bdf": [
+    "0000:d8:00.0",
+    "0000:d9:00.0"
+  ]
+}

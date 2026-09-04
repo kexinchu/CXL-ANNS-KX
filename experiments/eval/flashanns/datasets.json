@@ -6,6 +6,12 @@
     "source_dtype": "float32",
     "execution_dtype": "float32",
     "metric": "mips",
+    "staging": {
+      "offset": 1181116006400,
+      "length": 20480004096,
+      "host_artifact": "extent_image",
+      "magic": 211766302787
+    },
     "artifacts": {
       "source_base": "/mnt/disk0/chukexin_motivation/data/text2image_10m/base.10M.fbin",
       "source_queries": "/mnt/disk0/chukexin_motivation/data/text2image_10m/query.public.100K.fbin",
