@@ -13,6 +13,7 @@
 #endif
 
 #include "serving/dram_window.hpp"
+#include "serving/eval_trace.hpp"
 #include "serving/placement.hpp"
 #include "serving/prefetch.hpp"
 #include "serving/promote_pipe.hpp"
@@ -362,7 +363,8 @@ struct Cand {
 static std::vector<uint32_t> search_one_pq(Placement& pl, DramWindow& win, Prefetch& pref,
                                            const EntryGraph& eg, const float* qf, uint32_t beam,
                                            uint32_t k, uint32_t iters, PageCopyPool* ext_pool,
-                                           VmemIo* vio) {
+                                           VmemIo* vio,
+                                           std::vector<uint32_t>* committed_out = nullptr) {
   PqTable* pq = pref.pq;
   if (!pq || !pq->loaded()) {
     fprintf(stderr, "pq-nav needs loaded --pq-pivots/--pq-compressed\n");
@@ -447,6 +449,11 @@ static std::vector<uint32_t> search_one_pq(Placement& pl, DramWindow& win, Prefe
       expands++;
       expand_one(cur);
     }
+    if (committed_out) {
+      committed_out->clear();
+      committed_out->reserve(cand.size());
+      for (const Cand& c : cand) committed_out->push_back(c.id);
+    }
     fp_rerank_dram();
     std::sort(cand.begin(), cand.end(),
               [](const Cand& a, const Cand& b) { return a.dist < b.dist; });
@@ -496,6 +503,7 @@ static std::vector<uint32_t> search_one_pq(Placement& pl, DramWindow& win, Prefe
   std::vector<uint32_t> rerank_ids;
   rerank_ids.reserve(cand.size());
   for (const Cand& c : cand) rerank_ids.push_back(c.id);
+  if (committed_out) *committed_out = rerank_ids;
   auto need = issue_ids(rerank_ids);
   std::vector<uint64_t> extra_toks;
   if (last_issue_tok) extra_toks.push_back(last_issue_tok);
@@ -1129,9 +1137,10 @@ static std::vector<uint32_t> search_one(Placement& pl, DramWindow& win, Prefetch
                                         PromotePipe* pipe, const EntryGraph& eg, const float* qf,
                                         const uint8_t* qpq, uint32_t beam, uint32_t k,
                                         uint32_t iters, bool rerank, bool oneshot_fp,
-                                        PageCopyPool* ext_pool = nullptr, VmemIo* vio = nullptr) {
+                                        PageCopyPool* ext_pool = nullptr, VmemIo* vio = nullptr,
+                                        std::vector<uint32_t>* committed_out = nullptr) {
   if (!oneshot_fp && pref.pq_nav && pref.pq)
-    return search_one_pq(pl, win, pref, eg, qf, beam, k, iters, ext_pool, vio);
+    return search_one_pq(pl, win, pref, eg, qf, beam, k, iters, ext_pool, vio, committed_out);
   if (oneshot_fp)
     return search_one_fp(pl, win, pref, pipe, eg, qf, beam, k, iters, ext_pool, vio);
 
@@ -1427,6 +1436,7 @@ struct PqQ {
   CbSt st = CbSt::Empty;
   std::vector<uint64_t> need;
   std::vector<uint64_t> fill_toks;
+  std::vector<uint32_t> trace_candidates;
   bool nand_held = false;
   std::vector<uint8_t> fp_done;
   uint32_t fp_n = 0;
@@ -1504,6 +1514,9 @@ static void pqq_issue(PqQ& q, Placement& pl, PrefetchHub& hub, bool stall = fals
   std::unordered_set<uint64_t> ps;
   q.need.reserve(q.cand.size() * 2);
   for (const Cand& c : q.cand) hide_collect_vec_pages(pl, vb, pb, c.id, q.need, &ps);
+  q.trace_candidates.clear();
+  q.trace_candidates.reserve(q.cand.size());
+  for (const Cand& c : q.cand) q.trace_candidates.push_back(c.id);
   uint64_t tok = stall ? hub.submit_block(q.need) : hub.submit(q.need);
   if (tok) q.fill_toks.push_back(tok);
   q.fp_done.assign(q.cand.size(), 0);
@@ -1633,6 +1646,7 @@ int main(int argc, char** argv) {
   const char* id_slot_map_path = nullptr;
   const char* dump_expands_path = nullptr;
   const char* query_ids_path = nullptr;
+  const char* eval_trace_dir = nullptr;
 
   for (int i = 1; i < argc; ++i) {
     std::string a = argv[i];
@@ -1732,6 +1746,7 @@ int main(int argc, char** argv) {
     else if (a == "--id-slot-map") id_slot_map_path = need(a.c_str());
     else if (a == "--dump-expands") dump_expands_path = need(a.c_str());
     else if (a == "--query-ids") query_ids_path = need(a.c_str());
+    else if (a == "--eval-trace-dir") eval_trace_dir = need(a.c_str());
     else if (a == "--oracle-dram") oracle_dram = true;
     else if (a == "--oracle-window") oracle_window = true;
     else if (a == "--diskann-layout") diskann_cli = true;
@@ -1771,6 +1786,10 @@ int main(int argc, char** argv) {
     metric = parse_distance_metric(metric_s);
   } catch (const std::invalid_argument& e) {
     fprintf(stderr, "bad --metric %s: %s\n", metric_s.c_str(), e.what());
+    return 2;
+  }
+  if (eval_trace_dir && !pq_nav) {
+    fprintf(stderr, "--eval-trace-dir requires --pq-nav\n");
     return 2;
   }
   if (dump_expands_path && dump_expands_path[0]) {
@@ -2272,6 +2291,7 @@ int main(int argc, char** argv) {
   lat_ms.reserve(nq);
   double recall_sum = 0;
   uint32_t recall_n = 0;
+  std::unique_ptr<EvalTrace> eval_trace;
 
   const bool use_shared_pool =
       pref.policy == PrefetchPolicy::P3 &&
@@ -2322,19 +2342,25 @@ int main(int argc, char** argv) {
     auto tq0 = std::chrono::steady_clock::now();
     EntryGraph qeg = eg;
     if (nav.loaded()) qeg.entry_id = nav.search_entry(qf, nav_l);
+    std::vector<uint32_t> committed;
     auto ids = search_one(pl, w, lp, nullptr, qeg, qf, qpq.data(), beam, k, iters, rerank,
-                          oneshot_fp, pool, &vio);
+                          oneshot_fp, pool, &vio, eval_trace ? &committed : nullptr);
     auto tq1 = std::chrono::steady_clock::now();
     double ms = std::chrono::duration<double, std::milli>(tq1 - tq0).count();
     double rec = -1;
-    if (gt_path) {
-      if (!id_map.empty()) {
-        for (uint32_t& id : ids) {
-          if (id < id_map.size()) id = id_map[id];
-        }
+    if (!id_map.empty()) {
+      for (uint32_t& id : ids) {
+        if (id < id_map.size()) id = id_map[id];
       }
+    }
+    if (gt_path) {
       auto g = load_gt_row(gt_all.data(), gt_k, qi, k);
       rec = recall_at_k(ids, g);
+    }
+    if (eval_trace) {
+      const uint64_t ns =
+          (uint64_t)std::chrono::duration_cast<std::chrono::nanoseconds>(tq1 - tq0).count();
+      eval_trace->record(qi, qidx[qi], ns, std::move(committed), std::move(ids));
     }
     return std::make_pair(ms, rec);
   };
@@ -2432,6 +2458,12 @@ int main(int argc, char** argv) {
     fflush(stdout);
   }
 
+  if (eval_trace_dir && eval_trace_dir[0]) {
+    eval_trace = std::make_unique<EvalTrace>(nq, k);
+    printf("eval_trace_dir=%s nq=%u k=%u\n", eval_trace_dir, nq, k);
+    fflush(stdout);
+  }
+
   const uint64_t nvme_sect0 = nvme_read_sectors();
   std::vector<int> aff_cpus;
   if (cpu_affinity) aff_cpus = list_cpu_ids();
@@ -2470,14 +2502,20 @@ int main(int argc, char** argv) {
       auto ids = pqq_finish(q, k);
       auto tq1 = std::chrono::steady_clock::now();
       lat_ms[q.qi] = std::chrono::duration<double, std::milli>(tq1 - q.t0).count();
-      if (gt_path) {
-        if (!id_map.empty()) {
-          for (uint32_t& id : ids) {
-            if (id < id_map.size()) id = id_map[id];
-          }
+      if (!id_map.empty()) {
+        for (uint32_t& id : ids) {
+          if (id < id_map.size()) id = id_map[id];
         }
+      }
+      if (gt_path) {
         auto g = load_gt_row(gt_all.data(), gt_k, q.qi, k);
         recs[q.qi] = recall_at_k(ids, g);
+      }
+      if (eval_trace) {
+        const uint64_t ns =
+            (uint64_t)std::chrono::duration_cast<std::chrono::nanoseconds>(tq1 - q.t0).count();
+        eval_trace->record(q.qi, qidx[q.qi], ns, std::move(q.trace_candidates),
+                           std::move(ids));
       }
       q = PqQ{};
       q.st = CbSt::Empty;
@@ -2660,14 +2698,21 @@ int main(int argc, char** argv) {
             auto ids = pqq_finish(q, k);
             auto tq1 = std::chrono::steady_clock::now();
             lat_ms[q.qi] = std::chrono::duration<double, std::milli>(tq1 - q.t0).count();
-            if (gt_path) {
-              if (!id_map.empty()) {
-                for (uint32_t& id : ids) {
-                  if (id < id_map.size()) id = id_map[id];
-                }
+            if (!id_map.empty()) {
+              for (uint32_t& id : ids) {
+                if (id < id_map.size()) id = id_map[id];
               }
+            }
+            if (gt_path) {
               auto g = load_gt_row(gt_all.data(), gt_k, q.qi, k);
               recs[q.qi] = recall_at_k(ids, g);
+            }
+            if (eval_trace) {
+              const uint64_t ns = (uint64_t)std::chrono::duration_cast<std::chrono::nanoseconds>(
+                                      tq1 - q.t0)
+                                      .count();
+              eval_trace->record(q.qi, qidx[q.qi], ns, std::move(q.trace_candidates),
+                                 std::move(ids));
             }
             if (q.nand_held) {
               nand_inflight.fetch_sub(1, std::memory_order_relaxed);
@@ -2848,6 +2893,10 @@ int main(int argc, char** argv) {
     }
   }
   if (use_shared_pool) shared_pool.stop_join();
+  if (eval_trace && !eval_trace->finish(eval_trace_dir)) {
+    fprintf(stderr, "failed to finish evaluation trace in %s\n", eval_trace_dir);
+    return 2;
+  }
   const uint64_t nvme_sect1 = nvme_read_sectors();
   metrics.nvme_read_bytes =
       nvme_sect1 >= nvme_sect0 ? (nvme_sect1 - nvme_sect0) * 512ull : 0;
