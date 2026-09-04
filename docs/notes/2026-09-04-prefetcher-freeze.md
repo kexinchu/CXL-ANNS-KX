@@ -14,8 +14,15 @@ Does not replace T2I-10M claim rows 50.25 / 49.25 / 85.8.
    then `wait_covering` / drain. Default width **e4 a1**.
 4. Bounce buffer → window memcpy. `--direct-install` is a no-op (hung).
 5. Host `--graph-file` is required on DiskANN hide so `N(u)` is not an SSD
-   mmap fault. Extract `N(u)` from the **same** packed image, not `graph_R32.bin`.
-6. Search contract: G0 10k nav → entry → oneshot-fp L=400 k=10 T=1.
+   mmap fault. Extract `N(u)` from the **logical** packed image (id order),
+   not `graph_R32.bin` and not a slot-order extract of a remapped file.
+6. **Page layout (query rebuild):** build-query `--dump-expands` (disjoint from
+   timed queries) → `--mode cooccur --trace-pairs` (2-in-4K from expand
+   co-issue; leftover strongest-neighbor) → `--mode extent --map-in` (each
+   expand’s still-free pages become one run; traces packed first). Search
+   must pass `--id-slot-map`. Full-graph C(R,2) cooccur is infeasible at 10M
+   (~450 new pairs/node).
+7. Search contract: G0 10k nav → entry → oneshot-fp L=400 k=10 T=1.
 
 ## Dropped
 
@@ -46,3 +53,8 @@ Does not replace T2I-10M claim rows 50.25 / 49.25 / 85.8.
 ```
 
 CLI defaults for DiskANN (no `--nbr-bundle`) now match e4 a1 and `--no-score-page`.
+
+10M recipe: `tools/run_hide_10m_t1.sh` (`LAYOUT=seq|extent`). Extent image at
+1100 GiB; sequential stays at 800 GiB. On seed-42 nq=100, extent QPS is flat
+vs sequential (24.75 vs 24.99); keep both. See
+`docs/notes/2026-09-04-prefetcher-10m-t1.md`.

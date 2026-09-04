@@ -1,26 +1,43 @@
 #!/usr/bin/env bash
-# T=1 hide on the frozen prefetcher + full T2I-10M DiskANN at 800 GiB.
-# Does not write 420/460/900/930/950. Does not replace 50.25 / 85.8.
+# T=1 hide on frozen prefetcher + T2I-10M.
+# LAYOUT=seq  → sequential DiskANN @ 800 GiB (no page rebuild)
+# LAYOUT=extent → query-trace cooccur+extent @ 1100 GiB
+# Does not write 420/460/800/900/930/950. Does not replace 50.25 / 85.8.
 set -euo pipefail
 ROOT=/root/chukexin/CXL-ANNS-KX
 BIN=$ROOT/serving/search_beam
 SRV=/mnt/disk0/chukexin_motivation/serving_t2i_10m
 OUT=$ROOT/results/paper_figs
 NAV=$OUT/nav_10k.bin
-GRAPH=${GRAPH:-$SRV/diskann_t2i_10m.graph.bin}
-OFF=858993459200
-LEN=20480004096
 HOST_BYTES=$((2 * 1024 * 1024 * 1024))
 NQ=${NQ:-20}
+LAYOUT=${LAYOUT:-extent}
 
-if [[ ! -s "$GRAPH" ]]; then
-  echo "extract $GRAPH from diskann_t2i_10m.bin"
-  python3 "$ROOT/tools/extract_diskann_graph.py" --src "$SRV/diskann_t2i_10m.bin" --out "$GRAPH"
+case "$LAYOUT" in
+  seq)
+    GRAPH=$SRV/diskann_t2i_10m.graph.bin
+    OFF=858993459200
+    MAP=
+    TAG=e4a1_seq
+    ;;
+  extent)
+    GRAPH=$SRV/diskann_t2i_10m.graph.bin
+    OFF=1181116006400
+    MAP=$SRV/id_to_slot_10m_extent.bin
+    TAG=e4a1_extent
+    ;;
+  *) echo "LAYOUT=seq|extent"; exit 2 ;;
+esac
+LEN=20480004096
+
+log=$OUT/hide_10m_t1_${TAG}_nq${NQ}.log
+echo "==== hide 10M T=1 $TAG nq=$NQ $(date -Is) ====" | tee "$log"
+echo "cache_used=$(cat /sys/class/vmem/vmem0/cache_used) limit=$(cat /sys/class/vmem/vmem0/cache_limit) off=$OFF" | tee -a "$log"
+
+extra=()
+if [[ -n "$MAP" ]]; then
+  extra+=(--id-slot-map "$MAP")
 fi
-
-log=$OUT/hide_10m_t1_e4a1_nq${NQ}.log
-echo "==== hide 10M T=1 e4 a1 nq=$NQ $(date -Is) ====" | tee "$log"
-echo "cache_used=$(cat /sys/class/vmem/vmem0/cache_used) limit=$(cat /sys/class/vmem/vmem0/cache_limit)" | tee -a "$log"
 
 numactl --cpunodebind=0 --membind=0 "$BIN" \
   --diskann-layout --nav-graph "$NAV" --graph-file "$GRAPH" \
@@ -28,6 +45,7 @@ numactl --cpunodebind=0 --membind=0 "$BIN" \
   --entry "$SRV/serving_entry_t2i_10m_pagebin.bin" \
   --queries "$SRV/query_10k.fbin" --gt "$SRV/gt_10k_k10.ibin" \
   --id-map "$SRV/new_to_old_pagebin.bin" \
+  "${extra[@]}" \
   --dram-backend numa --dram-numa 1 \
   --dram-bytes "$HOST_BYTES" --host-bytes "$HOST_BYTES" \
   --cpu-affinity --policy P3 --budget $((64 << 20)) \
@@ -39,4 +57,4 @@ numactl --cpunodebind=0 --membind=0 "$BIN" \
   2>&1 | tee -a "$log"
 
 echo "---- summary ----"
-grep -E 'expand_batch|throughput_QPS|latency_ms mean|recall@10|from_win=|crit_wait|overlap=|nvme_real_GBps|page_use=' "$log" | head -20
+grep -E 'id-slot-map|expand_batch|throughput_QPS|latency_ms mean|recall@10|from_win=|crit_wait|overlap=|nvme_real_GBps|page_use=|page_occ' "$log" | head -25
