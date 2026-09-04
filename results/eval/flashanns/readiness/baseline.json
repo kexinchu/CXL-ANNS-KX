@@ -1,0 +1,38 @@
+{
+  "captured_at_utc": "2026-09-04T21:37:27Z",
+  "checkout_head": "38dcb1dfbe501ed58a623892f5627e8af5fbc519",
+  "runtime_base": "15e6632025afe2022b4d4c9380de7408731d6fcf",
+  "contract_base": "1dc182cd642217a0603a4d05a5c1a0bfd7d94f5d",
+  "source_equal_to_runtime_base": true,
+  "offline_tests": {
+    "passed": 11,
+    "failed": 0
+  },
+  "search_beam_sha256": "10ea8501a25bb91bc1858c38029b7c0bee8c26fd5e9e41bc521812bfd74dad49",
+  "live_observation": {
+    "backend": "software",
+    "backing_count": 2,
+    "nvme_dev": [
+      "/dev/nvme1n1",
+      "/dev/nvme2n1"
+    ],
+    "target_bdf": [
+      "0000:d8:00.0",
+      "0000:d9:00.0"
+    ],
+    "cache_limit": 104857600,
+    "cache_used": 104857600,
+    "dirty_bytes": 34729984,
+    "io_errors": 0,
+    "evictions": 62385036,
+    "dev_vmem0_present": false
+  },
+  "required_cache_limit": 4294967296,
+  "live_ready": false,
+  "live_blockers": [
+    "cache_limit is 104857600, not 4294967296",
+    "cache_used is 104857600, not 0",
+    "dirty_bytes is 34729984, not 0",
+    "/dev/vmem0 is absent"
+  ]
+}
