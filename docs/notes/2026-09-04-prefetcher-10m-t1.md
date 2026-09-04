@@ -1,5 +1,9 @@
 # Frozen prefetcher on T2I-10M T=1 (2026-09-04)
 
+**Superseded.** The single 10M freeze is
+`docs/notes/2026-09-04-prefetcher-freeze.md` (PQ-64 end-batch, 110.94 / 116.29).
+This file is the morning oneshot e4 a1 diary only.
+
 Does not replace 50.25 / 49.25 / 85.8. Cache 100 MiB, window 2 GiB, e4 a1
 bounce, `--no-score-page`, host `diskann_t2i_10m.graph.bin` (logical `N(u)`).
 
