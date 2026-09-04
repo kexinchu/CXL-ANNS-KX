@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": [
+    "run_id", "dataset", "metric", "phase", "system", "state", "L", "k", "nq", "repeat",
+    "command", "git", "binary_sha256", "artifact_manifest_sha256", "preflight_before",
+    "preflight_after", "device_before", "device_after", "metrics", "sidecars", "validation"
+  ],
+  "properties": {
+    "validation": {
+      "type": "object",
+      "required": ["status"],
+      "properties": {"status": {"enum": ["pending", "accepted", "rejected"]}}
+    }
+  },
+  "additionalProperties": true
+}
