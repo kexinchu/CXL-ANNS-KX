@@ -61,15 +61,25 @@ final k = 10
 query shuffle seed = 42
 ```
 
-The evaluation may add observation-only tracing, sidecars, counters, runners,
-validators, and plotting code. It must not change candidate selection, page
-formation, request ordering, completion scheduling, scoring, or returned IDs
-in the frozen path. Removed controls such as early-CL, lookahead, Blind,
-admit-gap, pipe-drive, score-page, and speculative beam expansion must not be
-reintroduced as evaluation variants.
+The page-formation, I/O, completion, pipeline, and scheduling behavior is
+frozen. The evaluation may add observation-only tracing, sidecars, counters,
+runners, validators, plotting code, and one dataset-semantic distance adapter:
 
-Any necessary instrumentation change must pass a source-diff audit against
-`15e6632`: only additive observation hooks are allowed inside frozen functions.
+- T2I and LAION use MIPS;
+- YFCC uses its official Euclidean/L2 metric;
+- the runtime accepts only `mips` or `l2` and applies that choice consistently
+  to PQ lookup-table construction and final full-precision reranking.
+
+The metric adapter must be covered by exact synthetic ranking tests and must
+not change page formation, request ordering, completion scheduling, scoring
+residency, or returned-ID mapping. Removed controls such as early-CL,
+lookahead, Blind, admit-gap, pipe-drive, score-page, and speculative beam
+expansion must not be reintroduced as evaluation variants.
+
+Any runtime change must pass a source-diff audit against `15e6632`: only
+observation hooks and the approved distance dispatch may touch frozen
+functions. Candidate-list management and every page/scheduler statement remain
+byte-for-byte unchanged.
 
 ## 3. Memory and Resource Contract
 
@@ -129,6 +139,12 @@ YFCC uses the local 10M x 192 `uint8` base set, official public queries, and
 ground truth under its native L2 contract. It is not ready for live execution
 until the exact 10k query subset, graph, PQ-64 files, packed image, entry point,
 ID map, and slot map have been built and independently verified.
+
+The packed representation may widen `uint8` coordinates to exactly
+value-preserving `float32` if required by the index builder. Admission must
+prove coordinate equality on deterministic samples and must prove that exact
+top-k ordering under the runtime L2 kernel matches direct L2 on the native
+bytes. It must not normalize, project, or use a MIPS reduction.
 
 ### LAION-10M
 
@@ -357,6 +373,8 @@ A run is rejected if any of the following holds:
 - FlashANNS scores from bounce or triggers Flash from an exact-scoring load;
 - the candidate set changes between same-search transfer or scheduling
   controls;
+- the configured metric differs from the dataset manifest or PQ/final scoring
+  use different metrics;
 - CPU affinity, frequency, memory availability, or throttling violates the
   resource contract.
 
@@ -367,7 +385,8 @@ silently overwritten or retried under the same run ID.
 
 The work is complete only when:
 
-1. shared offline tests and negative schema/preflight tests pass;
+1. shared offline tests, exact MIPS/L2 ranking tests, and negative
+   schema/preflight tests pass;
 2. T2I, YFCC, and LAION artifact manifests and live-image identities pass;
 3. every dataset passes its 100-query candidate/result proof;
 4. all recall anchors are selected from measured calibration points;
