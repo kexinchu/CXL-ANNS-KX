@@ -18,6 +18,7 @@ motivation_exps/data/
 .DS_Store
 .vscode/
 .idea/
+.worktrees/
 *.swp
 *~
 
