@@ -20,6 +20,7 @@
 #include "serving/metrics.hpp"
 #include "serving/vmem_prefetch.hpp"
 #include "serving/hide_fill.hpp"
+#include "serving/cont_batch.hpp"
 #include "serving/nav_graph.hpp"
 #include "serving/score_cache.hpp"
 
@@ -1430,6 +1431,174 @@ static double recall_at_k(const std::vector<uint32_t>& pred, const std::vector<u
   return (double)hit / (double)gt.size();
 }
 
+// Frozen DiskANN P3 hop (e4 a1, no score-page / spec / cache). Never wait_covering.
+struct P3Q {
+  uint32_t qi = 0;
+  const float* qf = nullptr;
+  std::vector<Cand> cand;
+  std::unordered_set<uint32_t> seen;
+  std::unordered_set<uint32_t> expanded;
+  std::unordered_set<uint32_t> pending_set;
+  struct Pend {
+    uint32_t id, src, k;
+  };
+  std::vector<Pend> pending;
+  uint32_t expands = 0;
+  CbSt st = CbSt::Empty;
+  std::vector<uint64_t> need;
+  std::chrono::steady_clock::time_point t0;
+};
+
+static void p3q_insert(P3Q& q, uint32_t L, uint32_t id, float d) {
+  if (q.cand.size() >= L) {
+    auto worst = std::max_element(q.cand.begin(), q.cand.end(),
+                                  [](const Cand& a, const Cand& b) { return a.dist < b.dist; });
+    if (d >= worst->dist) return;
+    *worst = {d, id};
+  } else {
+    q.cand.push_back({d, id});
+  }
+}
+
+static bool p3q_has_unexpanded(const P3Q& q, uint32_t iters) {
+  if (iters != 0 && q.expands >= iters) return false;
+  for (const Cand& c : q.cand) {
+    if (!q.expanded.count(c.id)) return true;
+  }
+  return false;
+}
+
+static std::vector<uint32_t> p3q_pick(P3Q& q, uint32_t ebatch, uint32_t iters) {
+  std::vector<uint32_t> batch;
+  batch.reserve(ebatch);
+  for (uint32_t t = 0; t < ebatch; ++t) {
+    int bi = -1;
+    float bd = 0;
+    for (size_t i = 0; i < q.cand.size(); ++i) {
+      if (q.expanded.count(q.cand[i].id)) continue;
+      if (bi < 0 || q.cand[i].dist < bd) {
+        bi = (int)i;
+        bd = q.cand[i].dist;
+      }
+    }
+    if (bi < 0) break;
+    if (iters != 0 && q.expands >= iters) break;
+    uint32_t id = q.cand[(size_t)bi].id;
+    q.expanded.insert(id);
+    q.expands++;
+    batch.push_back(id);
+  }
+  return batch;
+}
+
+static void p3q_drain(P3Q& q, Placement& pl, DramWindow& win, uint32_t L, size_t vb, size_t pb) {
+  if (q.pending.empty()) return;
+  std::vector<P3Q::Pend> still;
+  still.reserve(q.pending.size());
+  for (const P3Q::Pend& e : q.pending) {
+    const uint8_t* vp = pl.vec(e.id);
+    alignas(64) uint8_t buf[4096];
+    if (vb > sizeof(buf)) {
+      fprintf(stderr, "vec too large for score buf\n");
+      std::exit(2);
+    }
+    if (!win.try_copy_resident(pl.ssd_base, vp, vb, buf)) {
+      still.push_back(e);
+      continue;
+    }
+    q.pending_set.erase(e.id);
+    float d = vec_mips_neg(buf, q.qf, pl.hdr->dim, pl.hdr->vec_bytes);
+    if (cur_met(win)) {
+      cur_met(win)->distance_comps++;
+      cur_met(win)->note_score_from_window(1);
+      cur_met(win)->note_pf_score_vec(vb);
+      cur_met(win)->note_pf_scored_id(e.id);
+      std::vector<uint64_t> sp;
+      uint64_t off = (uint64_t)(vp - pl.ssd_base);
+      uint64_t first = off & ~(uint64_t)(pb - 1);
+      uint64_t last = (off + vb - 1) & ~(uint64_t)(pb - 1);
+      for (uint64_t p = first; p <= last; p += pb) sp.push_back(p);
+      cur_met(win)->note_pf_used(sp);
+    }
+    p3q_insert(q, L, e.id, d);
+  }
+  q.pending.swap(still);
+}
+
+static void p3q_collect_need(P3Q& q, Placement& pl, size_t vb, size_t pb) {
+  q.need.clear();
+  std::unordered_set<uint64_t> nps;
+  for (const P3Q::Pend& e : q.pending) hide_collect_vec_pages(pl, vb, pb, e.id, q.need, &nps);
+}
+
+static void p3q_init(P3Q& q, Placement& pl, DramWindow& win, Prefetch& pref, const EntryGraph& eg,
+                     const float* qf, uint32_t qi, uint32_t L) {
+  q = P3Q{};
+  q.qi = qi;
+  q.qf = qf;
+  q.t0 = std::chrono::steady_clock::now();
+  q.cand.reserve(L + pl.hdr->R + 8);
+  pref.on_query_begin(pl, win, eg.nodes, eg.entry_id);
+  const size_t vb = (size_t)pl.hdr->dim * pl.hdr->vec_bytes;
+  q.seen.insert(eg.entry_id);
+  alignas(64) uint8_t buf[4096];
+  bool hit = win.copy_if_resident(pl.ssd_base, pl.vec(eg.entry_id), vb, buf);
+  if (!hit) win.copy_through(pl.ssd_base, pl.vec(eg.entry_id), vb, buf);
+  if (cur_met(win)) {
+    if (hit) cur_met(win)->note_score_from_window(1);
+    else cur_met(win)->note_score_from_bounce(1);
+    cur_met(win)->distance_comps++;
+  }
+  p3q_insert(q, L, eg.entry_id, vec_mips_neg(buf, qf, pl.hdr->dim, pl.hdr->vec_bytes));
+  q.st = CbSt::Ready;
+}
+
+static void p3q_step(P3Q& q, Placement& pl, DramWindow& win, PrefetchHub& hub, uint32_t L,
+                     uint32_t ebatch, uint32_t ahead, uint32_t iters, uint32_t Rlim) {
+  const size_t vb = (size_t)pl.hdr->dim * pl.hdr->vec_bytes;
+  const size_t pb = win.page_bytes;
+  hub.pump();
+  p3q_drain(q, pl, win, L, vb, pb);
+  uint32_t waves = 0;
+  for (uint32_t w = 0; w < (ahead ? ahead : 1); ++w) {
+    auto batch = p3q_pick(q, ebatch ? ebatch : 1, iters);
+    if (batch.empty()) break;
+    std::vector<uint64_t> now;
+    std::unordered_set<uint64_t> ps;
+    now.reserve(batch.size() * 16);
+    for (uint32_t cur : batch) {
+      uint32_t nbrs_local[64];
+      hide_read_nbrs(pl, cur, nbrs_local, Rlim);
+      for (uint32_t j = 0; j < Rlim; ++j) {
+        uint32_t nb = nbrs_local[j];
+        if (nb >= pl.hdr->n || q.seen.count(nb)) continue;
+        q.seen.insert(nb);
+        hide_collect_vec_pages(pl, vb, pb, nb, now, &ps);
+        if (q.pending_set.insert(nb).second) q.pending.push_back({nb, cur, 0});
+      }
+    }
+    hub.submit(now);
+    waves++;
+  }
+  hub.pump();
+  p3q_drain(q, pl, win, L, vb, pb);
+  if (!q.pending.empty()) {
+    p3q_collect_need(q, pl, vb, pb);
+    q.st = hub.covering(q.need) ? CbSt::Ready : CbSt::Wait;
+    return;
+  }
+  q.st = p3q_has_unexpanded(q, iters) ? CbSt::Ready : CbSt::Done;
+  (void)waves;
+}
+
+static std::vector<uint32_t> p3q_finish(P3Q& q, uint32_t k) {
+  std::sort(q.cand.begin(), q.cand.end(),
+            [](const Cand& a, const Cand& b) { return a.dist < b.dist; });
+  std::vector<uint32_t> out;
+  for (size_t i = 0; i < q.cand.size() && out.size() < k; ++i) out.push_back(q.cand[i].id);
+  return out;
+}
+
 int main(int argc, char** argv) {
   setvbuf(stdout, nullptr, _IOLBF, 0);
   const char* image = nullptr;
@@ -1492,6 +1661,7 @@ int main(int argc, char** argv) {
   const char* graph_file = nullptr;
   const char* dump_scored = nullptr;
   int nthreads = 1;
+  bool cont_batch_mode = false;
   bool per_thread_window = true;  // each request thread owns a DramWindow (no shared lock)
   int min_issue_use_n = 0;       // --min-issue-use N → threshold N/100; 0=off
   uint32_t spec_beam_nbrs = 0;
@@ -1501,6 +1671,7 @@ int main(int argc, char** argv) {
   bool direct_install = false;
   bool stripe_fill = false;
   bool extent_run = false;
+  bool extent_run_explicit = false;
   bool pq_nav = false;
   const char* pq_pivots_path = nullptr;
   const char* pq_compressed_path = nullptr;
@@ -1595,8 +1766,14 @@ int main(int argc, char** argv) {
     else if (a == "--no-direct-install") direct_install = false;
     else if (a == "--stripe-fill") stripe_fill = true;
     else if (a == "--no-stripe-fill") stripe_fill = false;
-    else if (a == "--extent-run") extent_run = true;
-    else if (a == "--no-extent-run") extent_run = false;
+    else if (a == "--extent-run") {
+      extent_run = true;
+      extent_run_explicit = true;
+    } else if (a == "--no-extent-run") {
+      extent_run = false;
+      extent_run_explicit = true;
+    }
+    else if (a == "--no-pipe-drive") { /* frozen path: pipe-drive is not implemented */ }
     else if (a == "--pq-nav") pq_nav = true;
     else if (a == "--no-pq-nav") pq_nav = false;
     else if (a == "--pq-pivots") pq_pivots_path = need(a.c_str());
@@ -1613,7 +1790,8 @@ int main(int argc, char** argv) {
     else if (a == "--dump-scored") dump_scored = need(a.c_str());
     else if (a == "--cont-batch") {
       nthreads = atoi(need(a.c_str()));
-      per_thread_window = false;  // shared window + overlapped NAND waits
+      per_thread_window = false;
+      cont_batch_mode = nthreads > 1;
     }
     else if (a == "--threads") nthreads = atoi(need(a.c_str()));
     else if (a == "--per-thread-window") per_thread_window = true;
@@ -1790,12 +1968,14 @@ int main(int argc, char** argv) {
     fprintf(stderr, "refuse --nbr-bundle with diskann layout\n");
     return 2;
   }
-  // Frozen hide-copy prefetcher (2026-09-04): e4 a1, issue committed misses,
-  // bounce install, score only after window install. Width is still overridable.
   if (pl.diskann_layout && !use_nbr_bundle) {
-    if (!expand_batch_explicit) expand_batch = 4;
-    if (!issue_ahead_explicit) issue_ahead = 1;
     if (!score_page_explicit) pref_score_page = false;
+    if (!extent_run_explicit) extent_run = true;
+    if (!oneshot_fp && !pq_nav) {
+      fprintf(stderr,
+              "diskann hide needs --pq-nav (codebook) or --oneshot-fp (ablation)\n");
+      return 2;
+    }
   }
   if (use_nbr_bundle) {
     const uint64_t packed = (uint64_t)hdr->dim * hdr->vec_bytes;
@@ -1949,7 +2129,7 @@ int main(int argc, char** argv) {
            "stripe_fill=%d extent_run=%d\n",
            pref.pipe_w, budget, pref.install_top, pref.fetch_top, (int)page_group_b,
            (int)install_all_fetched, nthreads, (int)per_thread_window,
-           (int)(!per_thread_window && nthreads > 1), (int)pref.score_page, pref.expand_batch,
+           (int)cont_batch_mode, (int)pref.score_page, pref.expand_batch,
            pref.issue_ahead, pref.min_issue_use, pref.spec_beam_nbrs, (int)pref.expand_sib,
            (int)!pl.id_to_slot.empty(), (int)pref.sync_hop, (int)pref.score_cache,
            (int)pref.direct_install, (int)pref.stripe_fill, (int)pref.extent_run);
@@ -2284,7 +2464,142 @@ int main(int argc, char** argv) {
   if (cpu_affinity) aff_cpus = list_cpu_ids();
   if (cpu_affinity && nthreads <= 1 && !aff_cpus.empty()) bind_worker_cpu(aff_cpus[0]);
   auto t0 = std::chrono::steady_clock::now();
-  if (nthreads <= 1) {
+  const bool run_cb_sched = cont_batch_mode && nthreads > 1 &&
+                            pref.policy == PrefetchPolicy::P3 && !oracle_dram && oneshot_fp;
+  if (run_cb_sched) {
+    const int T = nthreads;
+    const uint32_t L = beam ? beam : k;
+    const uint32_t ebatch = pref.expand_batch ? pref.expand_batch : 1;
+    const uint32_t ahead = pref.issue_ahead ? pref.issue_ahead : 1;
+    uint32_t Rlim = hdr->R;
+    if (Rlim > 64) Rlim = 64;
+    PrefetchHub hub;
+    hub.bind(use_shared_pool ? &shared_pool : nullptr, &win, &pl, &vio, &metrics);
+    if (!hub.pipe.pool) {
+      fprintf(stderr, "cont-batch needs a shared PageCopyPool\n");
+      return 2;
+    }
+    struct Slot {
+      std::mutex mu;
+      P3Q q;
+    };
+    std::vector<std::unique_ptr<Slot>> slots;
+    slots.reserve((size_t)T);
+    for (int i = 0; i < T; ++i) slots.emplace_back(std::make_unique<Slot>());
+    lat_ms.assign(nq, 0);
+    std::vector<double> recs(nq, -1);
+    std::atomic<uint32_t> next_q{0};
+    std::atomic<uint32_t> finished{0};
+    std::atomic<int> idle_owner{-1};
+    std::mutex merge_mu;
+    printf("cont_batch_sched=1 inflight=%d workers=%d flush_at=%u e4a1_step=1\n", T, T,
+           hub.flush_at);
+    fflush(stdout);
+    std::vector<std::thread> ths;
+    ths.reserve((size_t)T);
+    for (int t = 0; t < T; ++t) {
+      ths.emplace_back([&, t] {
+        if (cpu_affinity) {
+          int cpu_id = aff_cpus.empty() ? t : aff_cpus[(size_t)t % aff_cpus.size()];
+          bind_worker_cpu(cpu_id);
+        }
+        Metrics local_m;
+        local_m.window_is_cxl_dram = metrics.window_is_cxl_dram;
+        tls_metrics = &local_m;
+        while (finished.load(std::memory_order_relaxed) < nq) {
+          hub.pump();
+          bool did = false;
+          for (int i = 0; i < T; ++i) {
+            if (!slots[(size_t)i]->mu.try_lock()) continue;
+            P3Q& q = slots[(size_t)i]->q;
+            if (q.st == CbSt::Wait && hub.covering(q.need)) q.st = CbSt::Ready;
+            if (q.st == CbSt::Ready) {
+              p3q_step(q, pl, win, hub, L, ebatch, ahead, iters, Rlim);
+              if (q.st == CbSt::Done) {
+                auto ids = p3q_finish(q, k);
+                auto tq1 = std::chrono::steady_clock::now();
+                lat_ms[q.qi] = std::chrono::duration<double, std::milli>(tq1 - q.t0).count();
+                if (gt_path) {
+                  if (!id_map.empty()) {
+                    for (uint32_t& id : ids) {
+                      if (id < id_map.size()) id = id_map[id];
+                    }
+                  }
+                  auto g = load_gt_row(gt_all.data(), gt_k, q.qi, k);
+                  recs[q.qi] = recall_at_k(ids, g);
+                }
+                q = P3Q{};
+                q.st = CbSt::Empty;
+                finished.fetch_add(1, std::memory_order_relaxed);
+              }
+              slots[(size_t)i]->mu.unlock();
+              did = true;
+              break;
+            }
+            slots[(size_t)i]->mu.unlock();
+          }
+          if (did) continue;
+          for (int i = 0; i < T; ++i) {
+            if (!slots[(size_t)i]->mu.try_lock()) continue;
+            if (slots[(size_t)i]->q.st != CbSt::Empty) {
+              slots[(size_t)i]->mu.unlock();
+              continue;
+            }
+            uint32_t qi = next_q.fetch_add(1, std::memory_order_relaxed);
+            if (qi >= nq) {
+              slots[(size_t)i]->mu.unlock();
+              break;
+            }
+            EntryGraph qeg = eg;
+            const float* qf = qbuf.data() + (size_t)qi * qdim;
+            if (nav.loaded()) qeg.entry_id = nav.search_entry(qf, nav_l);
+            p3q_init(slots[(size_t)i]->q, pl, win, pref, qeg, qf, qi, L);
+            slots[(size_t)i]->mu.unlock();
+            did = true;
+            break;
+          }
+          if (did) continue;
+          hub.flush();
+          std::vector<std::vector<uint64_t>> need_copies;
+          need_copies.reserve((size_t)T);
+          for (int i = 0; i < T; ++i) {
+            if (!slots[(size_t)i]->mu.try_lock()) continue;
+            if (slots[(size_t)i]->q.st == CbSt::Wait && !slots[(size_t)i]->q.need.empty())
+              need_copies.push_back(slots[(size_t)i]->q.need);
+            slots[(size_t)i]->mu.unlock();
+          }
+          std::vector<std::vector<uint64_t>*> needs;
+          needs.reserve(need_copies.size());
+          for (auto& n : need_copies) needs.push_back(&n);
+          if (!needs.empty()) {
+            uint64_t wns = hub.wait_any(needs);
+            if (wns && tls_metrics) {
+              tls_metrics->device_fill_ns += wns;
+              tls_metrics->crit_wait_ns += wns;
+            }
+          } else if (finished.load(std::memory_order_relaxed) >= nq) {
+            break;
+          } else {
+            std::this_thread::yield();
+          }
+        }
+        tls_metrics = nullptr;
+        std::lock_guard<std::mutex> g(merge_mu);
+        metrics.add_from(local_m);
+      });
+    }
+    for (auto& th : ths) th.join();
+    for (uint32_t qi = 0; qi < nq; ++qi) {
+      if (recs[qi] >= 0) {
+        recall_sum += recs[qi];
+        recall_n++;
+      }
+      metrics.queries++;
+    }
+    printf("cont_batch_hub flush_n=%llu flush_pages=%llu avg_pages=%.1f\n",
+           (unsigned long long)hub.flush_n, (unsigned long long)hub.flush_pages,
+           hub.flush_n ? (double)hub.flush_pages / (double)hub.flush_n : 0.0);
+  } else if (nthreads <= 1) {
     for (uint32_t qi = 0; qi < nq; ++qi) {
       auto r = run_one_q(qi, pref, win, use_shared_pool ? &shared_pool : nullptr);
       if (scored_fp) {
