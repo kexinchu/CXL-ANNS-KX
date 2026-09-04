@@ -1773,6 +1773,7 @@ int main(int argc, char** argv) {
       extent_run = false;
       extent_run_explicit = true;
     }
+    else if (a == "--pipe-drive") { /* dropped: not part of frozen PQ path */ }
     else if (a == "--no-pipe-drive") { /* frozen path: pipe-drive is not implemented */ }
     else if (a == "--pq-nav") pq_nav = true;
     else if (a == "--no-pq-nav") pq_nav = false;
@@ -2479,116 +2480,75 @@ int main(int argc, char** argv) {
       fprintf(stderr, "cont-batch needs a shared PageCopyPool\n");
       return 2;
     }
-    struct Slot {
-      std::mutex mu;
-      P3Q q;
-    };
-    std::vector<std::unique_ptr<Slot>> slots;
-    slots.reserve((size_t)T);
-    for (int i = 0; i < T; ++i) slots.emplace_back(std::make_unique<Slot>());
+    std::vector<P3Q> slots((size_t)T);
     lat_ms.assign(nq, 0);
     std::vector<double> recs(nq, -1);
-    std::atomic<uint32_t> next_q{0};
-    std::atomic<uint32_t> finished{0};
-    std::atomic<int> idle_owner{-1};
-    std::mutex merge_mu;
-    printf("cont_batch_sched=1 inflight=%d workers=%d flush_at=%u e4a1_step=1\n", T, T,
-           hub.flush_at);
+    uint32_t next_q = 0;
+    uint32_t finished = 0;
+    printf("cont_batch_sched=1 inflight=%d workers=1 flush_at=%u e4a1_step=1\n", T, hub.flush_at);
     fflush(stdout);
-    std::vector<std::thread> ths;
-    ths.reserve((size_t)T);
-    for (int t = 0; t < T; ++t) {
-      ths.emplace_back([&, t] {
-        if (cpu_affinity) {
-          int cpu_id = aff_cpus.empty() ? t : aff_cpus[(size_t)t % aff_cpus.size()];
-          bind_worker_cpu(cpu_id);
-        }
-        Metrics local_m;
-        local_m.window_is_cxl_dram = metrics.window_is_cxl_dram;
-        tls_metrics = &local_m;
-        while (finished.load(std::memory_order_relaxed) < nq) {
-          hub.pump();
-          bool did = false;
-          for (int i = 0; i < T; ++i) {
-            if (!slots[(size_t)i]->mu.try_lock()) continue;
-            P3Q& q = slots[(size_t)i]->q;
-            if (q.st == CbSt::Wait && hub.covering(q.need)) q.st = CbSt::Ready;
-            if (q.st == CbSt::Ready) {
-              p3q_step(q, pl, win, hub, L, ebatch, ahead, iters, Rlim);
-              if (q.st == CbSt::Done) {
-                auto ids = p3q_finish(q, k);
-                auto tq1 = std::chrono::steady_clock::now();
-                lat_ms[q.qi] = std::chrono::duration<double, std::milli>(tq1 - q.t0).count();
-                if (gt_path) {
-                  if (!id_map.empty()) {
-                    for (uint32_t& id : ids) {
-                      if (id < id_map.size()) id = id_map[id];
-                    }
-                  }
-                  auto g = load_gt_row(gt_all.data(), gt_k, q.qi, k);
-                  recs[q.qi] = recall_at_k(ids, g);
-                }
-                q = P3Q{};
-                q.st = CbSt::Empty;
-                finished.fetch_add(1, std::memory_order_relaxed);
-              }
-              slots[(size_t)i]->mu.unlock();
-              did = true;
-              break;
-            }
-            slots[(size_t)i]->mu.unlock();
-          }
-          if (did) continue;
-          for (int i = 0; i < T; ++i) {
-            if (!slots[(size_t)i]->mu.try_lock()) continue;
-            if (slots[(size_t)i]->q.st != CbSt::Empty) {
-              slots[(size_t)i]->mu.unlock();
-              continue;
-            }
-            uint32_t qi = next_q.fetch_add(1, std::memory_order_relaxed);
-            if (qi >= nq) {
-              slots[(size_t)i]->mu.unlock();
-              break;
-            }
-            EntryGraph qeg = eg;
-            const float* qf = qbuf.data() + (size_t)qi * qdim;
-            if (nav.loaded()) qeg.entry_id = nav.search_entry(qf, nav_l);
-            p3q_init(slots[(size_t)i]->q, pl, win, pref, qeg, qf, qi, L);
-            slots[(size_t)i]->mu.unlock();
-            did = true;
-            break;
-          }
-          if (did) continue;
-          hub.flush();
-          std::vector<std::vector<uint64_t>> need_copies;
-          need_copies.reserve((size_t)T);
-          for (int i = 0; i < T; ++i) {
-            if (!slots[(size_t)i]->mu.try_lock()) continue;
-            if (slots[(size_t)i]->q.st == CbSt::Wait && !slots[(size_t)i]->q.need.empty())
-              need_copies.push_back(slots[(size_t)i]->q.need);
-            slots[(size_t)i]->mu.unlock();
-          }
-          std::vector<std::vector<uint64_t>*> needs;
-          needs.reserve(need_copies.size());
-          for (auto& n : need_copies) needs.push_back(&n);
-          if (!needs.empty()) {
-            uint64_t wns = hub.wait_any(needs);
-            if (wns && tls_metrics) {
-              tls_metrics->device_fill_ns += wns;
-              tls_metrics->crit_wait_ns += wns;
-            }
-          } else if (finished.load(std::memory_order_relaxed) >= nq) {
-            break;
-          } else {
-            std::this_thread::yield();
+    auto finish_slot = [&](P3Q& q) {
+      auto ids = p3q_finish(q, k);
+      auto tq1 = std::chrono::steady_clock::now();
+      lat_ms[q.qi] = std::chrono::duration<double, std::milli>(tq1 - q.t0).count();
+      if (gt_path) {
+        if (!id_map.empty()) {
+          for (uint32_t& id : ids) {
+            if (id < id_map.size()) id = id_map[id];
           }
         }
-        tls_metrics = nullptr;
-        std::lock_guard<std::mutex> g(merge_mu);
-        metrics.add_from(local_m);
-      });
+        auto g = load_gt_row(gt_all.data(), gt_k, q.qi, k);
+        recs[q.qi] = recall_at_k(ids, g);
+      }
+      q = P3Q{};
+      q.st = CbSt::Empty;
+      finished++;
+    };
+    while (finished < nq) {
+      hub.pump();
+      bool did = false;
+      for (int i = 0; i < T; ++i) {
+        P3Q& q = slots[(size_t)i];
+        if (q.st == CbSt::Wait && hub.covering(q.need)) q.st = CbSt::Ready;
+      }
+      for (int i = 0; i < T; ++i) {
+        P3Q& q = slots[(size_t)i];
+        if (q.st != CbSt::Ready) continue;
+        p3q_step(q, pl, win, hub, L, ebatch, ahead, iters, Rlim);
+        if (q.st == CbSt::Done) finish_slot(q);
+        did = true;
+      }
+      if (did) continue;
+      if (next_q < nq) {
+        for (int i = 0; i < T && next_q < nq; ++i) {
+          if (slots[(size_t)i].st != CbSt::Empty) continue;
+          uint32_t qi = next_q++;
+          EntryGraph qeg = eg;
+          const float* qf = qbuf.data() + (size_t)qi * qdim;
+          if (nav.loaded()) qeg.entry_id = nav.search_entry(qf, nav_l);
+          p3q_init(slots[(size_t)i], pl, win, pref, qeg, qf, qi, L);
+          did = true;
+        }
+      }
+      if (did) continue;
+      hub.flush();
+      std::vector<std::vector<uint64_t>*> needs;
+      for (int i = 0; i < T; ++i) {
+        if (slots[(size_t)i].st == CbSt::Wait && !slots[(size_t)i].need.empty())
+          needs.push_back(&slots[(size_t)i].need);
+      }
+      if (!needs.empty()) {
+        uint64_t wns = hub.wait_any(needs);
+        if (cur_met(win)) {
+          cur_met(win)->device_fill_ns += wns;
+          cur_met(win)->crit_wait_ns += wns;
+        }
+      } else if (finished >= nq) {
+        break;
+      } else {
+        std::this_thread::yield();
+      }
     }
-    for (auto& th : ths) th.join();
     for (uint32_t qi = 0; qi < nq; ++qi) {
       if (recs[qi] >= 0) {
         recall_sum += recs[qi];
