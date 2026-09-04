@@ -1,0 +1,14 @@
+{
+  "seed": 20260904,
+  "query_seed": 42,
+  "cache_limit": 4294967296,
+  "k": 10,
+  "base_L": [50, 100, 200, 400, 800, 1600],
+  "extended_L": [2400, 3200],
+  "smoke": {"nq": 100, "repeats": 1},
+  "calibration": {"nq": 500, "repeats": 1},
+  "q2": {"nq": 10000, "repeats": 5, "systems": ["demand", "pipeann", "oracle", "flashanns"]},
+  "q3_t1": {"nq": 10000, "repeats": 5, "systems": ["serial-t1", "batch-t1", "extent-t1"]},
+  "q3_t8": {"nq": 10000, "repeats": 5, "systems": ["nosteal-t8", "flashanns"]},
+  "q4": {"nq": 10000, "repeats": 5, "systems": ["flashanns"], "states": ["cold", "warm"]}
+}

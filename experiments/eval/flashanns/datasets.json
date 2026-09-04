@@ -1,0 +1,77 @@
+{
+  "t2i10m": {
+    "ready": true,
+    "count": 10000000,
+    "dimension": 200,
+    "source_dtype": "float32",
+    "execution_dtype": "float32",
+    "metric": "mips",
+    "artifacts": {
+      "source_base": "/mnt/disk0/chukexin_motivation/data/text2image_10m/base.10M.fbin",
+      "source_queries": "/mnt/disk0/chukexin_motivation/data/text2image_10m/query.public.100K.fbin",
+      "source_gt": "/mnt/disk0/chukexin_motivation/data/text2image_10m/text2image-10M",
+      "execution_base": "/mnt/disk0/chukexin_motivation/data/text2image_10m/base.10M.fbin",
+      "oracle_image": "/mnt/disk0/chukexin_motivation/serving_t2i_10m/diskann_t2i_10m.bin",
+      "extent_image": "/mnt/disk0/chukexin_motivation/serving_t2i_10m/diskann_t2i_10m_extent.bin",
+      "graph": "/mnt/disk0/chukexin_motivation/serving_t2i_10m/diskann_t2i_10m.graph.bin",
+      "nav_graph": "/root/chukexin/CXL-ANNS-KX/results/paper_figs/nav_10k.bin",
+      "entry": "/mnt/disk0/chukexin_motivation/serving_t2i_10m/serving_entry_t2i_10m_pagebin.bin",
+      "query_subset": "/mnt/disk0/chukexin_motivation/serving_t2i_10m/query_10k.fbin",
+      "ground_truth": "/mnt/disk0/chukexin_motivation/serving_t2i_10m/gt_10k_k10.ibin",
+      "id_map": "/mnt/disk0/chukexin_motivation/serving_t2i_10m/new_to_old_pagebin.bin",
+      "slot_map": "/mnt/disk0/chukexin_motivation/serving_t2i_10m/id_to_slot_10m_extent.bin",
+      "pq64_pivots": "/mnt/disk0/chukexin_motivation/pipeann_t2i10m/idx_t2i64_pq_pivots.bin",
+      "pq64_codes": "/mnt/disk0/chukexin_motivation/pipeann_t2i10m/idx_t2i64_pq_compressed.bin"
+    }
+  },
+  "yfcc10m": {
+    "ready": false,
+    "count": 10000000,
+    "dimension": 192,
+    "source_dtype": "uint8",
+    "execution_dtype": "float32",
+    "metric": "l2",
+    "artifacts": {
+      "source_base": "/mnt/disk0/chukexin_motivation/data/yfcc10m/base.10M.u8bin",
+      "source_queries": "/mnt/disk0/chukexin_motivation/data/yfcc10m/query.public.100K.u8bin",
+      "source_gt": "/mnt/disk0/chukexin_motivation/data/yfcc10m/unfiltered.GT.public.ibin",
+      "execution_base": "/mnt/disk0/chukexin_motivation/serving_yfcc_10m/base.10M.fbin",
+      "oracle_image": "/mnt/disk0/chukexin_motivation/serving_yfcc_10m/diskann_yfcc_10m.bin",
+      "extent_image": "/mnt/disk0/chukexin_motivation/serving_yfcc_10m/diskann_yfcc_10m_extent.bin",
+      "graph": "/mnt/disk0/chukexin_motivation/serving_yfcc_10m/diskann_yfcc_10m.graph.bin",
+      "nav_graph": "/mnt/disk0/chukexin_motivation/serving_yfcc_10m/nav_10k.bin",
+      "entry": "/mnt/disk0/chukexin_motivation/serving_yfcc_10m/serving_entry_yfcc_10m_pagebin.bin",
+      "query_subset": "/mnt/disk0/chukexin_motivation/serving_yfcc_10m/query_10k.fbin",
+      "ground_truth": "/mnt/disk0/chukexin_motivation/serving_yfcc_10m/gt_10k_k10.ibin",
+      "id_map": "/mnt/disk0/chukexin_motivation/serving_yfcc_10m/new_to_old_pagebin.bin",
+      "slot_map": "/mnt/disk0/chukexin_motivation/serving_yfcc_10m/id_to_slot_10m_extent.bin",
+      "pq64_pivots": "/mnt/disk0/chukexin_motivation/serving_yfcc_10m/index_pq64_pivots.bin",
+      "pq64_codes": "/mnt/disk0/chukexin_motivation/serving_yfcc_10m/index_pq64_compressed.bin"
+    }
+  },
+  "laion10m": {
+    "ready": false,
+    "count": 10000000,
+    "dimension": 512,
+    "source_dtype": "float32",
+    "execution_dtype": "float32",
+    "metric": "mips",
+    "artifacts": {
+      "source_base": "/mnt/disk0/chukexin_motivation/diskann_data_laion25m/base.bin",
+      "source_queries": "/mnt/disk0/chukexin_motivation/diskann_data_laion25m/query.bin",
+      "source_gt": "/mnt/disk0/chukexin_motivation/serving_laion_10m/source_gt_10k_k10.ibin",
+      "execution_base": "/mnt/disk0/chukexin_motivation/serving_laion_10m/base.10M.fbin",
+      "oracle_image": "/mnt/disk0/chukexin_motivation/serving_laion_10m/diskann_laion_10m.bin",
+      "extent_image": "/mnt/disk0/chukexin_motivation/serving_laion_10m/diskann_laion_10m_extent.bin",
+      "graph": "/mnt/disk0/chukexin_motivation/serving_laion_10m/diskann_laion_10m.graph.bin",
+      "nav_graph": "/mnt/disk0/chukexin_motivation/serving_laion_10m/nav_10k.bin",
+      "entry": "/mnt/disk0/chukexin_motivation/serving_laion_10m/serving_entry_laion_10m_pagebin.bin",
+      "query_subset": "/mnt/disk0/chukexin_motivation/serving_laion_10m/query_10k.fbin",
+      "ground_truth": "/mnt/disk0/chukexin_motivation/serving_laion_10m/gt_10k_k10.ibin",
+      "id_map": "/mnt/disk0/chukexin_motivation/serving_laion_10m/new_to_old_pagebin.bin",
+      "slot_map": "/mnt/disk0/chukexin_motivation/serving_laion_10m/id_to_slot_10m_extent.bin",
+      "pq64_pivots": "/mnt/disk0/chukexin_motivation/serving_laion_10m/index_pq64_pivots.bin",
+      "pq64_codes": "/mnt/disk0/chukexin_motivation/serving_laion_10m/index_pq64_compressed.bin"
+    }
+  }
+}

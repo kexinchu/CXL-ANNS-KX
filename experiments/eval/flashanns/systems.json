@@ -1,0 +1,48 @@
+{
+  "demand": {
+    "kind": "internal",
+    "threads": 8,
+    "flags": ["--no-vmem-prefetch", "--pipe-w", "1", "--no-extent-run", "--no-steal-sched"]
+  },
+  "pipeann": {
+    "kind": "external-pipeann",
+    "threads": 8,
+    "flags": []
+  },
+  "oracle": {
+    "kind": "internal",
+    "threads": 8,
+    "flags": ["--oracle-dram"]
+  },
+  "flashanns": {
+    "kind": "internal",
+    "threads": 8,
+    "per_thread_window": 134217728,
+    "pipe_depth": 2,
+    "issue_qd": 0,
+    "flags": ["--per-thread-window", "--pipe-depth", "2", "--issue-qd", "0", "--steal-sched", "--extent-run"]
+  },
+  "serial-t1": {
+    "kind": "internal",
+    "threads": 1,
+    "flags": ["--no-vmem-prefetch", "--pipe-w", "1", "--no-extent-run"]
+  },
+  "batch-t1": {
+    "kind": "internal",
+    "threads": 1,
+    "flags": ["--pipe-w", "16", "--no-extent-run"]
+  },
+  "extent-t1": {
+    "kind": "internal",
+    "threads": 1,
+    "flags": ["--pipe-w", "16", "--extent-run"]
+  },
+  "nosteal-t8": {
+    "kind": "internal",
+    "threads": 8,
+    "per_thread_window": 134217728,
+    "pipe_depth": 2,
+    "issue_qd": 0,
+    "flags": ["--per-thread-window", "--pipe-depth", "2", "--issue-qd", "0", "--no-steal-sched", "--extent-run"]
+  }
+}
