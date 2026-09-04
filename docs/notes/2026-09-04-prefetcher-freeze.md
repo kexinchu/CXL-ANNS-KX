@@ -1,7 +1,13 @@
 # Frozen PQ-64 end-batch prefetcher (2026-09-04)
 
+**LOCKED. Do not modify this prefetcher.** No new flags, no hop-width
+retuning, no `--pipe-drive`, no codebook regen, no restage of 1100 GiB.
+Reproduce only. Paper writing uses this contract and the rows below.
+
 One DiskANN-10M freeze: host PQ-64 beam + one end-batch FP rerank wave.
 PIPE stays 0. Does not replace T2I-10M claim rows 50.25 / 49.25 / 85.8.
+
+Canonical write-up for the paper: `docs/notes/2026-09-04-prefetcher-paper-zh.md`.
 
 ```
 G0 10k nav → entry
@@ -28,11 +34,12 @@ DiskANN hide requires `--pq-nav` (codebook) or `--oneshot-fp` (ablation).
 
 ```
 --diskann-layout --pq-nav --pq-pivots … --pq-compressed …
---graph-file … --id-slot-map … --extent-run
---no-oneshot-fp --no-pipe-drive --no-score-page --no-stripe-fill
---no-direct-install --no-score-cache --no-hide-warm-entry
+--graph-file … --id-slot-map --extent-run
 --beam 400 --k 10 --threads 1 --policy P3
 ```
+
+Do not pass `--oneshot-fp` (that is the superseded hop path). `--pipe-drive`
+is a no-op and not part of the freeze.
 
 Recipe: `PQ_BYTES=64 PIPE=0 tools/run_10m_pq_nq100.sh hide_pqbeam` (`NQ=20|100`).
 Oracle: `PQ_BYTES=64 tools/run_10m_pq_nq100.sh oracle`.

@@ -2,6 +2,23 @@
 
 Research workspace for **graph ANNS on unified CXL–SSD memory** (ASPLOS-oriented).
 
+## Old layout snapshot
+
+The **pagebin + host-graph** stack (claim rows 50.25 / 85.8, `--graph-file`, 267 GiB expand-bundle, host `mbind` window) is frozen at:
+
+**`/root/chukexin/CXL-ANNS-KX_bak`**
+
+Do not restage or dual-stripe that tree’s 420 GiB pagebin. Reproduce old Oracle/hide only from `_bak`.
+
+This directory (`CXL-ANNS-KX`) is the **DiskANN packed-entry** migration:
+
+- One fixed-stride record per node: vector + neighbor IDs together (`STRIDE=2048` on a 32 GiB `/dev/dax0.0`)
+- Full 10M graph+vectors packed as version-2 DiskANN (`diskann_t2i_10m.bin`). Staging onto `/dev/dax0.0` is blocked on this machine: dense writes read back as `0xFF`. Oracle numbers in `docs/notes/2026-09-03-diskann-oracle.md` are MAP_POPULATE of that host file.
+- Host keeps only a **10k-node** navigation graph (`nav_10k.bin`)
+- Old `--graph-file` / `--nbr-bundle` / `--oracle-window` path remains if the image header is version 1
+
+See `docs/superpowers/specs/2026-09-03-cxl-dram-diskann-layout-design.md`.
+
 **One-line thesis:** Full-precision vectors often must live on flash; CXL–SSD gives a unified VA + hot window, but the hard problem is **residency / stall control** (not “mmap is nice”). Naive page caches, blind graph prefetch, and blindly increasing `efSearch` amplify SSD misses; semantic pin / bounded promote / iso-recall search control are the intended remedies.
 
 ## Repository layout
@@ -50,6 +67,20 @@ git apply /path/to/patches/diskann-no-pq-nav/diskann-no-pq-nav.patch
 
 See `motivation_exps/include/vmem_cxl.hpp` (`require_cxl_vmem_identity`): `/dev/vmem0` software backend, expected NVMe BDF, Montage `mem0`/`region0`. Adjust constants for your machine.
 
+## Frozen 10M prefetcher (do not modify)
+
+DiskANN-10M hide is **locked**: host PQ-64 beam + one end-batch FP rerank
+(`search_one_pq`). Hide/oracle is **0.69× / 0.72×** (nq=20 / nq=100).
+
+- Contract: `docs/notes/2026-09-04-prefetcher-freeze.md`
+- Paper draft (zh): `docs/notes/2026-09-04-prefetcher-paper-zh.md`
+- Recipe: `PQ_BYTES=64 PIPE=0 tools/run_10m_pq_nq100.sh hide_pqbeam`
+
+Do not retune hop width, `--pipe-drive`, codebook, or the 1100 GiB extent
+image. Historical pagebin claim rows 50.25 / 49.25 / 85.8 stay as-is.
+
 ## Status
 
-Motivation / problem framing and measurements are in progress. System design (semantic residency + stall-aware search) is specified in `docs/plan/` and not fully implemented as a production runtime yet.
+Motivation / problem framing and measurements are in progress. The DiskANN-10M
+prefetcher above is frozen. Broader system design (semantic residency + T>1)
+stays in `docs/plan/` and is out of the freeze.

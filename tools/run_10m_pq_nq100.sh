@@ -10,7 +10,7 @@ SRV=/mnt/disk0/chukexin_motivation/serving_t2i_10m
 OUT=$ROOT/results/paper_figs
 NAV=$OUT/nav_10k.bin
 GRAPH=$SRV/diskann_t2i_10m.graph.bin
-if [[ "${PQ_BYTES:-32}" == "64" ]]; then
+if [[ "${PQ_BYTES:-64}" == "64" ]]; then
   PQ_PIV=${PQ_PIV:-/mnt/disk0/chukexin_motivation/pipeann_t2i10m/idx_t2i64_pq_pivots.bin}
   PQ_CMP=${PQ_CMP:-/mnt/disk0/chukexin_motivation/pipeann_t2i10m/idx_t2i64_pq_compressed.bin}
 else

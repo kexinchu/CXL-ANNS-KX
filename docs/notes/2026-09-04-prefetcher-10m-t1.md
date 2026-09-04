@@ -2,6 +2,7 @@
 
 **Superseded.** The single 10M freeze is
 `docs/notes/2026-09-04-prefetcher-freeze.md` (PQ-64 end-batch, 110.94 / 116.29).
+**The prefetcher is LOCKED — do not modify it or revive e4 a1 as default.**
 This file is the morning oneshot e4 a1 diary only.
 
 Does not replace 50.25 / 49.25 / 85.8. Cache 100 MiB, window 2 GiB, e4 a1

@@ -2,7 +2,8 @@
 
 **Superseded as the dual-contract note.** The single freeze is
 `docs/notes/2026-09-04-prefetcher-freeze.md` (PQ-64 end-batch, 110.94 / 116.29).
-This file remains only as the keep/drop diary that closed nq=20 and pipe-drive.
+**The prefetcher is LOCKED — do not modify it.** This file remains only as
+the keep/drop diary that closed nq=20 and pipe-drive.
 
 nq=20 and pipe-drive on/off are **closed**. Locked hide row is **nopipe**.
 Do **not** replace claim rows 50.25 / 49.25 / 85.8.

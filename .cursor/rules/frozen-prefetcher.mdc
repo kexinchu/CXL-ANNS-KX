@@ -1,0 +1,17 @@
+---
+description: Frozen PQ-64 end-batch prefetcher — do not modify
+globs: serving/search_beam.cpp,serving/pq_table.hpp,serving/prefetch.hpp,serving/hide_fill.hpp,serving/dram_window.hpp,tools/run_10m_pq_nq100.sh
+alwaysApply: true
+---
+
+# Frozen prefetcher (2026-09-04)
+
+The DiskANN-10M prefetcher is **LOCKED**. Do not change it.
+
+Contract: host PQ-64 beam (`search_one_pq`) + one end-batch HidePipe issue of L=400 vector pages + bounce install + window FP rerank. Freeze rows: hide 110.94 / 116.29 QPS, recall 0.925 / 0.923, hide/oracle 0.69× / 0.72×.
+
+**Refuse:** new hop flags, `--pipe-drive` behavior, codebook regen, restaging 1100 GiB, flipping CLI back to oneshot-fp as default, replacing 50.25 / 49.25 / 85.8, editing `search_one_pq` / `PqTable` / `hide_extent_run` "to try one more knife".
+
+**Allowed:** reproduce with `PQ_BYTES=64 PIPE=0 tools/run_10m_pq_nq100.sh`, paper text, T>1 / PrefetchHub work that does not alter the T=1 freeze path.
+
+Source of truth: `docs/notes/2026-09-04-prefetcher-freeze.md`.
