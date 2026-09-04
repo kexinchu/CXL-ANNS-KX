@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import mmap
 import os
 import random
 import struct
@@ -66,38 +67,44 @@ def snapshot(sysfs: Path, device: Path, dataset: dict[str, Any], read_device: bo
     staging = dataset.get("staging", {})
     if read_device and record["device_exists"]:
         try:
-            fd = os.open(device, os.O_RDONLY)
-            try:
-                raw = os.pread(fd, 8, int(staging["offset"]))
-            finally:
-                os.close(fd)
-            if len(raw) == 8:
-                record["image_magic"] = struct.unpack("<Q", raw)[0]
+            raw = _mmap_page(device, int(staging["offset"]))
+            record["image_magic"] = struct.unpack_from("<Q", raw)[0]
         except (OSError, KeyError, TypeError, ValueError):
             record["image_magic"] = None
     return record
 
 
+def _mmap_page(path: Path, offset: int) -> bytes:
+    if offset < 0 or offset % 4096:
+        raise PreflightError(f"{Path(path).name}: mmap offset is not page aligned")
+    try:
+        fd = os.open(Path(path), os.O_RDONLY)
+        try:
+            with mmap.mmap(
+                fd,
+                4096,
+                flags=mmap.MAP_SHARED,
+                prot=mmap.PROT_READ,
+                offset=offset,
+            ) as page:
+                return page[:]
+        finally:
+            os.close(fd)
+    except OSError as exc:
+        raise PreflightError(f"{Path(path).name}: {exc}") from exc
+
+
 def sampled_layout_digest(path: Path, base_offset: int, length: int, pages: int, seed: int) -> str:
-    if base_offset < 0 or length < 4096 or pages <= 0:
+    if base_offset < 0 or base_offset % 4096 or length < 4096 or pages <= 0:
         raise PreflightError("invalid sampled-layout range")
     complete_pages = length // 4096
     sample_count = min(pages, complete_pages)
     page_ids = random.Random(seed).sample(range(complete_pages), sample_count)
     digest = hashlib.sha256()
-    try:
-        fd = os.open(Path(path), os.O_RDONLY)
-        try:
-            for page_id in page_ids:
-                data = os.pread(fd, 4096, base_offset + page_id * 4096)
-                if len(data) != 4096:
-                    raise PreflightError(f"{Path(path).name}: short sampled page {page_id}")
-                digest.update(struct.pack("<Q", page_id))
-                digest.update(data)
-        finally:
-            os.close(fd)
-    except OSError as exc:
-        raise PreflightError(f"{Path(path).name}: {exc}") from exc
+    for page_id in page_ids:
+        data = _mmap_page(path, base_offset + page_id * 4096)
+        digest.update(struct.pack("<Q", page_id))
+        digest.update(data)
     return digest.hexdigest()
 
 

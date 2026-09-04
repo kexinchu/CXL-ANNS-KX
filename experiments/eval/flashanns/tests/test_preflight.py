@@ -1,11 +1,16 @@
+import errno
+import os
+import struct
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from experiments.eval.flashanns.preflight import (
     PreflightError,
     atomic_json_write,
     sampled_layout_digest,
+    snapshot,
     validate,
 )
 
@@ -90,6 +95,30 @@ class PreflightTest(unittest.TestCase):
             first = sampled_layout_digest(path, 4096, 8192, pages=2, seed=7)
             self.assertEqual(first, sampled_layout_digest(path, 4096, 8192, pages=2, seed=7))
             self.assertNotEqual(first, sampled_layout_digest(path, 4096, 8192, pages=2, seed=8))
+
+    def test_digest_uses_mmap_for_nonseekable_character_device(self):
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "image.bin"
+            path.write_bytes(bytes(range(256)) * 32)
+            with mock.patch.object(
+                os, "pread", side_effect=OSError(errno.ESPIPE, "Illegal seek")
+            ):
+                digest = sampled_layout_digest(path, 0, 8192, pages=2, seed=7)
+            self.assertEqual(len(digest), 64)
+
+    def test_snapshot_reads_magic_without_pread(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            sysfs = root / "sysfs"
+            sysfs.mkdir()
+            device = root / "vmem0"
+            device.write_bytes(struct.pack("<Q", 0x314E415843) + bytes(4088))
+            dataset = {"staging": {"offset": 0}}
+            with mock.patch.object(
+                os, "pread", side_effect=OSError(errno.ESPIPE, "Illegal seek")
+            ):
+                record = snapshot(sysfs, device, dataset)
+            self.assertEqual(record["image_magic"], 0x314E415843)
 
     def test_atomic_json_write_leaves_no_tmp(self):
         with tempfile.TemporaryDirectory() as td:
