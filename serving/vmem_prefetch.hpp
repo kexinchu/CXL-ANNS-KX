@@ -4,6 +4,7 @@
 
 #include <cstdint>
 #include <cstring>
+#include <linux/ioctl.h>
 #include <sys/ioctl.h>
 #include <unistd.h>
 #include <vector>
@@ -41,6 +42,44 @@ struct vmem_batch_read {
 };
 #define VMEM_IOC_READ_BATCH _IOW(VMEM_IOC_MAGIC, 10, struct vmem_batch_read)
 #endif
+#ifndef VMEM_IOC_READ_CACHED
+struct vmem_batch_cached {
+  uint32_t count;
+  uint32_t n_hit;
+  uint64_t offsets[VMEM_BATCH_MAX];
+  uint64_t dests[VMEM_BATCH_MAX];
+  uint8_t hit[VMEM_BATCH_MAX];
+};
+#define VMEM_IOC_READ_CACHED _IOWR(VMEM_IOC_MAGIC, 11, struct vmem_batch_cached)
+#endif
+
+// Copy pages that are already in the vmem software cache. hit[i]=1 if dests[i]
+// was filled. Returns 0 on success, -1 if ioctl missing/failed. Never NAND.
+inline int vmem_read_cached(const VmemIo& io, const uint64_t* page_offs, uint8_t** dests,
+                            uint8_t* hit, int n, size_t page_bytes) {
+  if (io.fd < 0 || n <= 0) return -1;
+  int done = 0;
+  vmem_batch_cached br;
+  int i = 0;
+  while (i < n) {
+    memset(&br, 0, sizeof(br));
+    unsigned c = 0;
+    while (i < n && c < VMEM_BATCH_MAX) {
+      br.offsets[c] = (uint64_t)io.image_off + page_offs[i];
+      br.dests[c] = (uint64_t)(uintptr_t)dests[i];
+      c++;
+      i++;
+    }
+    br.count = c;
+    if (ioctl(io.fd, VMEM_IOC_READ_CACHED, &br) != 0) return -1;
+    for (unsigned k = 0; k < c; ++k) {
+      hit[done + (int)k] = br.hit[k];
+    }
+    done += (int)c;
+    (void)page_bytes;
+  }
+  return 0;
+}
 
 inline int vmem_prefetch_pages(const VmemIo& io, const uint64_t* page_offs, int n,
                                size_t page_bytes) {

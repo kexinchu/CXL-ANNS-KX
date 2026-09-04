@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <cstddef>
 #include <cstdint>
 #include <cstring>
 #include <functional>
@@ -21,8 +22,10 @@
 inline void hide_collect_vec_pages(Placement& pl, size_t vb, size_t pb, uint32_t id,
                                    std::vector<uint64_t>& pages,
                                    std::unordered_set<uint64_t>* seen) {
-  uint64_t off = (uint64_t)(pl.vec(id) - pl.ssd_base);
-  uint64_t end = off + vb;
+  const uint8_t* src = pl.diskann_layout ? pl.entry(id) : pl.vec(id);
+  const size_t len = pl.diskann_layout && pl.vec_stride ? pl.vec_stride : vb;
+  uint64_t off = (uint64_t)(src - pl.ssd_base);
+  uint64_t end = off + len;
   uint64_t first = off & ~(uint64_t)(pb - 1);
   uint64_t last = (end - 1) & ~(uint64_t)(pb - 1);
   for (uint64_t p = first; p <= last; p += pb) {
@@ -79,6 +82,12 @@ inline void hide_collect_bundle_pages(Placement& pl, size_t vb, size_t pb, uint3
       }
     }
   }
+}
+
+inline void hide_collect_entry_pages(Placement& pl, size_t vb, size_t pb, uint32_t id,
+                                     std::vector<uint64_t>& pages,
+                                     std::unordered_set<uint64_t>* seen) {
+  hide_collect_vec_pages(pl, vb, pb, id, pages, seen);
 }
 
 inline void hide_read_nbrs(Placement& pl, uint32_t id, uint32_t* out, uint32_t R) {
@@ -143,9 +152,34 @@ inline uint64_t hide_wait(HideInflight& inf, DramWindow& win, PageCopyPool& /*po
   return (uint64_t)std::chrono::duration_cast<std::chrono::nanoseconds>(t1 - t0).count();
 }
 
+inline void hide_stripe_fill(std::vector<uint64_t>& pages, size_t pb, uint32_t max_span = 64) {
+  if (pages.size() < 2 || !pb) return;
+  const uint64_t stripe = 2ull << 20;
+  std::sort(pages.begin(), pages.end());
+  pages.erase(std::unique(pages.begin(), pages.end()), pages.end());
+  std::vector<uint64_t> extra;
+  size_t i = 0;
+  while (i < pages.size()) {
+    const uint64_t s0 = pages[i] / stripe;
+    size_t j = i + 1;
+    while (j < pages.size() && pages[j] / stripe == s0) j++;
+    const uint64_t lo = pages[i], hi = pages[j - 1];
+    const uint64_t span = (hi - lo) / pb + 1;
+    if (span > 1 && span <= max_span) {
+      for (uint64_t p = lo; p <= hi; p += pb) extra.push_back(p);
+    }
+    i = j;
+  }
+  if (extra.empty()) return;
+  pages.insert(pages.end(), extra.begin(), extra.end());
+  std::sort(pages.begin(), pages.end());
+  pages.erase(std::unique(pages.begin(), pages.end()), pages.end());
+}
+
 inline void hide_issue(HideInflight& inf, DramWindow& win, Placement& pl, PageCopyPool& pool,
                        VmemIo* vio, const std::vector<uint64_t>& pages_in, uint16_t ttl,
-                       Metrics* m, bool lookahead = false) {
+                       Metrics* m, bool lookahead = false, bool /*direct_install*/ = false,
+                       bool stripe_fill = false) {
   const size_t pb = win.page_bytes;
   std::vector<uint64_t> miss;
   miss.reserve(pages_in.size());
@@ -156,6 +190,7 @@ inline void hide_issue(HideInflight& inf, DramWindow& win, Placement& pl, PageCo
     if (win.is_resident(pl.ssd_base, pl.ssd_base + p, 1)) continue;
     miss.push_back(p);
   }
+  if (stripe_fill) hide_stripe_fill(miss, pb, 64);
   if (miss.empty()) return;
   inf.clear();
   inf.pages = std::move(miss);
@@ -190,9 +225,11 @@ inline void hide_issue(HideInflight& inf, DramWindow& win, Placement& pl, PageCo
       const size_t ncopy = n1 < 256 ? n1 : 256;
       for (size_t i = 0; i < ncopy; ++i) dests[i] = (*host)[off + i].data();
       int rd = -1;
-      if (vio_c) rd = vmem_read_pages(*vio_c, pages->data() + off, dests, (int)n1, pb);
-      if (rd < 0) {
-        if (vio_c) vmem_prefetch_pages(*vio_c, pages->data() + off, (int)n1, pb);
+      if (vio_c && vio_c->fd >= 0)
+        rd = vmem_read_pages(*vio_c, pages->data() + off, dests, (int)n1, pb);
+      if (rd <= 0) {
+        if (vio_c && vio_c->fd >= 0)
+          vmem_prefetch_pages(*vio_c, pages->data() + off, (int)n1, pb);
         for (size_t i = 0; i < n1; ++i) {
           const size_t j = off + i;
           std::memcpy((*host)[j].data(), base + (*pages)[j], pb);
@@ -212,6 +249,8 @@ struct HidePipe {
   Placement* pl = nullptr;
   VmemIo* vio = nullptr;
   Metrics* m = nullptr;
+  bool direct_install = false;
+  bool stripe_fill = false;
   std::function<void()> after_pump;
 
   void pump() {
@@ -304,14 +343,15 @@ struct HidePipe {
     }
     if (!dst) return;
     if (miss.size() > 1024) miss.resize(1024);
-    hide_issue(*dst, *win, *pl, *pool, vio, miss, ttl, m, lookahead);
+    hide_issue(*dst, *win, *pl, *pool, vio, miss, ttl, m, lookahead, direct_install,
+               stripe_fill);
   }
 };
 
 // Entry + 1-hop + 2-hop vectors into the window (once). Call before the timed loop.
 inline size_t hide_warm_entry_ball(Placement& pl, DramWindow& win, PageCopyPool& pool,
                                    VmemIo* vio, const std::vector<uint32_t>& extra_ids,
-                                   uint32_t entry_id) {
+                                   uint32_t entry_id, size_t page_byte_cap = 0) {
   const size_t vb = (size_t)pl.hdr->dim * pl.hdr->vec_bytes;
   const size_t pb = win.page_bytes;
   uint32_t R = pl.hdr->R;
@@ -345,6 +385,8 @@ inline size_t hide_warm_entry_ball(Placement& pl, DramWindow& win, PageCopyPool&
     }
   }
   for (uint32_t id : ids) hide_collect_vec_pages(pl, vb, pb, id, pages, &pseen);
+  if (page_byte_cap && pb && pages.size() * pb > page_byte_cap)
+    pages.resize(page_byte_cap / pb);
 
   HideInflight inf;
   hide_issue(inf, win, pl, pool, vio, pages, /*ttl=*/128, win.metrics);
@@ -353,7 +395,10 @@ inline size_t hide_warm_entry_ball(Placement& pl, DramWindow& win, PageCopyPool&
   else if (win.metrics) win.metrics->device_fill_ns += ns;
 
   for (uint32_t id : ids) {
-    win.pin(pl.ssd_base, pl.vec(id), vb);
+    if (pl.diskann_layout && pl.vec_stride)
+      win.pin(pl.ssd_base, pl.entry(id), pl.vec_stride);
+    else
+      win.pin(pl.ssd_base, pl.vec(id), vb);
   }
   return ids.size();
 }

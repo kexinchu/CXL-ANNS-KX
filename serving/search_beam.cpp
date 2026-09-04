@@ -20,6 +20,8 @@
 #include "serving/metrics.hpp"
 #include "serving/vmem_prefetch.hpp"
 #include "serving/hide_fill.hpp"
+#include "serving/nav_graph.hpp"
+#include "serving/score_cache.hpp"
 
 #include <algorithm>
 #include <atomic>
@@ -42,6 +44,8 @@
 #include <unordered_set>
 #include <vector>
 
+static FILE* g_expand_dump = nullptr;
+
 #include <immintrin.h>
 #include <fcntl.h>
 #include <numa.h>
@@ -61,6 +65,43 @@ struct EntryGraph {
 static void die(const char* s) {
   perror(s);
   std::exit(2);
+}
+
+static bool is_dax_path(const char* path) {
+  return path && strncmp(path, "/dev/dax", 8) == 0;
+}
+
+// Read-only CXL-DRAM corpus. Never write zeros — that would wipe a staged index.
+static void* map_dax_corpus_ro(const char* path, size_t* out_len) {
+  int fd = open(path, O_RDONLY);
+  if (fd < 0) die("open dax corpus");
+  const size_t peek = 2ull << 20;  // dax mmap must be 2MiB-aligned
+  void* hmap = mmap(nullptr, peek, PROT_READ, MAP_SHARED, fd, 0);
+  if (hmap == MAP_FAILED) die("mmap dax header");
+  auto* hdr = reinterpret_cast<const CxanLayoutHeader*>(hmap);
+  if (hdr->magic != kCxanMagic || hdr->n == 0) {
+    munmap(hmap, peek);
+    close(fd);
+    fprintf(stderr, "bad dax corpus magic/n at %s\n", path);
+    std::exit(2);
+  }
+  size_t need = (size_t)hdr->off_vectors + (size_t)hdr->len_vectors;
+  if (need < 4096) need = 4096;
+  const size_t two_m = 2ull << 20;
+  need = (need + two_m - 1) & ~(two_m - 1);
+  FILE* sf = fopen("/sys/bus/dax/devices/dax0.0/size", "r");
+  if (sf) {
+    unsigned long long ds = 0;
+    if (fscanf(sf, "%llu", &ds) == 1 && ds >= need) need = (size_t)ds;
+    fclose(sf);
+  }
+  munmap(hmap, peek);
+  void* p = mmap(nullptr, need, PROT_READ, MAP_SHARED, fd, 0);
+  if (p == MAP_FAILED) die("mmap dax corpus");
+  close(fd);
+  *out_len = need;
+  printf("mapped CXL-DRAM corpus %s len=%zu (PROT_READ, no zero-fault)\n", path, need);
+  return p;
 }
 
 static void* map_file_ro(const char* path, size_t* out_len, bool populate = false) {
@@ -321,9 +362,17 @@ static std::vector<uint32_t> search_one_fp(Placement& pl, DramWindow& win, Prefe
 
   const size_t vb = (size_t)pl.hdr->dim * pl.hdr->vec_bytes;
   auto get_vec = [&](uint32_t id) {
+    if (pl.diskann_layout && pl.vec_stride)
+      return win.lookup_or_promote(pl.ssd_base, pl.entry(id), pl.vec_stride);
     return win.lookup_or_promote(pl.ssd_base, pl.vec(id), vb);
   };
   auto get_nbr = [&](uint32_t id) {
+    if (pl.diskann_layout && pl.vec_stride) {
+      const uint8_t* e =
+          win.lookup_or_promote(pl.ssd_base, pl.entry(id), pl.vec_stride);
+      const size_t off = (size_t)pl.hdr->dim * pl.hdr->vec_bytes + 4;
+      return reinterpret_cast<const uint32_t*>(e + off);
+    }
     const uint8_t* s = reinterpret_cast<const uint8_t*>(pl.nbrs(id));
     return reinterpret_cast<const uint32_t*>(
         win.lookup_or_promote(pl.ssd_base, s, (size_t)pl.hdr->R * 4));
@@ -447,6 +496,8 @@ static std::vector<uint32_t> search_one_fp(Placement& pl, DramWindow& win, Prefe
     pipe.pl = &pl;
     pipe.vio = vio;
     pipe.m = cur_met(win);
+    pipe.direct_install = pref.direct_install;
+    pipe.stripe_fill = pref.stripe_fill;
 
     auto vec_ptr = [&](uint32_t id, uint32_t src, uint32_t slotk) -> const uint8_t* {
       if (pl.has_bundle()) return pl.bundle_slot(src, slotk);
@@ -555,7 +606,7 @@ static std::vector<uint32_t> search_one_fp(Placement& pl, DramWindow& win, Prefe
 
     std::unordered_set<uint32_t> spec_issued;
     auto maybe_spec_beam = [&](uint32_t id) {
-      if (!pref.spec_beam_nbrs || !pl.has_bundle() || pref.freeze_fills) return;
+      if (!pref.spec_beam_nbrs || pref.freeze_fills) return;
       if (expanded.count(id) || spec_issued.count(id)) return;
       float myd = 0;
       bool found = false;
@@ -583,8 +634,12 @@ static std::vector<uint32_t> search_one_fp(Placement& pl, DramWindow& win, Prefe
       if (want.empty()) return;
       std::vector<uint64_t> now;
       std::unordered_set<uint64_t> ps;
-      hide_collect_bundle_pages(pl, vb, pb, id, nbrs_local, Rlim, want, now, &ps, cur_met(win),
-                               pref.min_issue_use);
+      if (pl.has_bundle()) {
+        hide_collect_bundle_pages(pl, vb, pb, id, nbrs_local, Rlim, want, now, &ps, cur_met(win),
+                                 pref.min_issue_use);
+      } else {
+        for (uint32_t nb : want) hide_collect_vec_pages(pl, vb, pb, nb, now, &ps);
+      }
       if (now.empty()) return;
       pipe.issue(now, /*ttl=*/64, /*stall_if_full=*/false);
       if (cur_met(win)) {
@@ -608,6 +663,79 @@ static std::vector<uint32_t> search_one_fp(Placement& pl, DramWindow& win, Prefe
       }
       insert_cand(id, d);
       maybe_spec_beam(id);
+    };
+
+    auto try_cache_score = [&](std::vector<uint32_t>& ids) {
+      if (!pref.score_cache || !vio || ids.empty() || pl.has_bundle()) return;
+      std::vector<uint32_t> probe_ids;
+      std::vector<uint32_t> remain;
+      std::vector<uint64_t> pages;
+      std::unordered_map<uint64_t, uint32_t> p2i;
+      std::unordered_map<uint32_t, uint32_t> id_pix;
+      probe_ids.reserve(ids.size());
+      remain.reserve(ids.size());
+      for (uint32_t id : ids) {
+        const uint8_t* vp = pl.vec(id);
+        if (win.is_resident(pl.ssd_base, vp, vb)) {
+          score_resident(id, 0, 0, true);
+          continue;
+        }
+        std::vector<uint64_t> one;
+        std::unordered_set<uint64_t> ps;
+        hide_collect_vec_pages(pl, vb, pb, id, one, &ps);
+        if (one.size() != 1) {
+          remain.push_back(id);
+          continue;
+        }
+        auto it = p2i.find(one[0]);
+        uint32_t ix;
+        if (it == p2i.end()) {
+          ix = (uint32_t)pages.size();
+          p2i[one[0]] = ix;
+          pages.push_back(one[0]);
+        } else {
+          ix = it->second;
+        }
+        probe_ids.push_back(id);
+        id_pix[id] = ix;
+      }
+      if (!pages.empty()) {
+        std::vector<std::vector<uint8_t>> bufs(pages.size(), std::vector<uint8_t>(pb));
+        std::vector<uint8_t*> dests(pages.size());
+        std::vector<uint8_t> hit(pages.size(), 0);
+        for (size_t i = 0; i < pages.size(); ++i) dests[i] = bufs[i].data();
+        if (vmem_read_cached(*vio, pages.data(), dests.data(), hit.data(), (int)pages.size(),
+                             pb) == 0) {
+          std::vector<uint32_t> pix(probe_ids.size());
+          for (size_t i = 0; i < probe_ids.size(); ++i) pix[i] = id_pix[probe_ids[i]];
+          std::vector<uint32_t> now, later;
+          score_cache_split(probe_ids.data(), pix.data(), (uint32_t)probe_ids.size(),
+                            hit.data(), (uint32_t)pages.size(), now, later);
+          for (uint32_t id : now) {
+            const uint8_t* vp = pl.vec(id);
+            const uint64_t inpage = (uint64_t)(vp - pl.ssd_base) & (pb - 1);
+            const uint32_t ix = id_pix[id];
+            if (inpage + vb > pb) {
+              later.push_back(id);
+              continue;
+            }
+            const float d =
+                vec_mips_neg(bufs[ix].data() + inpage, qf, pl.hdr->dim, pl.hdr->vec_bytes);
+            if (cur_met(win)) {
+              cur_met(win)->note_score_from_cache(1);
+              cur_met(win)->distance_comps++;
+              cur_met(win)->note_pf_scored_id(id);
+            }
+            insert_cand(id, d);
+            maybe_spec_beam(id);
+          }
+          remain.insert(remain.end(), later.begin(), later.end());
+          ids.swap(remain);
+          return;
+        }
+      }
+      remain.insert(remain.end(), probe_ids.begin(), probe_ids.end());
+      ids.swap(remain);
     };
 
     auto drain_score = [&]() {
@@ -660,6 +788,9 @@ static std::vector<uint32_t> search_one_fp(Placement& pl, DramWindow& win, Prefe
           miss.push_back(id);
       }
       if (!pref.freeze_fills && !miss.empty()) {
+        try_cache_score(miss);
+      }
+      if (!pref.freeze_fills && !miss.empty()) {
         std::vector<uint64_t> now;
         std::unordered_set<uint64_t> ps;
         if (pl.has_bundle()) {
@@ -710,6 +841,23 @@ static std::vector<uint32_t> search_one_fp(Placement& pl, DramWindow& win, Prefe
         expanded.insert(id);
         expands++;
         batch.push_back(id);
+        if (pref.expand_sib) {
+          const uint32_t sib = pl.page_sibling(id);
+          if (sib != id && !expanded.count(sib) && (iters == 0 || expands < iters)) {
+            bool in_cand = false;
+            for (const Cand& c : cand) {
+              if (c.id == sib) {
+                in_cand = true;
+                break;
+              }
+            }
+            if (in_cand) {
+              expanded.insert(sib);
+              expands++;
+              batch.push_back(sib);
+            }
+          }
+        }
       }
       return batch;
     };
@@ -717,7 +865,8 @@ static std::vector<uint32_t> search_one_fp(Placement& pl, DramWindow& win, Prefe
     std::vector<uint64_t> issued_pages;
     auto issue_bundle_batch = [&](const std::vector<uint32_t>& batch) {
       if (batch.empty()) return;
-      if (ebatch == 1 || !pl.has_bundle()) {
+      // Old DiskANN path: score each expand before the next (no IO pipe).
+      if (!pl.has_bundle() && pref.sync_hop) {
         for (uint32_t cur : batch) {
           uint32_t nbrs_local[64];
           hide_read_nbrs(pl, cur, nbrs_local, Rlim);
@@ -729,13 +878,18 @@ static std::vector<uint32_t> search_one_fp(Placement& pl, DramWindow& win, Prefe
             seen.insert(nb);
             to_score.push_back(nb);
           }
+          if (g_expand_dump && !to_score.empty()) {
+            uint32_t c = (uint32_t)to_score.size();
+            std::fwrite(&c, 4, 1, g_expand_dump);
+            std::fwrite(to_score.data(), 4, c, g_expand_dump);
+          }
           hop_hide_score(cur, nbrs_local, Rlim, to_score);
         }
         return;
       }
       std::vector<uint64_t> now;
       std::unordered_set<uint64_t> ps;
-      now.reserve(batch.size() * 8);
+      now.reserve(batch.size() * 16);
       for (uint32_t cur : batch) {
         uint32_t nbrs_local[64];
         hide_read_nbrs(pl, cur, nbrs_local, Rlim);
@@ -747,13 +901,26 @@ static std::vector<uint32_t> search_one_fp(Placement& pl, DramWindow& win, Prefe
           seen.insert(nb);
           to_score.push_back(nb);
         }
-        std::unordered_set<uint32_t> want(to_score.begin(), to_score.end());
-        hide_collect_bundle_pages(pl, vb, pb, cur, nbrs_local, Rlim, want, now, &ps,
-                                 cur_met(win), pref.min_issue_use);
-        for (uint32_t j = 0; j < Rlim; ++j) {
-          uint32_t nb = nbrs_local[j];
-          if (!want.count(nb)) continue;
-          if (pending_set.insert(nb).second) pending.push_back(Pend{nb, cur, j});
+        if (g_expand_dump && !to_score.empty()) {
+          uint32_t c = (uint32_t)to_score.size();
+          std::fwrite(&c, 4, 1, g_expand_dump);
+          std::fwrite(to_score.data(), 4, c, g_expand_dump);
+        }
+        if (pl.has_bundle()) {
+          std::unordered_set<uint32_t> want(to_score.begin(), to_score.end());
+          hide_collect_bundle_pages(pl, vb, pb, cur, nbrs_local, Rlim, want, now, &ps,
+                                   cur_met(win), pref.min_issue_use);
+          for (uint32_t j = 0; j < Rlim; ++j) {
+            uint32_t nb = nbrs_local[j];
+            if (!want.count(nb)) continue;
+            if (pending_set.insert(nb).second) pending.push_back(Pend{nb, cur, j});
+          }
+        } else {
+          try_cache_score(to_score);
+          for (uint32_t id : to_score) {
+            hide_collect_vec_pages(pl, vb, pb, id, now, &ps);
+            if (pending_set.insert(id).second) pending.push_back(Pend{id, cur, 0});
+          }
         }
       }
       issued_pages.swap(now);
@@ -993,6 +1160,12 @@ static std::vector<uint32_t> search_one(Placement& pl, DramWindow& win, Prefetch
     return win.lookup_or_promote(pl.ssd_base, s, pl.hdr->pq_bytes);
   };
   auto get_nbr = [&](uint32_t id) {
+    if (pl.diskann_layout && pl.vec_stride) {
+      const uint8_t* e =
+          win.lookup_or_promote(pl.ssd_base, pl.entry(id), pl.vec_stride);
+      const size_t off = (size_t)pl.hdr->dim * pl.hdr->vec_bytes + 4;
+      return reinterpret_cast<const uint32_t*>(e + off);
+    }
     const uint8_t* s = reinterpret_cast<const uint8_t*>(pl.nbrs(id));
     return reinterpret_cast<const uint32_t*>(
         win.lookup_or_promote(pl.ssd_base, s, pl.hdr->R * 4));
@@ -1125,22 +1298,36 @@ int main(int argc, char** argv) {
   bool vmem_prefetch = true;
   bool graph_in_dram = true;
   bool hide_warm_entry = true;
+  const char* hide_warm_ids_path = nullptr;
+  size_t hide_warm_bytes = 0;
   uint32_t lookahead_k = 0;
   uint32_t expand_batch = 1;
   uint32_t issue_ahead = 1;
   bool issue_ahead_explicit = false;
   bool pref_score_page = true;
+  bool score_page_explicit = false;
   bool use_nbr_bundle = false;
   bool lookahead_explicit = false;
   bool expand_batch_explicit = false;
   bool oracle_dram = false;
   bool oracle_window = false;
+  bool diskann_cli = false;
+  const char* nav_graph_path = nullptr;
+  uint32_t nav_l = 64;
   const char* graph_file = nullptr;
   const char* dump_scored = nullptr;
   int nthreads = 1;
   bool per_thread_window = true;  // each request thread owns a DramWindow (no shared lock)
   int min_issue_use_n = 0;       // --min-issue-use N → threshold N/100; 0=off
   uint32_t spec_beam_nbrs = 0;
+  bool expand_sib = false;
+  bool sync_hop = false;
+  bool score_cache = false;
+  bool direct_install = false;
+  bool stripe_fill = false;
+  const char* id_slot_map_path = nullptr;
+  const char* dump_expands_path = nullptr;
+  const char* query_ids_path = nullptr;
 
   for (int i = 1; i < argc; ++i) {
     std::string a = argv[i];
@@ -1189,6 +1376,8 @@ int main(int argc, char** argv) {
     else if (a == "--no-graph-in-dram") graph_in_dram = false;
     else if (a == "--hide-warm-entry") hide_warm_entry = true;
     else if (a == "--no-hide-warm-entry") hide_warm_entry = false;
+    else if (a == "--hide-warm-ids") hide_warm_ids_path = need(a.c_str());
+    else if (a == "--hide-warm-bytes") hide_warm_bytes = strtoull(need(a.c_str()), nullptr, 10);
     else if (a == "--lookahead-k") {
       lookahead_k = (uint32_t)atoi(need(a.c_str()));
       lookahead_explicit = true;
@@ -1202,8 +1391,13 @@ int main(int argc, char** argv) {
       issue_ahead = (uint32_t)atoi(need(a.c_str()));
       issue_ahead_explicit = true;
     }
-    else if (a == "--score-page") pref_score_page = true;
-    else if (a == "--no-score-page") pref_score_page = false;
+    else if (a == "--score-page") {
+      pref_score_page = true;
+      score_page_explicit = true;
+    } else if (a == "--no-score-page") {
+      pref_score_page = false;
+      score_page_explicit = true;
+    }
     else if (a == "--min-issue-use") {
       min_issue_use_n = atoi(need(a.c_str()));
       if (min_issue_use_n < 0) min_issue_use_n = 0;
@@ -1212,8 +1406,24 @@ int main(int argc, char** argv) {
     else if (a == "--spec-beam-nbrs") {
       spec_beam_nbrs = (uint32_t)atoi(need(a.c_str()));
     }
+    else if (a == "--expand-sib") expand_sib = true;
+    else if (a == "--no-expand-sib") expand_sib = false;
+    else if (a == "--sync-hop") sync_hop = true;
+    else if (a == "--no-sync-hop") sync_hop = false;
+    else if (a == "--score-cache") score_cache = true;
+    else if (a == "--no-score-cache") score_cache = false;
+    else if (a == "--direct-install") direct_install = true;
+    else if (a == "--no-direct-install") direct_install = false;
+    else if (a == "--stripe-fill") stripe_fill = true;
+    else if (a == "--no-stripe-fill") stripe_fill = false;
+    else if (a == "--id-slot-map") id_slot_map_path = need(a.c_str());
+    else if (a == "--dump-expands") dump_expands_path = need(a.c_str());
+    else if (a == "--query-ids") query_ids_path = need(a.c_str());
     else if (a == "--oracle-dram") oracle_dram = true;
     else if (a == "--oracle-window") oracle_window = true;
+    else if (a == "--diskann-layout") diskann_cli = true;
+    else if (a == "--nav-graph") nav_graph_path = need(a.c_str());
+    else if (a == "--nav-l") nav_l = (uint32_t)atoi(need(a.c_str()));
     else if (a == "--graph-file") graph_file = need(a.c_str());
     else if (a == "--dump-scored") dump_scored = need(a.c_str());
     else if (a == "--cont-batch") {
@@ -1229,6 +1439,52 @@ int main(int argc, char** argv) {
     }
   }
   if (oneshot_fp) rerank = false;
+  if (dump_expands_path && dump_expands_path[0]) {
+    g_expand_dump = std::fopen(dump_expands_path, "wb");
+    if (!g_expand_dump) {
+      fprintf(stderr, "failed to open --dump-expands %s\n", dump_expands_path);
+      return 2;
+    }
+    printf("dump-expands %s\n", dump_expands_path);
+  }
+  std::vector<uint32_t> hide_warm_extra;
+  if (hide_warm_ids_path && hide_warm_ids_path[0]) {
+    FILE* wf = std::fopen(hide_warm_ids_path, "rb");
+    if (!wf) {
+      fprintf(stderr, "failed to open --hide-warm-ids %s\n", hide_warm_ids_path);
+      return 2;
+    }
+    std::fseek(wf, 0, SEEK_END);
+    long sz = std::ftell(wf);
+    std::fseek(wf, 0, SEEK_SET);
+    if (sz < 0 || (sz % 4) != 0) {
+      fprintf(stderr, "bad --hide-warm-ids size %ld\n", sz);
+      std::fclose(wf);
+      return 2;
+    }
+    hide_warm_extra.resize((size_t)sz / 4);
+    if (!hide_warm_extra.empty() &&
+        std::fread(hide_warm_extra.data(), 4, hide_warm_extra.size(), wf) != hide_warm_extra.size()) {
+      fprintf(stderr, "short --hide-warm-ids\n");
+      std::fclose(wf);
+      return 2;
+    }
+    std::fclose(wf);
+    printf("hide-warm-ids %s n=%zu cap_bytes=%zu\n", hide_warm_ids_path, hide_warm_extra.size(),
+           hide_warm_bytes);
+  }
+  if (diskann_cli && (!nav_graph_path || !nav_graph_path[0])) {
+    fprintf(stderr, "--diskann-layout needs --nav-graph\n");
+    return 2;
+  }
+  if (diskann_cli && oracle_dram && dram_backend == "numa") {
+    fprintf(stderr, "refuse numa as CXL-DRAM oracle under --diskann-layout\n");
+    return 2;
+  }
+  if (diskann_cli && use_nbr_bundle) {
+    fprintf(stderr, "refuse --nbr-bundle with --diskann-layout\n");
+    return 2;
+  }
   // Three-layer roles: CXL-DRAM is the vmem BAR only. Refuse numa / dax / empty.
   if (require_cxl_dram) {
     if (dram_backend == "numa") {
@@ -1256,6 +1512,8 @@ int main(int argc, char** argv) {
     fprintf(stderr, "HOST DRAM window %zu exceeds --host-bytes %zu\n", dram_bytes, host_bytes);
     return 2;
   }
+  if (oracle_dram && !image && diskann_cli && cxl_dram_dev && cxl_dram_dev[0])
+    image = cxl_dram_dev;
   if ((!image && !vmem_dev) || !entry || !queries) {
     fprintf(stderr,
             "need (--image FILE | --vmem-dev DEV --vmem-offset OFF --vmem-len LEN) "
@@ -1274,13 +1532,19 @@ int main(int argc, char** argv) {
     fprintf(stderr, "numa required for --dram-backend numa\n");
     return 2;
   }
-  if (oracle_dram && !image) {
-    fprintf(stderr, "--oracle-dram needs --image (host layout in DRAM)\n");
-    return 2;
+  if (oracle_dram && !image && !vmem_dev) {
+    if (diskann_cli && cxl_dram_dev && cxl_dram_dev[0])
+      image = cxl_dram_dev;
+    else {
+      fprintf(stderr, "--oracle-dram needs --image, --vmem-dev, or --cxl-dram-dev\n");
+      return 2;
+    }
   }
   if (oracle_dram) {
-    vmem_dev = nullptr;  // score from host mmap, not CXL-SSD
     hide_warm_entry = false;
+    // Keep --vmem-dev: corpus already in the vmem VA (page-cache / ram_map).
+    // Only drop vmem when scoring a host/dax --image.
+    if (image && image[0]) vmem_dev = nullptr;
   }
 
   size_t img_len = 0;
@@ -1296,6 +1560,14 @@ int main(int argc, char** argv) {
     printf("mapped vmem %s off=%lld len=%zu fd=%d prefetch=%d cache_used=%llu\n", vmem_dev,
            (long long)vmem_off, vmem_len, vmem_fd, (int)vmem_prefetch,
            (unsigned long long)vmem_cache_used());
+    if (oracle_dram) {
+      auto* b = static_cast<volatile const char*>(img);
+      for (size_t off = 0; off < img_len; off += 4096) (void)b[off];
+      printf("oracle warmed vmem corpus cache_used=%llu\n",
+             (unsigned long long)vmem_cache_used());
+    }
+  } else if (image && is_dax_path(image)) {
+    img = map_dax_corpus_ro(image, &img_len);
   } else {
     img = map_file_ro(image, &img_len, oracle_dram);
   }
@@ -1307,8 +1579,39 @@ int main(int argc, char** argv) {
 
   Placement pl;
   pl.set_header(hdr);
+  if (diskann_cli) pl.diskann_layout = true;
   pl.ssd_base = static_cast<const uint8_t*>(img);
   pl.ssd_bytes = img_len;
+  NavGraph nav;
+  if (nav_graph_path && nav_graph_path[0]) {
+    if (!nav.load(nav_graph_path)) {
+      fprintf(stderr, "failed to load --nav-graph %s\n", nav_graph_path);
+      return 2;
+    }
+    printf("nav-graph %s n0=%u dim=%u R=%u\n", nav_graph_path, nav.n0, nav.dim, nav.R);
+  }
+  if (pl.diskann_layout && !nav.loaded()) {
+    fprintf(stderr, "diskann layout needs --nav-graph\n");
+    return 2;
+  }
+  if (id_slot_map_path && id_slot_map_path[0]) {
+    if (!pl.load_id_slot_map(id_slot_map_path)) {
+      fprintf(stderr, "failed to load --id-slot-map %s\n", id_slot_map_path);
+      return 2;
+    }
+    printf("id-slot-map %s n=%u (physical neighbor pairing)\n", id_slot_map_path, hdr->n);
+  }
+  if (use_nbr_bundle && pl.diskann_layout) {
+    fprintf(stderr, "refuse --nbr-bundle with diskann layout\n");
+    return 2;
+  }
+  // Frozen hide-copy prefetcher (2026-09-04): e4 a1, issue committed misses,
+  // bounce install, score only after window install. Width is still overridable.
+  if (pl.diskann_layout && !use_nbr_bundle) {
+    if (!expand_batch_explicit) expand_batch = 4;
+    if (!issue_ahead_explicit) issue_ahead = 1;
+    if (!score_page_explicit) pref_score_page = false;
+  }
   if (use_nbr_bundle) {
     const uint64_t packed = (uint64_t)hdr->dim * hdr->vec_bytes;
     const uint64_t stride = (hdr->R * packed + 4095ull) & ~4095ull;
@@ -1336,7 +1639,7 @@ int main(int argc, char** argv) {
            pl.bundle_bytes / (1024.0 * 1024 * 1024), lookahead_k);
   }
   std::vector<uint8_t> graph_host_buf;
-  if (graph_in_dram && hdr->len_graph) {
+  if (graph_in_dram && hdr->len_graph && !pl.diskann_layout) {
     graph_host_buf.resize((size_t)hdr->len_graph);
     bool ok = false;
     if (graph_file && graph_file[0]) {
@@ -1374,14 +1677,39 @@ int main(int argc, char** argv) {
     printf("graph-in-dram bytes=%zu src=%s\n", graph_host_buf.size(),
            graph_file && ok ? "graph-file" : (ok ? "CXAN_HOST_LAYOUT" : "mmap"));
   }
-  printf("vec_stride=%zu (packed=%zu) graph_in_dram=%d\n", pl.vec_stride,
-         (size_t)hdr->dim * hdr->vec_bytes, (int)graph_in_dram);
+  if (graph_in_dram && pl.diskann_layout && graph_file && graph_file[0] && hdr->n &&
+      hdr->R) {
+    const size_t need = (size_t)hdr->n * (size_t)hdr->R * 4;
+    graph_host_buf.resize(need);
+    FILE* gf = fopen(graph_file, "rb");
+    bool okg = gf && fread(graph_host_buf.data(), 1, need, gf) == need;
+    if (gf) fclose(gf);
+    if (okg) {
+      pl.set_graph_host(graph_host_buf.data(), need);
+      printf("diskann graph-file %s bytes=%zu (host N(u), no SSD ID faults)\n", graph_file,
+             need);
+    } else {
+      fprintf(stderr, "WARN diskann --graph-file %s read failed; N(u) still from mmap\n",
+              graph_file);
+    }
+  }
+  printf("vec_stride=%zu (packed=%zu) graph_in_dram=%d diskann=%d\n", pl.vec_stride,
+         (size_t)hdr->dim * hdr->vec_bytes, (int)graph_in_dram, (int)pl.diskann_layout);
 
   Metrics metrics;
   void* dram = nullptr;
   if (cxl_dram_dev && cxl_dram_dev[0] && dram_backend != "numa" && !require_cxl_dram)
     dax_dev = cxl_dram_dev;
-  if (require_cxl_dram) {
+  if (pl.diskann_layout && oracle_dram) {
+    // Corpus is already the CXL-DRAM mmap. Do not RW-map / zero-fault /dev/dax0.0.
+    const size_t dummy = 64ull << 20;
+    dram = mmap(nullptr, dummy, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, -1, 0);
+    if (dram == MAP_FAILED) die("mmap dummy oracle window");
+    dram_bytes = dummy;
+    metrics.window_is_cxl_dram = true;
+    printf("oracle DiskANN scores from corpus mmap (%s); dummy window %zu\n",
+           image ? image : (vmem_dev ? vmem_dev : "?"), dummy);
+  } else if (require_cxl_dram) {
     // Validated above: cxl_dram_dev is /dev/vmem*. Never fall back to /dev/dax*.
     dram = map_dram_dax(cxl_dram_dev, dax_off, dram_bytes);
     metrics.window_is_cxl_dram = true;
@@ -1418,6 +1746,11 @@ int main(int argc, char** argv) {
   pref.score_page = pref_score_page;
   pref.min_issue_use = (float)min_issue_use_n / 100.f;
   pref.spec_beam_nbrs = spec_beam_nbrs;
+  pref.expand_sib = expand_sib;
+  pref.sync_hop = sync_hop;
+  pref.score_cache = score_cache;
+  pref.direct_install = direct_install;
+  pref.stripe_fill = stripe_fill;
   pref.oracle_dram = oracle_dram;
   // P2v2 is cooperative single-threaded (DAX is not safe for concurrent promote).
   if (false && pref.policy == PrefetchPolicy::P2) pref.start_async(&pl, &win);
@@ -1425,14 +1758,20 @@ int main(int argc, char** argv) {
   if (pref.policy == PrefetchPolicy::P3) {
     printf("P3v2 softpin W=%u budget=%zu install_top=%u fetch_top=%u page_group_b=%d "
            "install_all=%d threads=%d per_thread_window=%d cont_batch=%d score_page=%d "
-           "expand_batch=%u issue_ahead=%u min_issue_use=%.2f spec_beam_nbrs=%u\n",
+           "expand_batch=%u issue_ahead=%u min_issue_use=%.2f spec_beam_nbrs=%u "
+           "expand_sib=%d slot_map=%d sync_hop=%d score_cache=%d direct_install=%d "
+           "stripe_fill=%d\n",
            pref.pipe_w, budget, pref.install_top, pref.fetch_top, (int)page_group_b,
            (int)install_all_fetched, nthreads, (int)per_thread_window,
            (int)(!per_thread_window && nthreads > 1), (int)pref.score_page, pref.expand_batch,
-           pref.issue_ahead, pref.min_issue_use, pref.spec_beam_nbrs);
+           pref.issue_ahead, pref.min_issue_use, pref.spec_beam_nbrs, (int)pref.expand_sib,
+           (int)!pl.id_to_slot.empty(), (int)pref.sync_hop, (int)pref.score_cache,
+           (int)pref.direct_install, (int)pref.stripe_fill);
   }
 
   EntryGraph eg = load_entry(entry);
+  const std::vector<uint32_t>& hide_warm_extras =
+      (hide_warm_ids_path && hide_warm_ids_path[0]) ? hide_warm_extra : eg.nodes;
   {
     struct stat est {};
     if (stat(entry, &est) != 0) die("stat entry");
@@ -1457,15 +1796,48 @@ int main(int argc, char** argv) {
   close(qfd);
   const float* qfile = reinterpret_cast<const float*>((char*)qmap + 8);
 
-  std::vector<uint32_t> qidx(nq_file);
-  std::iota(qidx.begin(), qidx.end(), 0);
-  if (shuffle_seed >= 0) {
-    std::mt19937 rng((uint32_t)shuffle_seed);
-    std::shuffle(qidx.begin(), qidx.end(), rng);
+  std::vector<uint32_t> qidx;
+  if (query_ids_path && query_ids_path[0]) {
+    FILE* qf = std::fopen(query_ids_path, "rb");
+    if (!qf) {
+      fprintf(stderr, "failed to open --query-ids %s\n", query_ids_path);
+      return 2;
+    }
+    std::fseek(qf, 0, SEEK_END);
+    long qsz = std::ftell(qf);
+    std::fseek(qf, 0, SEEK_SET);
+    if (qsz < 4 || (qsz % 4) != 0) {
+      fprintf(stderr, "bad --query-ids size %ld\n", qsz);
+      std::fclose(qf);
+      return 2;
+    }
+    qidx.resize((size_t)qsz / 4);
+    if (std::fread(qidx.data(), 4, qidx.size(), qf) != qidx.size()) {
+      fprintf(stderr, "short --query-ids\n");
+      std::fclose(qf);
+      return 2;
+    }
+    std::fclose(qf);
+    for (uint32_t id : qidx) {
+      if (id >= nq_file) {
+        fprintf(stderr, "query-id %u >= nq_file %u\n", id, nq_file);
+        return 2;
+      }
+    }
+  } else {
+    qidx.resize(nq_file);
+    std::iota(qidx.begin(), qidx.end(), 0);
+    if (shuffle_seed >= 0) {
+      std::mt19937 rng((uint32_t)shuffle_seed);
+      std::shuffle(qidx.begin(), qidx.end(), rng);
+    }
+    if (max_q > 0 && (uint32_t)max_q < (uint32_t)qidx.size()) qidx.resize((size_t)max_q);
   }
-  uint32_t nq = nq_file;
-  if (max_q > 0 && (uint32_t)max_q < nq) nq = (uint32_t)max_q;
-  qidx.resize(nq);
+  uint32_t nq = (uint32_t)qidx.size();
+  if (max_q > 0 && (uint32_t)max_q < nq) {
+    nq = (uint32_t)max_q;
+    qidx.resize(nq);
+  }
 
   size_t q_host = (size_t)nq * qdim * 4;
   struct stat est {};
@@ -1515,21 +1887,25 @@ int main(int argc, char** argv) {
     if (mfd < 0) die("open id-map");
     struct stat st {};
     if (fstat(mfd, &st) != 0) die("stat id-map");
-    if ((size_t)st.st_size != (size_t)hdr->n * 4) {
-      fprintf(stderr, "id-map size %lld != n*4=%zu\n", (long long)st.st_size,
-              (size_t)hdr->n * 4);
+    const size_t need = (size_t)hdr->n * 4;
+    if ((size_t)st.st_size < need) {
+      fprintf(stderr, "id-map size %lld < n*4=%zu\n", (long long)st.st_size, need);
       return 2;
     }
     id_map.resize(hdr->n);
-    if (read(mfd, id_map.data(), st.st_size) != st.st_size) die("read id-map");
+    if (read(mfd, id_map.data(), need) != (ssize_t)need) die("read id-map");
     close(mfd);
-    printf("loaded id-map new→old n=%u from %s\n", hdr->n, id_map_path);
+    printf("loaded id-map new→old n=%u (file=%lld) from %s\n", hdr->n,
+           (long long)st.st_size, id_map_path);
   }
 
-  printf("query_select nq=%u/%u shuffle_seed=%d flush_window=%d oneshot_fp=%d "
+  printf("query_select nq=%u/%u shuffle_seed=%d query_ids=%s first=%u last=%u flush_window=%d oneshot_fp=%d "
          "oracle_dram=%d oracle_window=%d "
          "pin_entry=%d host_used=%zu host_cap=%zu host_bytes=%zu dram_bytes=%zu pin_cap=%zu\n",
-         nq, nq_file, shuffle_seed, (int)flush_window, (int)oneshot_fp,
+         nq, nq_file, shuffle_seed,
+         (query_ids_path && query_ids_path[0]) ? query_ids_path : "-",
+         qidx.empty() ? 0 : qidx.front(), qidx.empty() ? 0 : qidx.back(),
+         (int)flush_window, (int)oneshot_fp,
          (int)oracle_dram, (int)oracle_window, (int)pin_entry,
          host_used, host_cap, host_bytes, dram_bytes, win.pin_bytes_cap);
   printf("roles host_bytes=%zu require_cxl_dram=%d cpu_affinity=%d per_thread_window=%d "
@@ -1559,7 +1935,8 @@ int main(int argc, char** argv) {
       warm_pool.start(pref.pipe_w);
       wp = &warm_pool;
     }
-    size_t nw = hide_warm_entry_ball(pl, win, *wp, &vio, eg.nodes, eg.entry_id);
+    size_t nw = hide_warm_entry_ball(pl, win, *wp, &vio, hide_warm_extras, eg.entry_id,
+                                    hide_warm_bytes);
     pref.entry_pinned = true;
     printf("hide_warm_entry ids=%zu pin_bytes=%zu/%zu\n", nw, win.pin_bytes_used,
            win.pin_bytes_cap);
@@ -1588,7 +1965,9 @@ int main(int argc, char** argv) {
       }
     }
     auto tq0 = std::chrono::steady_clock::now();
-    auto ids = search_one(pl, w, lp, nullptr, eg, qf, qpq.data(), beam, k, iters, rerank,
+    EntryGraph qeg = eg;
+    if (nav.loaded()) qeg.entry_id = nav.search_entry(qf, nav_l);
+    auto ids = search_one(pl, w, lp, nullptr, qeg, qf, qpq.data(), beam, k, iters, rerank,
                           oneshot_fp, pool, &vio);
     auto tq1 = std::chrono::steady_clock::now();
     double ms = std::chrono::duration<double, std::milli>(tq1 - tq0).count();
@@ -1663,7 +2042,8 @@ int main(int argc, char** argv) {
       if (pref.policy == PrefetchPolicy::P3) {
         c->pool.start(pref.pipe_w);
         if (hide_warm_entry && !oracle_dram) {
-          hide_warm_entry_ball(pl, c->win, c->pool, &vio, eg.nodes, eg.entry_id);
+          hide_warm_entry_ball(pl, c->win, c->pool, &vio, hide_warm_extras, eg.entry_id,
+                              hide_warm_bytes);
           c->m.pf_issued.clear();
           c->m.pf_used.clear();
           c->m.pf_look.clear();
@@ -1748,6 +2128,11 @@ int main(int argc, char** argv) {
         lp.score_page = pref.score_page;
         lp.min_issue_use = pref.min_issue_use;
         lp.spec_beam_nbrs = pref.spec_beam_nbrs;
+        lp.expand_sib = pref.expand_sib;
+        lp.sync_hop = pref.sync_hop;
+        lp.score_cache = pref.score_cache;
+        lp.direct_install = pref.direct_install;
+        lp.stripe_fill = pref.stripe_fill;
         lp.neighbor_k = pref.neighbor_k;
         DramWindow* tw = &win;
         PageCopyPool* pool = use_shared_pool ? &shared_pool : nullptr;
@@ -1835,6 +2220,19 @@ int main(int argc, char** argv) {
   printf("latency_ms mean=%.3f p50=%.3f p90=%.3f p99=%.3f\n", mean_lat, p50, p90, p99);
   if (recall_n) printf("recall@%u=%.4f\n", k, recall);
   printf("cxl_dram_hit_pct=%.2f\n", hit_pct);
+  {
+    const size_t pb = win.page_bytes ? win.page_bytes : 4096;
+    metrics.page_occ_n0 = metrics.page_occ_n50 = metrics.page_occ_n100 = 0;
+    metrics.page_occ_pages = metrics.page_occ_used_slots = metrics.page_occ_slots = 0;
+    for (uint64_t p : metrics.pf_issued) {
+      uint32_t slots = 0, used = 0;
+      pl.for_ids_contained_in_page(p, pb, [&](uint32_t id) {
+        slots++;
+        if (metrics.pf_ids_scored.count(id)) used++;
+      });
+      metrics.note_page_occ_slots(used, slots);
+    }
+  }
   metrics.print();
   {
     const double nvme_gbs = sec > 0 ? (double)metrics.nvme_read_bytes / 1e9 / sec : 0;
@@ -1853,6 +2251,10 @@ int main(int argc, char** argv) {
          metrics.hide_precision_pct(), (unsigned long long)metrics.crit_wait_ns,
          metrics.overlap_ratio());
 
+  if (g_expand_dump) {
+    std::fclose(g_expand_dump);
+    g_expand_dump = nullptr;
+  }
   if (pref.policy == PrefetchPolicy::P2) pref.stop_async();
   munmap(dram, dram_bytes);
   munmap(img, img_len);

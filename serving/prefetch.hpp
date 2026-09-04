@@ -22,8 +22,8 @@ struct Prefetch {
   size_t budget_left = 0;
   uint32_t neighbor_k = 64;
   uint32_t lookahead_k = 0;  // miss-only: issued pages are pages we will score
-  uint32_t expand_batch = 1; // commit-and-issue this many expands' bundles at once
-  uint32_t issue_ahead = 1;  // how many committed batches to issue before scoring
+  uint32_t expand_batch = 4; // frozen DiskANN hide: commit this many expands, then issue
+  uint32_t issue_ahead = 1;  // frozen: one committed wave before drain/score
   bool pin_entry = true;
   size_t async_q_cap = 4096;
   uint32_t pipe_w = 8;  // P3 outstanding staging width
@@ -36,6 +36,11 @@ struct Prefetch {
   bool score_page = true;            // score every resident ID on a fetched page
   float min_issue_use = 0.f;         // skip bundle page if want/contained < this; 0=off
   uint32_t spec_beam_nbrs = 0;       // prefetch N(u) when u ranks in top M of beam; 0=off
+  bool expand_sib = false;           // also expand the 4K page sibling if it is in cand
+  bool sync_hop = false;             // diskann: score each expand before issuing the next
+  bool score_cache = false;          // score from vmem software cache without mmap fault
+  bool direct_install = false;       // READ_BATCH into window frames (no bounce copy)
+  bool stripe_fill = false;          // fill holes in a 2MiB stripe when span is small
 
   struct Job {
     const uint8_t* ptr = nullptr;
@@ -118,6 +123,14 @@ struct Prefetch {
     if (!pin_entry || entry_pinned) return;
     size_t vb = (size_t)p.hdr->dim * p.hdr->vec_bytes;
     size_t nb = (size_t)p.hdr->R * 4;
+    if (p.diskann_layout && p.vec_stride) {
+      w.pin(p.ssd_base, p.entry(start_id), p.vec_stride);
+      uint32_t lim = 256;
+      for (size_t i = 0; i < entry_ids.size() && i < lim; ++i)
+        w.pin(p.ssd_base, p.entry(entry_ids[i]), p.vec_stride);
+      entry_pinned = true;
+      return;
+    }
     w.pin(p.ssd_base, p.vec(start_id), vb);
     w.pin(p.ssd_base, reinterpret_cast<const uint8_t*>(p.nbrs(start_id)), nb);
     uint32_t vec_pin_lim = 256;
@@ -139,15 +152,26 @@ struct Prefetch {
     for (uint32_t id : entry_ids) {
       if (budget_left < w.page_bytes) break;
       // P1/P2v2: cooperative single-threaded entry warm.
-      w.try_prefetch(p.ssd_base, p.vec(id), &budget_left, vb);
+      if (p.diskann_layout && p.vec_stride)
+        w.try_prefetch(p.ssd_base, p.entry(id), &budget_left, p.vec_stride);
+      else
+        w.try_prefetch(p.ssd_base, p.vec(id), &budget_left, vb);
     }
   }
 
   void on_expand(Placement& p, DramWindow& w, uint32_t node) {
     if (policy == PrefetchPolicy::P0) return;
-    const uint32_t* nbr_ptr = reinterpret_cast<const uint32_t*>(
-        w.lookup_or_promote(p.ssd_base, reinterpret_cast<const uint8_t*>(p.nbrs(node)),
-                            (size_t)p.hdr->R * 4));
+    const uint32_t* nbr_ptr = nullptr;
+    if (p.diskann_layout && p.vec_stride) {
+      const uint8_t* e =
+          w.lookup_or_promote(p.ssd_base, p.entry(node), p.vec_stride);
+      const size_t off = (size_t)p.hdr->dim * p.hdr->vec_bytes + 4;
+      nbr_ptr = reinterpret_cast<const uint32_t*>(e + off);
+    } else {
+      nbr_ptr = reinterpret_cast<const uint32_t*>(
+          w.lookup_or_promote(p.ssd_base, reinterpret_cast<const uint8_t*>(p.nbrs(node)),
+                              (size_t)p.hdr->R * 4));
+    }
     uint32_t lim = neighbor_k < p.hdr->R ? neighbor_k : p.hdr->R;
     uint32_t nbr_local[64];
     if (lim > 64) lim = 64;
@@ -157,7 +181,10 @@ struct Prefetch {
       uint32_t nb = nbr_local[i];
       if (nb >= p.hdr->n) continue;
       if (budget_left < w.page_bytes) return;
-      w.try_prefetch(p.ssd_base, p.vec(nb), &budget_left, vb);
+      if (p.diskann_layout && p.vec_stride)
+        w.try_prefetch(p.ssd_base, p.entry(nb), &budget_left, p.vec_stride);
+      else
+        w.try_prefetch(p.ssd_base, p.vec(nb), &budget_left, vb);
     }
   }
 
