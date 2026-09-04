@@ -37,7 +37,7 @@ print(f"pollute checksum={acc} evict={open('/sys/class/vmem/vmem0/evictions').re
 PY
 }
 
-# B freeze (2026-09-04): PQ-64 beam + end-batch FP rerank. PIPE=0 is the
+# frozen PQ-64 end-batch (2026-09-04): PQ-64 beam + end-batch FP rerank. PIPE=0 is the
 # locked hide row. PIPE=1 is the dropped ablation (extra empty pages).
 NQ=${NQ:-100}
 PIPE=${PIPE:-0}
