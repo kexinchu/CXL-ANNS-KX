@@ -22,9 +22,8 @@ struct Prefetch {
   size_t budget_per_query = 256 * 1024;
   size_t budget_left = 0;
   uint32_t neighbor_k = 64;
-  uint32_t lookahead_k = 0;  // miss-only: issued pages are pages we will score
-  uint32_t expand_batch = 4; // frozen DiskANN hide: commit this many expands, then issue
-  uint32_t issue_ahead = 1;  // frozen: one committed wave before drain/score
+  uint32_t expand_batch = 4; // oneshot-fp only: commit this many expands, then issue
+  uint32_t issue_ahead = 1;  // oneshot-fp only: committed waves before drain/score
   bool pin_entry = true;
   size_t async_q_cap = 4096;
   uint32_t pipe_w = 8;  // P3 outstanding staging width
@@ -34,14 +33,7 @@ struct Prefetch {
   bool install_all_fetched = false;  // P3: install every fetched page (hit% / useful BW)
   bool oracle_dram = false;          // score vectors from host mmap (CXL-DRAM-capacity oracle)
   bool freeze_fills = false;         // timed oracle-window pass: no new SSD fills
-  bool score_page = true;            // score every resident ID on a fetched page
-  float min_issue_use = 0.f;         // skip bundle page if want/contained < this; 0=off
-  uint32_t spec_beam_nbrs = 0;       // prefetch N(u) when u ranks in top M of beam; 0=off
-  bool expand_sib = false;           // also expand the 4K page sibling if it is in cand
-  bool sync_hop = false;             // diskann: score each expand before issuing the next
-  bool score_cache = false;          // score from vmem software cache without mmap fault
-  bool direct_install = false;       // READ_BATCH into window frames (no bounce copy)
-  bool stripe_fill = false;          // fill holes in a 2MiB stripe when span is small
+  bool sync_hop = false;             // oneshot-fp only: score each expand before the next
   bool extent_run = false;           // fill holes in this issue's tight page span
   bool pq_nav = false;
   PqTable* pq = nullptr;
@@ -197,45 +189,11 @@ struct Prefetch {
     uint32_t id;
   };
 
-  // Prefetch neighbor vectors of the closest unexpanded candidates first.
-  // exclude_id: skip this node (e.g. current expand) so I/O targets future hops.
-  // P1/P2v2: synchronous try_prefetch (P2v2 uses this only for non-cur lookahead).
-  void prefetch_by_cand_distance(Placement& p, DramWindow& w,
+  // Cand-distance hop lookahead is no longer a Prefetch field (default was off).
+  void prefetch_by_cand_distance(Placement& /*p*/, DramWindow& /*w*/,
                                  const std::vector<CandDist>& unexp,
-                                 const std::unordered_set<uint32_t>& seen,
-                                 uint32_t exclude_id = UINT32_MAX) {
+                                 const std::unordered_set<uint32_t>& /*seen*/,
+                                 uint32_t /*exclude_id*/ = UINT32_MAX) {
     if (policy == PrefetchPolicy::P0 || unexp.empty()) return;
-    std::vector<CandDist> order;
-    order.reserve(unexp.size());
-    for (const auto& c : unexp) {
-      if (c.id == exclude_id) continue;
-      order.push_back(c);
-    }
-    if (order.empty()) return;
-    std::sort(order.begin(), order.end(),
-              [](const CandDist& a, const CandDist& b) { return a.dist < b.dist; });
-    uint32_t lim_nodes = lookahead_k < (uint32_t)order.size() ? lookahead_k
-                                                              : (uint32_t)order.size();
-    size_t vb = (size_t)p.hdr->dim * p.hdr->vec_bytes;
-    for (uint32_t i = 0; i < lim_nodes; ++i) {
-      if (budget_left < w.page_bytes) return;
-      uint32_t node = order[i].id;
-      uint32_t nbr_local[64];
-      uint32_t R = p.hdr->R;
-      if (R > 64) R = 64;
-      {
-        alignas(64) uint8_t nbuf[64 * 4];
-        w.copy_through(p.ssd_base, reinterpret_cast<const uint8_t*>(p.nbrs(node)),
-                       (size_t)R * 4, nbuf);
-        std::memcpy(nbr_local, nbuf, (size_t)R * 4);
-      }
-      uint32_t lim = neighbor_k < R ? neighbor_k : R;
-      for (uint32_t j = 0; j < lim; ++j) {
-        uint32_t nb = nbr_local[j];
-        if (nb >= p.hdr->n || seen.count(nb)) continue;
-        if (budget_left < w.page_bytes) return;
-        w.try_prefetch(p.ssd_base, p.vec(nb), &budget_left, vb);
-      }
-    }
   }
 };

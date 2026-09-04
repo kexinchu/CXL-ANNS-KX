@@ -152,6 +152,21 @@ inline uint64_t hide_wait(HideInflight& inf, DramWindow& win, PageCopyPool& /*po
   return (uint64_t)std::chrono::duration_cast<std::chrono::nanoseconds>(t1 - t0).count();
 }
 
+// Fill holes only between this issue's min/max page, and only if the span is
+// tight (density >= 50%, span <= max_span). Not a 2 MiB stripe dump.
+inline void hide_extent_run(std::vector<uint64_t>& pages, size_t pb, uint32_t max_span = 32) {
+  if (pages.size() < 2 || !pb) return;
+  std::sort(pages.begin(), pages.end());
+  pages.erase(std::unique(pages.begin(), pages.end()), pages.end());
+  const uint64_t lo = pages.front(), hi = pages.back();
+  const uint64_t span = (hi - lo) / pb + 1;
+  if (span <= 1 || span > max_span) return;
+  if (pages.size() * 2 < span) return;
+  pages.clear();
+  pages.reserve((size_t)span);
+  for (uint64_t p = lo; p <= hi; p += pb) pages.push_back(p);
+}
+
 inline void hide_stripe_fill(std::vector<uint64_t>& pages, size_t pb, uint32_t max_span = 64) {
   if (pages.size() < 2 || !pb) return;
   const uint64_t stripe = 2ull << 20;
@@ -178,8 +193,7 @@ inline void hide_stripe_fill(std::vector<uint64_t>& pages, size_t pb, uint32_t m
 
 inline void hide_issue(HideInflight& inf, DramWindow& win, Placement& pl, PageCopyPool& pool,
                        VmemIo* vio, const std::vector<uint64_t>& pages_in, uint16_t ttl,
-                       Metrics* m, bool lookahead = false, bool /*direct_install*/ = false,
-                       bool stripe_fill = false) {
+                       Metrics* m, bool lookahead = false, bool extent_run = false) {
   const size_t pb = win.page_bytes;
   std::vector<uint64_t> miss;
   miss.reserve(pages_in.size());
@@ -190,7 +204,7 @@ inline void hide_issue(HideInflight& inf, DramWindow& win, Placement& pl, PageCo
     if (win.is_resident(pl.ssd_base, pl.ssd_base + p, 1)) continue;
     miss.push_back(p);
   }
-  if (stripe_fill) hide_stripe_fill(miss, pb, 64);
+  if (extent_run) hide_extent_run(miss, pb, 32);
   if (miss.empty()) return;
   inf.clear();
   inf.pages = std::move(miss);
@@ -249,8 +263,7 @@ struct HidePipe {
   Placement* pl = nullptr;
   VmemIo* vio = nullptr;
   Metrics* m = nullptr;
-  bool direct_install = false;
-  bool stripe_fill = false;
+  bool extent_run = false;
   std::function<void()> after_pump;
 
   void pump() {
@@ -343,8 +356,7 @@ struct HidePipe {
     }
     if (!dst) return;
     if (miss.size() > 1024) miss.resize(1024);
-    hide_issue(*dst, *win, *pl, *pool, vio, miss, ttl, m, lookahead, direct_install,
-               stripe_fill);
+    hide_issue(*dst, *win, *pl, *pool, vio, miss, ttl, m, lookahead, extent_run);
   }
 };
 
