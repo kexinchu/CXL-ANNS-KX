@@ -1,6 +1,7 @@
 #pragma once
 #include "dram_window.hpp"
 #include "placement.hpp"
+#include "pq_table.hpp"
 
 #include <algorithm>
 #include <cstdint>
@@ -41,6 +42,9 @@ struct Prefetch {
   bool score_cache = false;          // score from vmem software cache without mmap fault
   bool direct_install = false;       // READ_BATCH into window frames (no bounce copy)
   bool stripe_fill = false;          // fill holes in a 2MiB stripe when span is small
+  bool extent_run = false;           // fill holes in this issue's tight page span
+  bool pq_nav = false;
+  PqTable* pq = nullptr;
 
   struct Job {
     const uint8_t* ptr = nullptr;

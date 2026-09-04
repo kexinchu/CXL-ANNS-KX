@@ -353,6 +353,178 @@ struct Cand {
 // P2 uses expand/score decoupling (P2v2): discover nbrs into pending, score when resident;
 // lookahead sync-prefetches non-cur future hops (no second thread on DAX).
 // lookahead prefetches future candidates only (excludes current expand).
+static std::vector<uint32_t> search_one_pq(Placement& pl, DramWindow& win, Prefetch& pref,
+                                           const EntryGraph& eg, const float* qf, uint32_t beam,
+                                           uint32_t k, uint32_t iters, PageCopyPool* ext_pool,
+                                           VmemIo* vio) {
+  PqTable* pq = pref.pq;
+  if (!pq || !pq->loaded()) {
+    fprintf(stderr, "pq-nav needs loaded --pq-pivots/--pq-compressed\n");
+    std::exit(2);
+  }
+  pq->begin_query_ip(qf);
+  pref.on_query_begin(pl, win, eg.nodes, eg.entry_id);
+
+  const size_t vb = (size_t)pl.hdr->dim * pl.hdr->vec_bytes;
+  const size_t pb = win.page_bytes;
+  const uint32_t L = beam ? beam : k;
+  uint32_t Rlim = pl.hdr->R;
+  if (Rlim > 64) Rlim = 64;
+
+  std::vector<Cand> cand;
+  cand.reserve(L + pl.hdr->R + 8);
+  std::unordered_set<uint32_t> seen;
+  std::unordered_set<uint32_t> expanded;
+
+  auto insert_cand = [&](uint32_t id, float d) {
+    if (cand.size() >= L) {
+      auto worst = std::max_element(cand.begin(), cand.end(),
+                                    [](const Cand& a, const Cand& b) { return a.dist < b.dist; });
+      if (d >= worst->dist) return;
+      *worst = {d, id};
+    } else {
+      cand.push_back({d, id});
+    }
+  };
+  auto pq_insert = [&](uint32_t id) {
+    if (id >= pq->n) return;
+    float d = pq->dist(id);
+    if (cur_met(win)) cur_met(win)->distance_comps++;
+    insert_cand(id, d);
+  };
+
+  seen.insert(eg.entry_id);
+  pq_insert(eg.entry_id);
+
+  auto pick_best = [&]() -> int {
+    int bi = -1;
+    float bd = 0;
+    for (size_t i = 0; i < cand.size(); ++i) {
+      if (expanded.count(cand[i].id)) continue;
+      if (bi < 0 || cand[i].dist < bd) {
+        bi = (int)i;
+        bd = cand[i].dist;
+      }
+    }
+    return bi;
+  };
+  auto expand_one = [&](uint32_t cur) {
+    uint32_t nbrs_local[64];
+    hide_read_nbrs(pl, cur, nbrs_local, Rlim);
+    for (uint32_t j = 0; j < Rlim; ++j) {
+      uint32_t nb = nbrs_local[j];
+      if (nb >= pl.hdr->n || seen.count(nb)) continue;
+      seen.insert(nb);
+      pq_insert(nb);
+    }
+  };
+
+  auto fp_rerank_dram = [&]() {
+    for (Cand& c : cand) {
+      c.dist = vec_mips_neg(pl.vec(c.id), qf, pl.hdr->dim, pl.hdr->vec_bytes);
+      if (cur_met(win)) {
+        cur_met(win)->distance_comps++;
+        cur_met(win)->note_score_from_window(1);
+        cur_met(win)->note_pf_scored_id(c.id);
+      }
+    }
+  };
+
+  if (pref.oracle_dram) {
+    uint32_t expands = 0;
+    while (true) {
+      int bi = pick_best();
+      if (bi < 0) break;
+      if (iters != 0 && expands >= iters) break;
+      uint32_t cur = cand[(size_t)bi].id;
+      expanded.insert(cur);
+      expands++;
+      expand_one(cur);
+    }
+    fp_rerank_dram();
+    std::sort(cand.begin(), cand.end(),
+              [](const Cand& a, const Cand& b) { return a.dist < b.dist; });
+    std::vector<uint32_t> out;
+    for (size_t i = 0; i < cand.size() && out.size() < k; ++i) out.push_back(cand[i].id);
+    return out;
+  }
+
+  const uint32_t W = pref.pipe_w ? pref.pipe_w : 8;
+  PageCopyPool local_pool;
+  PageCopyPool* pool = ext_pool ? ext_pool : &local_pool;
+  if (pool->nworkers == 0) pool->start(W);
+  HidePipe hpipe;
+  hpipe.pool = pool;
+  hpipe.win = &win;
+  hpipe.pl = &pl;
+  hpipe.vio = vio;
+  hpipe.m = cur_met(win);
+  hpipe.direct_install = false;
+  hpipe.stripe_fill = false;
+  hpipe.extent_run = pref.extent_run;
+
+  auto issue_ids = [&](const std::vector<uint32_t>& ids) {
+    std::vector<uint64_t> pages;
+    std::unordered_set<uint64_t> ps;
+    pages.reserve(ids.size() * 2);
+    for (uint32_t id : ids) hide_collect_vec_pages(pl, vb, pb, id, pages, &ps);
+    if (!pages.empty()) hpipe.issue(pages, /*ttl=*/128, /*stall_if_full=*/true);
+    return pages;
+  };
+
+  uint32_t expands = 0;
+  while (true) {
+    hpipe.pump();
+    int bi = pick_best();
+    if (bi < 0) break;
+    if (iters != 0 && expands >= iters) break;
+    uint32_t cur = cand[(size_t)bi].id;
+    expanded.insert(cur);
+    expands++;
+    expand_one(cur);
+  }
+
+  std::vector<uint32_t> rerank_ids;
+  rerank_ids.reserve(cand.size());
+  for (const Cand& c : cand) rerank_ids.push_back(c.id);
+  auto need = issue_ids(rerank_ids);
+  uint64_t wns = hpipe.wait_covering(need);
+  if (!wns) wns = hpipe.wait_all();
+  if (cur_met(win)) {
+    cur_met(win)->device_fill_ns += wns;
+    cur_met(win)->crit_wait_ns += wns;
+  }
+  hpipe.pump();
+
+  alignas(64) uint8_t buf[4096];
+  if (vb > sizeof(buf)) {
+    fprintf(stderr, "vec too large for score buf\n");
+    std::exit(2);
+  }
+  std::vector<uint64_t> scored_pages;
+  std::unordered_set<uint64_t> sps;
+  for (Cand& c : cand) {
+    bool hit = win.try_copy_resident(pl.ssd_base, pl.vec(c.id), vb, buf);
+    if (!hit) win.copy_through(pl.ssd_base, pl.vec(c.id), vb, buf);
+    c.dist = vec_mips_neg(buf, qf, pl.hdr->dim, pl.hdr->vec_bytes);
+    if (cur_met(win)) {
+      cur_met(win)->distance_comps++;
+      if (hit) cur_met(win)->note_score_from_window(1);
+      else cur_met(win)->note_score_from_bounce(1);
+      cur_met(win)->note_pf_scored_id(c.id);
+    }
+    hide_collect_vec_pages(pl, vb, pb, c.id, scored_pages, &sps);
+  }
+  if (cur_met(win)) cur_met(win)->note_pf_used(scored_pages);
+  if (!ext_pool) pool->stop_join();
+
+  std::sort(cand.begin(), cand.end(),
+            [](const Cand& a, const Cand& b) { return a.dist < b.dist; });
+  std::vector<uint32_t> out;
+  for (size_t i = 0; i < cand.size() && out.size() < k; ++i) out.push_back(cand[i].id);
+  return out;
+}
+
 static std::vector<uint32_t> search_one_fp(Placement& pl, DramWindow& win, Prefetch& pref,
                                            PromotePipe* pipe, const EntryGraph& eg,
                                            const float* qf, uint32_t beam, uint32_t k,
@@ -498,6 +670,7 @@ static std::vector<uint32_t> search_one_fp(Placement& pl, DramWindow& win, Prefe
     pipe.m = cur_met(win);
     pipe.direct_install = pref.direct_install;
     pipe.stripe_fill = pref.stripe_fill;
+    pipe.extent_run = pref.extent_run;
 
     auto vec_ptr = [&](uint32_t id, uint32_t src, uint32_t slotk) -> const uint8_t* {
       if (pl.has_bundle()) return pl.bundle_slot(src, slotk);
@@ -1147,6 +1320,8 @@ static std::vector<uint32_t> search_one(Placement& pl, DramWindow& win, Prefetch
                                         const uint8_t* qpq, uint32_t beam, uint32_t k,
                                         uint32_t iters, bool rerank, bool oneshot_fp,
                                         PageCopyPool* ext_pool = nullptr, VmemIo* vio = nullptr) {
+  if (!oneshot_fp && pref.pq_nav && pref.pq)
+    return search_one_pq(pl, win, pref, eg, qf, beam, k, iters, ext_pool, vio);
   if (oneshot_fp)
     return search_one_fp(pl, win, pref, pipe, eg, qf, beam, k, iters, ext_pool, vio);
 
@@ -1325,6 +1500,10 @@ int main(int argc, char** argv) {
   bool score_cache = false;
   bool direct_install = false;
   bool stripe_fill = false;
+  bool extent_run = false;
+  bool pq_nav = false;
+  const char* pq_pivots_path = nullptr;
+  const char* pq_compressed_path = nullptr;
   const char* id_slot_map_path = nullptr;
   const char* dump_expands_path = nullptr;
   const char* query_ids_path = nullptr;
@@ -1416,6 +1595,12 @@ int main(int argc, char** argv) {
     else if (a == "--no-direct-install") direct_install = false;
     else if (a == "--stripe-fill") stripe_fill = true;
     else if (a == "--no-stripe-fill") stripe_fill = false;
+    else if (a == "--extent-run") extent_run = true;
+    else if (a == "--no-extent-run") extent_run = false;
+    else if (a == "--pq-nav") pq_nav = true;
+    else if (a == "--no-pq-nav") pq_nav = false;
+    else if (a == "--pq-pivots") pq_pivots_path = need(a.c_str());
+    else if (a == "--pq-compressed") pq_compressed_path = need(a.c_str());
     else if (a == "--id-slot-map") id_slot_map_path = need(a.c_str());
     else if (a == "--dump-expands") dump_expands_path = need(a.c_str());
     else if (a == "--query-ids") query_ids_path = need(a.c_str());
@@ -1751,6 +1936,7 @@ int main(int argc, char** argv) {
   pref.score_cache = score_cache;
   pref.direct_install = direct_install;
   pref.stripe_fill = stripe_fill;
+  pref.extent_run = extent_run;
   pref.oracle_dram = oracle_dram;
   // P2v2 is cooperative single-threaded (DAX is not safe for concurrent promote).
   if (false && pref.policy == PrefetchPolicy::P2) pref.start_async(&pl, &win);
@@ -1760,13 +1946,13 @@ int main(int argc, char** argv) {
            "install_all=%d threads=%d per_thread_window=%d cont_batch=%d score_page=%d "
            "expand_batch=%u issue_ahead=%u min_issue_use=%.2f spec_beam_nbrs=%u "
            "expand_sib=%d slot_map=%d sync_hop=%d score_cache=%d direct_install=%d "
-           "stripe_fill=%d\n",
+           "stripe_fill=%d extent_run=%d\n",
            pref.pipe_w, budget, pref.install_top, pref.fetch_top, (int)page_group_b,
            (int)install_all_fetched, nthreads, (int)per_thread_window,
            (int)(!per_thread_window && nthreads > 1), (int)pref.score_page, pref.expand_batch,
            pref.issue_ahead, pref.min_issue_use, pref.spec_beam_nbrs, (int)pref.expand_sib,
            (int)!pl.id_to_slot.empty(), (int)pref.sync_hop, (int)pref.score_cache,
-           (int)pref.direct_install, (int)pref.stripe_fill);
+           (int)pref.direct_install, (int)pref.stripe_fill, (int)pref.extent_run);
   }
 
   EntryGraph eg = load_entry(entry);
@@ -1897,6 +2083,22 @@ int main(int argc, char** argv) {
     close(mfd);
     printf("loaded id-map new→old n=%u (file=%lld) from %s\n", hdr->n,
            (long long)st.st_size, id_map_path);
+  }
+
+  PqTable pq_store;
+  if (pq_nav) {
+    if (!pq_pivots_path || !pq_compressed_path) {
+      fprintf(stderr, "--pq-nav needs --pq-pivots and --pq-compressed\n");
+      return 2;
+    }
+    if (!pq_store.load_pivots(pq_pivots_path)) { fprintf(stderr, "failed to load --pq-pivots %s\n", pq_pivots_path); return 2; }
+    const uint32_t* n2o = id_map.empty() ? nullptr : id_map.data();
+    const uint32_t n2o_n = (uint32_t)id_map.size();
+    if (!pq_store.load_codes(pq_compressed_path, n2o, n2o_n)) { fprintf(stderr, "failed to load --pq-compressed %s\n", pq_compressed_path); return 2; }
+    pref.pq = &pq_store;
+    pref.pq_nav = true;
+    printf("pq-nav pivots=%s codes=%s n=%u dim=%u chunks=%u permuted=%d\n",
+           pq_pivots_path, pq_compressed_path, pq_store.n, pq_store.dim, pq_store.nchunks, (int)(n2o != nullptr));
   }
 
   printf("query_select nq=%u/%u shuffle_seed=%d query_ids=%s first=%u last=%u flush_window=%d oneshot_fp=%d "
@@ -2133,6 +2335,9 @@ int main(int argc, char** argv) {
         lp.score_cache = pref.score_cache;
         lp.direct_install = pref.direct_install;
         lp.stripe_fill = pref.stripe_fill;
+        lp.extent_run = pref.extent_run;
+        lp.pq_nav = pref.pq_nav;
+        lp.pq = pref.pq;
         lp.neighbor_k = pref.neighbor_k;
         DramWindow* tw = &win;
         PageCopyPool* pool = use_shared_pool ? &shared_pool : nullptr;
