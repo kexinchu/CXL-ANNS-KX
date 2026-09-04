@@ -1,0 +1,48 @@
+{
+  "captured_at_utc": "2026-09-04T21:53:55Z",
+  "verifier_commit": "3c069e8944958af073d8636f6b0039a2844da392",
+  "dataset": "t2i10m",
+  "ready": false,
+  "command": "python3 -m experiments.eval.flashanns.verify_dataset --dataset t2i10m --full",
+  "failure": "extent_image: vector mismatch for logical ID 3154259",
+  "deterministic_sample": {
+    "seed": 20260904,
+    "records": 1024,
+    "exact_matches": 1010,
+    "mismatches": 14,
+    "zero_vector_mismatches": 14,
+    "nonzero_mismatches": 0,
+    "mismatching_logical_ids_first_eight": [
+      3154259,
+      9617914,
+      6555415,
+      5365387,
+      8426418,
+      3154960,
+      5705565,
+      6555633
+    ]
+  },
+  "first_failure_lineage": {
+    "logical_id": 3154259,
+    "new_to_old_id": 4077268,
+    "extent_slot": 5815567,
+    "source_vector_sha256": "121bd8aae3c38b51e3555f4dc7c41f590395a66e26c6e74fc5e8cfb016ec459c",
+    "pagebin_vector_sha256": "67042dfda5683aead81b6055d19c4dba238341f9dd82f49c0e7cc0c19c5f10d1",
+    "diskann_vector_sha256": "67042dfda5683aead81b6055d19c4dba238341f9dd82f49c0e7cc0c19c5f10d1",
+    "extent_vector_sha256": "67042dfda5683aead81b6055d19c4dba238341f9dd82f49c0e7cc0c19c5f10d1",
+    "pagebin_diskann_extent_vector_is_all_zero": true,
+    "diskann_and_extent_neighbors_match": true
+  },
+  "artifact_mtimes_utc": {
+    "pagebin_image": "2026-08-31T23:00:10.000531807Z",
+    "diskann_image": "2026-09-03T02:21:09.219773528Z",
+    "extent_image": "2026-09-04T04:29:31.017638038Z"
+  },
+  "impact": [
+    "T2I artifact manifest is not frozen",
+    "T2I smoke, calibration, Q2, Q3, and Q4 runs are blocked",
+    "historical runs using these images are not admissible as repetitions"
+  ],
+  "required_resolution": "Rebuild the pagebin-derived host images from a verified nonzero source, then rerun the 1024-record vector and neighbor readback before any staging or live run."
+}
