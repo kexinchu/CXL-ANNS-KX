@@ -76,6 +76,7 @@ class VerifyDatasetTest(unittest.TestCase):
             root = Path(td)
             base = root / "base.fbin"
             graph = root / "graph.bin"
+            oracle = root / "oracle.bin"
             extent = root / "extent.bin"
             id_map = root / "new_to_old.bin"
             slot_map = root / "id_to_slot.bin"
@@ -116,6 +117,19 @@ class VerifyDatasetTest(unittest.TestCase):
                 off = 4096 + id_to_slot[logical] * stride
                 struct.pack_into("<2fI2I", image, off, *rows[new_to_old[logical]], 2, *neighbors[logical])
             extent.write_bytes(image)
+            oracle_image = bytearray(4096 + 3 * stride)
+            oracle_image[: len(header)] = header
+            for logical in range(3):
+                off = 4096 + logical * stride
+                struct.pack_into(
+                    "<2fI2I",
+                    oracle_image,
+                    off,
+                    *rows[new_to_old[logical]],
+                    2,
+                    *neighbors[logical],
+                )
+            oracle.write_bytes(oracle_image)
             dataset = {
                 "count": 3,
                 "dimension": 2,
@@ -123,6 +137,7 @@ class VerifyDatasetTest(unittest.TestCase):
                 "R": 2,
                 "artifacts": {
                     "execution_base": str(base),
+                    "oracle_image": str(oracle),
                     "extent_image": str(extent),
                     "graph": str(graph),
                     "id_map": str(id_map),
@@ -131,6 +146,12 @@ class VerifyDatasetTest(unittest.TestCase):
             }
             proof = verify_packed_readback(dataset, sample_count=3, seed=7)
             self.assertEqual(proof["sampled_records"], 3)
+            self.assertEqual(proof["oracle_image"]["sampled_records"], 3)
+            damaged = bytearray(oracle.read_bytes())
+            damaged[4096] ^= 0xFF
+            oracle.write_bytes(damaged)
+            with self.assertRaisesRegex(DatasetError, "oracle_image: vector mismatch"):
+                verify_packed_readback(dataset, sample_count=3, seed=7)
 
 
 if __name__ == "__main__":

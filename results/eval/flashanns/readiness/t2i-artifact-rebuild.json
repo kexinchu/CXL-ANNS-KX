@@ -1,0 +1,37 @@
+{
+  "captured_at_utc": "2026-09-04T22:06:16Z",
+  "dataset": "t2i10m",
+  "ready": true,
+  "resolves": "results/eval/flashanns/readiness/t2i-artifact-blocker.json",
+  "scope": "host artifacts only; no /dev/vmem0 access and no page-cache change",
+  "rebuild": {
+    "base": "/mnt/disk0/chukexin_motivation/data/text2image_10m/base.10M.fbin",
+    "new_to_old": "/mnt/disk0/chukexin_motivation/serving_t2i_10m/new_to_old_pagebin.bin",
+    "logical_graph": "/mnt/disk0/chukexin_motivation/serving_t2i_10m/pagebin_graph.bin",
+    "slot_map": "/mnt/disk0/chukexin_motivation/serving_t2i_10m/id_to_slot_10m_extent.bin",
+    "oracle_image": "/mnt/disk0/chukexin_motivation/serving_t2i_10m_eval_20260904/diskann_t2i_10m_rebuilt.bin",
+    "extent_image": "/mnt/disk0/chukexin_motivation/serving_t2i_10m_eval_20260904/diskann_t2i_10m_extent_rebuilt.bin",
+    "records": 10000000,
+    "dimension": 200,
+    "R": 32,
+    "stride_bytes": 2048,
+    "image_bytes_each": 20480004096
+  },
+  "verification": {
+    "command": "python3 -m experiments.eval.flashanns.verify_dataset --dataset t2i10m --full",
+    "result": "pass",
+    "sample_seed": 20260904,
+    "sampled_records_per_image": 1024,
+    "oracle_vector_neighbor_readback": "pass",
+    "extent_vector_neighbor_readback": "pass",
+    "known_blocker_ids_in_sample": true,
+    "python_tests": "20/20 pass",
+    "independent_sha256_recheck": "pass"
+  },
+  "sha256": {
+    "slot_map": "805f9e4f0cb5ec486b75a8a7c9d574b034bbd7348b94228b6316d0ae225be3ac",
+    "oracle_image": "a95f895b83c55d65307ba241610c1534bca7c0a5a3aca89eafb5e1f0982e65df",
+    "extent_image": "92ac3b324fd9452fd2b2ed6af84c8b6b083598452476a3379a30692ca0529f0c"
+  },
+  "manifest": "results/eval/flashanns/manifests/t2i10m.json"
+}

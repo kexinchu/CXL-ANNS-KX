@@ -10,7 +10,7 @@ import random
 import struct
 import sys
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any, Iterable, Sequence
 
 from experiments.eval.flashanns.config import load_configs
 
@@ -178,7 +178,14 @@ def verify_packed_readback(
     dataset: dict[str, Any], sample_count: int = 1024, seed: int = 20260904
 ) -> dict[str, Any]:
     artifacts = dataset.get("artifacts", {})
-    required = ("execution_base", "extent_image", "graph", "id_map", "slot_map")
+    required = (
+        "execution_base",
+        "oracle_image",
+        "extent_image",
+        "graph",
+        "id_map",
+        "slot_map",
+    )
     for key in required:
         if not artifacts.get(key):
             raise DatasetError(f"{key}: missing packed-readback artifact")
@@ -196,46 +203,71 @@ def verify_packed_readback(
     graph_path = Path(artifacts["graph"])
     if graph_path.stat().st_size != n * degree * 4:
         raise DatasetError(f"graph: size differs from {n}x{degree}")
-    extent_path = Path(artifacts["extent_image"])
-    with extent_path.open("rb") as image:
-        raw_header = image.read(CXAN_HEADER.size)
-    if len(raw_header) != CXAN_HEADER.size:
-        raise DatasetError("extent_image: short packed header")
-    fields = CXAN_HEADER.unpack(raw_header)
-    magic, version, hn, hdim, hdegree, _, vec_bytes = fields[:7]
-    off_vectors, len_vectors = fields[14], fields[15]
-    if magic != CXAN_MAGIC or version < 2:
-        raise DatasetError("extent_image: bad magic or version")
-    if (hn, hdim, hdegree, vec_bytes) != (n, dim, degree, item_size):
-        raise DatasetError("extent_image: header differs from dataset")
-    if not n or len_vectors % n:
-        raise DatasetError("extent_image: invalid vector region")
-    stride = len_vectors // n
-    if stride < dim * item_size + 4 + degree * 4:
-        raise DatasetError("extent_image: record stride is too small")
-    if extent_path.stat().st_size < off_vectors + len_vectors:
-        raise DatasetError("extent_image: vector region exceeds file")
     sample_n = min(sample_count, n)
     sample_ids = random.Random(seed).sample(range(n), sample_n)
-    with Path(artifacts["execution_base"]).open("rb") as base, graph_path.open("rb") as graph, extent_path.open("rb") as image:
-        for logical_id in sample_ids:
-            old_id = id_map[logical_id]
-            slot = slot_map[logical_id]
-            base.seek(8 + old_id * dim * item_size)
-            expected_vector = base.read(dim * item_size)
-            graph.seek(logical_id * degree * 4)
-            expected_neighbors = graph.read(degree * 4)
-            image.seek(off_vectors + slot * stride)
-            actual_vector = image.read(dim * item_size)
-            raw_count = image.read(4)
-            actual_neighbors = image.read(degree * 4)
-            if expected_vector != actual_vector:
-                raise DatasetError(f"extent_image: vector mismatch for logical ID {logical_id}")
-            if len(raw_count) != 4 or struct.unpack("<I", raw_count)[0] != degree:
-                raise DatasetError(f"extent_image: neighbor count mismatch for logical ID {logical_id}")
-            if expected_neighbors != actual_neighbors:
-                raise DatasetError(f"extent_image: neighbors mismatch for logical ID {logical_id}")
-    return {"sampled_records": sample_n, "sample_seed": seed, "sample_ids": sample_ids, "stride": stride}
+
+    def verify_image(image_key: str, slots: Sequence[int]) -> dict[str, Any]:
+        image_path = Path(artifacts[image_key])
+        with image_path.open("rb") as image:
+            raw_header = image.read(CXAN_HEADER.size)
+        if len(raw_header) != CXAN_HEADER.size:
+            raise DatasetError(f"{image_key}: short packed header")
+        fields = CXAN_HEADER.unpack(raw_header)
+        magic, version, hn, hdim, hdegree, _, vec_bytes = fields[:7]
+        off_vectors, len_vectors = fields[14], fields[15]
+        if magic != CXAN_MAGIC or version < 2:
+            raise DatasetError(f"{image_key}: bad magic or version")
+        if (hn, hdim, hdegree, vec_bytes) != (n, dim, degree, item_size):
+            raise DatasetError(f"{image_key}: header differs from dataset")
+        if not n or len_vectors % n:
+            raise DatasetError(f"{image_key}: invalid vector region")
+        stride = len_vectors // n
+        if stride < dim * item_size + 4 + degree * 4:
+            raise DatasetError(f"{image_key}: record stride is too small")
+        if image_path.stat().st_size != off_vectors + len_vectors:
+            raise DatasetError(f"{image_key}: file size differs from declared vector region")
+        with (
+            Path(artifacts["execution_base"]).open("rb") as base,
+            graph_path.open("rb") as graph,
+            image_path.open("rb") as image,
+        ):
+            for logical_id in sample_ids:
+                old_id = id_map[logical_id]
+                slot = slots[logical_id]
+                base.seek(8 + old_id * dim * item_size)
+                expected_vector = base.read(dim * item_size)
+                graph.seek(logical_id * degree * 4)
+                expected_neighbors = graph.read(degree * 4)
+                image.seek(off_vectors + slot * stride)
+                actual_vector = image.read(dim * item_size)
+                raw_count = image.read(4)
+                actual_neighbors = image.read(degree * 4)
+                if expected_vector != actual_vector:
+                    raise DatasetError(
+                        f"{image_key}: vector mismatch for logical ID {logical_id}"
+                    )
+                if len(raw_count) != 4 or struct.unpack("<I", raw_count)[0] != degree:
+                    raise DatasetError(
+                        f"{image_key}: neighbor count mismatch for logical ID {logical_id}"
+                    )
+                if expected_neighbors != actual_neighbors:
+                    raise DatasetError(
+                        f"{image_key}: neighbors mismatch for logical ID {logical_id}"
+                    )
+        return {
+            "sampled_records": sample_n,
+            "sample_seed": seed,
+            "sample_ids": sample_ids,
+            "stride": stride,
+        }
+
+    oracle_proof = verify_image("oracle_image", range(n))
+    extent_proof = verify_image("extent_image", slot_map)
+    return {
+        **extent_proof,
+        "oracle_image": oracle_proof,
+        "extent_image": extent_proof,
+    }
 
 
 def verify_dataset(dataset: dict[str, Any], full: bool) -> dict[str, Any]:
