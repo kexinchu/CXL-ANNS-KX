@@ -16,6 +16,12 @@ ROOT = Path(__file__).resolve().parents[4]
 
 
 class RunnerTest(unittest.TestCase):
+    def test_warm_evidence_marks_the_exact_cold_parent(self):
+        evidence = run_one.make_warm_evidence({"cache_used": 7}, "cold-run")
+        self.assertTrue(evidence["accepted"])
+        self.assertTrue(evidence["cold_parent_accepted"])
+        self.assertEqual(evidence["cold_parent_run_id"], "cold-run")
+
     def test_runtime_emits_required_latency_percentiles(self):
         source = (ROOT / "serving" / "search_beam.cpp").read_text()
         for token in ("p50=", "p95=", "p99="):
@@ -241,10 +247,24 @@ class RunnerTest(unittest.TestCase):
         many = expand_runs(ROOT, "t2i10m", "calibration", level=400)
         with self.assertRaisesRegex(RunnerError, "exactly one internal"):
             validate_live_invocation(many, identity, volatile)
-        with self.assertRaisesRegex(RunnerError, "identity.*volatile"):
+        with self.assertRaisesRegex(RunnerError, "identity"):
             validate_live_invocation(one, None, None)
+        with self.assertRaisesRegex(RunnerError, "volatile"):
+            validate_live_invocation(one, identity, None)
         with self.assertRaisesRegex(RunnerError, "capture_id"):
             validate_live_invocation(one, identity, {"accepted": True})
+
+        warm = expand_runs(
+            ROOT, "t2i10m", "q4_cold_warm", anchors={"L": 400},
+            system_id="flashanns", level=400, repeat_id=0, state_value="warm",
+        )
+        validate_live_invocation(
+            warm, {
+                "accepted": True,
+                "cold_parent_accepted": True,
+                "cold_parent_run_id": warm[0]["cold_parent_run_id"],
+            }, None
+        )
 
     def test_cold_evidence_claim_is_one_time(self):
         self.assertTrue(

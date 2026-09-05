@@ -177,16 +177,18 @@ def validate_live_invocation(
         raise RunnerError(
             "live invocation must contain exactly one internal run; select --system and --L"
         )
-    if internal and not (
-        identity_evidence
-        and identity_evidence.get("accepted")
-        and volatile_evidence
-        and volatile_evidence.get("accepted")
-    ):
+    if internal and not (identity_evidence and identity_evidence.get("accepted")):
         raise RunnerError(
-            "live internal invocation requires accepted identity and volatile evidence"
+            "live internal invocation requires accepted identity evidence"
         )
-    if internal:
+    needs_cold = bool(internal and internal[0]["state"] in ("cold", "proof"))
+    if needs_cold and not (volatile_evidence and volatile_evidence.get("accepted")):
+        raise RunnerError("live cold invocation requires accepted volatile evidence")
+    if internal and internal[0]["state"] == "warm" and not identity_evidence.get("cold_parent_accepted"):
+        raise RunnerError("live warm invocation requires accepted cold-parent evidence")
+    if internal and internal[0]["state"] == "warm" and identity_evidence.get("cold_parent_run_id") != internal[0].get("cold_parent_run_id"):
+        raise RunnerError("live warm invocation cold-parent run ID mismatch")
+    if needs_cold:
         try:
             uuid.UUID(str(volatile_evidence.get("capture_id")))
         except (AttributeError, TypeError, ValueError):

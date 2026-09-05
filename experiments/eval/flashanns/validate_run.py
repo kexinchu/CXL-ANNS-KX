@@ -29,9 +29,14 @@ def validate_record(record: dict[str, Any]) -> None:
         errors.append("invalid validation.status")
     if record["system"] == "oracle":
         errors.append("Oracle system is excluded from the executable evaluation contract")
+    expected_cache = 4294967296
+    if record.get("phase") == "q4_cache":
+        expected_cache = int(record.get("cache_gib", 0)) * 1024**3
+        if record.get("cache_gib") not in (1, 2, 4, 8):
+            errors.append("q4_cache cache_gib is not declared")
     for where in ("preflight_before", "preflight_after"):
-        if record[where].get("cache_limit") != 4294967296:
-            errors.append(f"{where}.cache_limit is not 4294967296")
+        if record[where].get("cache_limit") != expected_cache:
+            errors.append(f"{where}.cache_limit is not {expected_cache}")
     metrics = record["metrics"]
     if metrics.get("completed_queries") != record["nq"]:
         errors.append("completed_queries differs from nq")

@@ -105,6 +105,15 @@ def _sidecars(trace_dir: Path) -> dict[str, Any]:
     return result
 
 
+def make_warm_evidence(postflight: dict[str, Any], cold_run_id: str) -> dict[str, Any]:
+    return {
+        **postflight,
+        "accepted": True,
+        "cold_parent_accepted": True,
+        "cold_parent_run_id": cold_run_id,
+    }
+
+
 def run_spec(
     root: Path,
     spec: dict[str, Any],
@@ -116,6 +125,9 @@ def run_spec(
     dataset = datasets[spec["dataset"]]
     contract_path = root / "experiments" / "eval" / "flashanns" / "live-contract.json"
     contract = json.loads(contract_path.read_text())
+    if spec.get("phase") == "q4_cache":
+        contract = dict(contract)
+        contract["cache_limit"] = int(spec["required_cache_limit"])
     preflight_state = "cold" if spec["state"] == "proof" else spec["state"]
     before = snapshot_and_validate(
         contract, dataset, preflight_state, identity_evidence, volatile_evidence
@@ -154,7 +166,15 @@ def run_spec(
         "sidecars": _sidecars(run_dir / "trace"),
         "validation": {"status": "pending", "returncode": completed.returncode},
     }
+    for key in ("threads", "arrival_rate", "cache_gib", "required_cache_limit", "cold_parent_run_id"):
+        if key in spec:
+            record[key] = spec[key]
     if evidence_claim is not None:
         record["volatile_evidence_claim"] = evidence_claim
     atomic_json_write(run_dir / "run.json", record)
+    if preflight_state == "cold" and completed.returncode == 0:
+        atomic_json_write(
+            run_dir / "warm-evidence.json",
+            make_warm_evidence(after, spec["run_id"]),
+        )
     return record

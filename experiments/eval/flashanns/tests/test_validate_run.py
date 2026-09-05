@@ -51,6 +51,16 @@ class ValidateRunTest(unittest.TestCase):
         for needle in ("completed_queries", "cache_limit", "score_bounce", "score_flash"):
             self.assertIn(needle, text)
 
+    def test_cache_sensitivity_accepts_only_declared_capacity(self):
+        item = record()
+        item.update(phase="q4_cache", cache_gib=2)
+        item["preflight_before"]["cache_limit"] = 2 * 1024**3
+        item["preflight_after"]["cache_limit"] = 2 * 1024**3
+        validate_record(item)
+        item["preflight_after"]["cache_limit"] = 3 * 1024**3
+        with self.assertRaisesRegex(RunValidationError, "cache_limit"):
+            validate_record(item)
+
     def test_rejects_oracle_record(self):
         with self.assertRaisesRegex(RunValidationError, "Oracle system is excluded"):
             validate_record(record("oracle"))
