@@ -117,6 +117,32 @@ class RunnerTest(unittest.TestCase):
                 level=401,
             )
 
+    def test_calibration_defaults_to_base_levels_and_allows_conditional_extension(self):
+        base = expand_runs(ROOT, "t2i10m", "calibration")
+        self.assertEqual({run["L"] for run in base}, {50, 100, 200, 400, 800, 1600})
+
+        extended = expand_runs(
+            ROOT,
+            "t2i10m",
+            "calibration",
+            system_id="demand",
+            level=2400,
+        )
+        self.assertEqual([run["L"] for run in extended], [2400])
+
+    def test_internal_commands_bound_expansions_to_l(self):
+        for system in ("demand", "flashanns"):
+            with self.subTest(system=system):
+                run = expand_runs(
+                    ROOT,
+                    "t2i10m",
+                    "calibration",
+                    system_id=system,
+                    level=800,
+                )[0]
+                command = run["command"]
+                self.assertEqual(command[command.index("--iters") + 1], "800")
+
     def test_live_internal_invocation_requires_exactly_one_run_and_evidence(self):
         self.assertTrue(
             hasattr(run_matrix, "validate_live_invocation"),

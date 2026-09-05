@@ -33,6 +33,11 @@ clean. Freeze an explicit common expansion/hop budget or narrow the executable
 `L` range before resuming. Machine-readable evidence is
 `results/eval/flashanns/readiness/t2i-calibration-blocker-20260905.json`.
 
+**Approved resolution (2026-09-05):** Freeze internal `iters=L` for both
+Demand and FlashANNs and rerun the base sweep from `L=50`; all earlier
+`iters=0` rows remain diagnostic. Run `L={2400,3200}` only if the six base
+points do not cover the declared recall anchors.
+
 ---
 
 ## Frozen Boundaries
@@ -410,6 +415,7 @@ asynchronous batch I/O, relabel it and do not use it as Demand.
   "query_seed": 42,
   "cache_limit": 4294967296,
   "k": 10,
+  "internal_iters": "L",
   "base_L": [50, 100, 200, 400, 800, 1600],
   "extended_L": [2400, 3200],
   "smoke": {"nq": 100, "repeats": 1},
@@ -824,7 +830,7 @@ Common internal flags include:
 
 ~~~text
 --diskann-layout --pq-nav --metric DATASET_METRIC
---beam L --k 10 --iters 0 --max-q NQ --shuffle-seed 42
+--beam L --k 10 --iters L --max-q NQ --shuffle-seed 42
 --cpu-affinity --policy P3 --no-hide-warm-entry
 --no-direct-install --no-score-cache --no-stripe-fill
 --expand-batch 8 --issue-ahead 1
@@ -1022,8 +1028,8 @@ returned IDs, and recomputed recall must match between Demand and FlashANNS.
 - [ ] **Step 4: Calibrate recall**
 
 ~~~bash
-# Repeat this single-point command for SYSTEM={demand,flashanns} and
-# L={50,100,200,400,800,1600,2400,3200}. Before every invocation, perform a
+# Repeat this single-point command for SYSTEM={demand,flashanns} and the base
+# L={50,100,200,400,800,1600}. Before every invocation, perform a
 # separate approved cold reload and RAM-only restoration that writes a fresh
 # UUID-tagged VOLATILE_EVIDENCE file.
 python3 -m experiments.eval.flashanns.run_matrix \
@@ -1031,6 +1037,9 @@ python3 -m experiments.eval.flashanns.run_matrix \
   --identity-evidence results/eval/flashanns/preflight/t2i-full-identity.json \
   --volatile-evidence VOLATILE_EVIDENCE \
   --out results/eval/flashanns/raw/t2i10m/calibration
+
+# Run the predeclared L={2400,3200} points only if the base sweep does not
+# cover recall@10 0.90 and T2I's additional 0.92 target.
 
 # Validate the internal sweep, but do not publish the final anchor file until
 # the native PipeANN adapter has emitted and validated its calibration records.

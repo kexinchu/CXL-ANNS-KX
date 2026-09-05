@@ -244,6 +244,11 @@ For each dataset, use fixed query IDs and sweep:
 L = 50, 100, 200, 400, 800, 1600
 ```
 
+For both internal systems, the per-query expansion budget is explicitly
+bounded as `iters=L`. Demand and FlashANNS therefore receive the same beam and
+expansion limits at every matched point. Historical `iters=0` calibration rows
+are diagnostic only and must not be combined with the bounded sweep.
+
 The predeclared extension `L = 2400, 3200` is allowed only if the base sweep
 does not reach an anchor. The selected `L` is frozen by the validator before
 formal runs. Plotting code may not choose or interpolate a different operating

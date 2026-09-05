@@ -82,6 +82,8 @@ def validate_configs(
         raise ConfigError("evaluation and query seeds are frozen")
     if matrix.get("k") != 10:
         raise ConfigError("k must be 10")
+    if matrix.get("internal_iters") != "L":
+        raise ConfigError("internal_iters must be L")
     if matrix.get("base_L") != [50, 100, 200, 400, 800, 1600]:
         raise ConfigError("base_L sweep differs from the frozen contract")
     if matrix.get("extended_L") != [2400, 3200]:

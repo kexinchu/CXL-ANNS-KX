@@ -100,6 +100,12 @@ class ConfigTest(unittest.TestCase):
         with self.assertRaisesRegex(ConfigError, "q2 internal.*window"):
             validate_configs(self.datasets, systems, self.matrix)
 
+    def test_rejects_unbounded_internal_expansion_budget(self):
+        matrix = copy.deepcopy(self.matrix)
+        matrix["internal_iters"] = "unbounded"
+        with self.assertRaisesRegex(ConfigError, "internal_iters.*L"):
+            validate_configs(self.datasets, self.systems, matrix)
+
     def test_rejects_non_four_gib_cache(self):
         matrix = copy.deepcopy(self.matrix)
         matrix["cache_limit"] = 100 * 1024**2

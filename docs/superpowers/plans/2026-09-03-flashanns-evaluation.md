@@ -26,6 +26,8 @@ TikZ/LaTeX placeholders, acmart, `latexmk`, sysfs/NVMe counters, `perf`, SHA-256
 - Never silently truncate or project vectors to fit T2I's 2,048 B record.
 - FlashANNS and Demand use the same graph, query order, distance code,
   `L`, hop budget, CPU allocation, and complete-entry format per dataset.
+- The internal hop/expansion budget is bounded as `iters=L`; unbounded
+  `iters=0` rows are diagnostic only.
 - Main latency mode admits one query at a time; main throughput mode uses a
   frozen concurrency selected by the predeclared concurrency sweep.
 - Collect mean, p50, p95, p99, and maximum latency in every measured run.

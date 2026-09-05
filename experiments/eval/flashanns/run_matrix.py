@@ -44,7 +44,7 @@ def _internal_command(root: Path, dataset: dict[str, Any], system: dict[str, Any
         "--pq-compressed", a["pq64_codes"], "--metric", dataset["metric"],
         "--nav-graph", a["nav_graph"], "--graph-file", a["graph"], "--entry", a["entry"],
         "--queries", a["query_subset"], "--gt", a["ground_truth"], "--id-map", a["id_map"],
-        "--beam", str(spec["L"]), "--k", str(spec["k"]), "--iters", "0", "--max-q", str(spec["nq"]),
+        "--beam", str(spec["L"]), "--k", str(spec["k"]), "--iters", str(spec["iters"]), "--max-q", str(spec["nq"]),
         "--shuffle-seed", "42", "--threads", str(system["threads"]), "--cpu-affinity", "--policy", "P3",
         "--no-hide-warm-entry", "--no-direct-install", "--no-score-cache", "--no-stripe-fill",
         "--expand-batch", "8", "--issue-ahead", "1", "--eval-trace-dir", str(Path(spec["run_dir"]) / "trace"),
@@ -86,7 +86,7 @@ def expand_runs(
     if phase == "smoke":
         phase_cfg, system_ids, levels, states = matrix["smoke"], [s for s in matrix["q2"]["systems"] if systems[s]["kind"] == "internal"], [400], ["proof"]
     elif phase == "calibration":
-        phase_cfg, system_ids, levels, states = matrix["calibration"], matrix["q2"]["systems"], matrix["base_L"] + matrix["extended_L"], ["cold"]
+        phase_cfg, system_ids, levels, states = matrix["calibration"], matrix["q2"]["systems"], matrix["base_L"], ["cold"]
     elif phase in ("q2", "q3_t1", "q3_t8", "q4"):
         phase_cfg, system_ids, states = matrix[phase], matrix[phase]["systems"], matrix[phase].get("states", ["cold"])
         levels = sorted({_anchor_l(anchors, system) for system in system_ids})
@@ -97,7 +97,10 @@ def expand_runs(
             raise RunnerError(f"{system_id}: system is not part of {phase}")
         system_ids = [system_id]
     if level is not None:
-        if level not in levels:
+        declared_levels = list(levels)
+        if phase == "calibration":
+            declared_levels += matrix["extended_L"]
+        if level not in declared_levels:
             raise RunnerError(f"{level}: not a declared {phase} L")
         levels = [level]
     runs: list[dict[str, Any]] = []
@@ -117,6 +120,7 @@ def expand_runs(
                         "repeat": repeat, "cache_limit": matrix["cache_limit"], "run_dir": str(out / run_id),
                         "external": systems[system_id]["kind"] == "external-pipeann",
                     }
+                    spec["iters"] = level if matrix["internal_iters"] == "L" else None
                     spec["command"] = _pipeann_command(dataset_id, dataset, spec) if spec["external"] else _internal_command(root, dataset, systems[system_id], spec)
                     bad = set(spec["command"]) & REMOVED_FLAGS
                     if bad:
