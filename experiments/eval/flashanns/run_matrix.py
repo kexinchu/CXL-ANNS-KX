@@ -65,8 +65,6 @@ def _internal_command(root: Path, dataset: dict[str, Any], system: dict[str, Any
 
 
 def _pipeann_command(root: Path, dataset_id: str, dataset: dict[str, Any], spec: dict[str, Any]) -> list[str]:
-    if dataset_id != "t2i10m":
-        raise RunnerError(f"{dataset_id}: external PipeANN index is not admitted")
     base = "/mnt/disk0/chukexin_motivation"
     binary = (
         str(root / "tools" / "pipeann_open_loop")
@@ -75,7 +73,7 @@ def _pipeann_command(root: Path, dataset_id: str, dataset: dict[str, Any], spec:
     )
     command = [
         binary, "--data_type", "float",
-        "--dist_fn", dataset["metric"], "--index_path_prefix", f"{base}/pipeann_t2i10m/idx_t2i_disk",
+        "--dist_fn", dataset["metric"], "--index_path_prefix", dataset["pipeann_index_prefix"],
         "--result_path", str(Path(spec["run_dir"]) / "pipeann-result"), "--query_file", dataset["artifacts"]["query_subset"],
         "--gt_file", dataset["artifacts"]["ground_truth"], "-K", str(spec["k"]), "-L", str(spec["L"]),
         "-W", "8", "-T", "8",

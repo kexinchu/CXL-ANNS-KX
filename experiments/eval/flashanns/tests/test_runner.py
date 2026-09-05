@@ -247,6 +247,18 @@ class RunnerTest(unittest.TestCase):
         self.assertTrue(pipeann["command"][0].endswith("search_disk_index"))
         self.assertNotIn("search_beam", " ".join(pipeann["command"]))
 
+    def test_external_pipeann_uses_each_dataset_index_prefix(self):
+        datasets, _, _ = run_matrix.load_configs(ROOT)
+        spec = {"run_dir": "/tmp/yfcc-run", "k": 10, "L": 400}
+        command = run_matrix._pipeann_command(
+            ROOT, "yfcc10m", datasets["yfcc10m"], spec
+        )
+        self.assertEqual(
+            command[command.index("--index_path_prefix") + 1],
+            datasets["yfcc10m"]["pipeann_index_prefix"],
+        )
+        self.assertEqual(command[command.index("--dist_fn") + 1], "l2")
+
     def test_q2_internal_commands_use_the_same_128_mib_window(self):
         runs = expand_runs(ROOT, "t2i10m", "q2", anchors={"L": 400})
         internal = {

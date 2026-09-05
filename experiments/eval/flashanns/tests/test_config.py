@@ -25,6 +25,11 @@ class ConfigTest(unittest.TestCase):
             self.matrix["window_miss_recovery"],
             "refill_committed_pages_when_idle",
         )
+        for dataset_id, dataset in self.datasets.items():
+            self.assertTrue(
+                dataset["pipeann_index_prefix"],
+                f"{dataset_id} must declare its native PipeANN index prefix",
+            )
 
     def test_frozen_flashanns_shape(self):
         flashanns = self.systems["flashanns"]

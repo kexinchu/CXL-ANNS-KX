@@ -66,6 +66,8 @@ def validate_configs(
             raise ConfigError(f"{dataset_id}: metric must be one of {sorted(METRICS)}")
         if dataset.get("count") != 10_000_000:
             raise ConfigError(f"{dataset_id}: count must be 10000000")
+        if not isinstance(dataset.get("pipeann_index_prefix"), str) or not dataset["pipeann_index_prefix"]:
+            raise ConfigError(f"{dataset_id}: pipeann_index_prefix must be a nonempty path")
         artifacts = dataset.get("artifacts")
         if not isinstance(artifacts, dict):
             raise ConfigError(f"{dataset_id}: artifacts must be an object")
