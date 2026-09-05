@@ -103,9 +103,9 @@ Neighbor IDs are not sequential.
 OS-style page admission and synchronous 2-hop prefetch bring records the walk will not use, pollute the 4\,GiB cache, and can drop QPS by $3$--$5\times$.
 Wrong pages cost more than a missed page.
 \emph{(C3)~One query cannot fill the device.}
-Best-first search cannot issue hop $i{+}1$'s vector pages until hop $i$ scores.
-A blocking CXL-DRAM-cache miss collapses queue depth to $\approx 1$; a single walk leaves the Flash pipeline idle even when bandwidth remains.
-Continuous issue across queries is what holds depth; it does not, by itself, make one walk as fast as an in-window oracle.
+After host-side PQ navigation commits a rerank set, one query cannot rerank until that set's missing vector pages are materialized.
+The query exposes one finite Flash wave and then waits, leaving device parallelism unused even when bandwidth remains.
+That dependency is local to the query: bounded cross-query overlap can cover its wait with another query's navigation, materialization, or reranking, but cannot make the single query as fast as an in-window oracle.
 
 \sys{} is a runtime for those three constraints, not a new graph index.
 A placement premise comes first: host DRAM holds graph adjacency and compact PQ codes, while full-precision vectors remain in the Flash-backed address space behind a bounded CXL-DRAM page cache.
@@ -113,7 +113,7 @@ The first mechanism is a \emph{wise prefetcher}.
 After PQ navigation commits the rerank candidates, it maps only their missing full-precision vectors to unique pages and issues those pages before exact scoring.
 An offline co-use-aware layout, online page deduplication, and density-bounded coalescing increase the fraction of each transferred page that reranking actually consumes; the prefetcher neither walks a speculative 2-hop neighborhood nor scores unused siblings to inflate utilization.
 The second mechanism is \emph{continuous batching}.
-Fills are issued at fetch granularity across in-flight queries so that when one walk is stuck on pointer-chasing, another query keeps the device busy.
+It overlaps one query's committed-page materialization with navigation or reranking from other queries, sustaining bounded Flash parallelism without changing per-query search semantics.
 Prefetch and batching may trigger Flash fills; the scoring thread may access the host cache or CXL-DRAM, but may not trigger or wait for Flash.
 We call that split \emph{score hide}.
 The stronger contract---\emph{query hide}, no wait for a fill on the timed path---is the oracle, not a result we claim.
@@ -128,7 +128,7 @@ This paper makes four contributions:
   \item \textbf{Why naive CXL-SSD ANNS fails.}
     We measure the miss cliff, unwise page/prefetch admission, and single-query queue collapse, and we turn those negatives into design constraints~(\S\ref{sec:motivation}).
   \item \textbf{A wise prefetcher plus continuous batching.}
-    The prefetcher waits for candidate commitment, fetches only missing rerank-vector pages, and shapes them for high useful-page occupancy; batching holds device depth across walks.
+    The prefetcher waits for candidate commitment, fetches only missing rerank-vector pages, and shapes them for high useful-page occupancy; batching overlaps those precise materialization waves with independent work from other queries under bounded concurrency.
     Score hide requires zero score-triggered Flash fills, while the full-corpus CXL-DRAM Oracle remains a separate upper bound~(\S\ref{sec:design}, \S\ref{sec:impl}).
   \item \textbf{An iso-recall evaluation of hide, not just QPS.}
     We report the three-level hit/fill breakdown and critical-path Flash wait before iso-recall latency and throughput.

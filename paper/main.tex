@@ -44,7 +44,8 @@ The runtime question is what must be hidden so that graph walk does not wait on 
 We present \sys{}, a graph-ANNS runtime that splits that contract.
 \emph{Score hide} permits a host-cache or CXL-DRAM-cache hit, but no scoring access may trigger or wait for a Flash fill.
 \emph{Query hide}---the timed path also does not wait for a fill---is the oracle, not a result we claim.
-Host-side PQ navigation first commits a bounded rerank set; wise prefetching then fetches only its missing full-precision vector pages, using co-use-aware placement and dense page requests to increase useful bytes per read, while continuous batching issues such fills across queries so one walk does not collapse device depth to one.
+Host-side PQ navigation first commits a bounded rerank set; wise prefetching then fetches only its missing full-precision vector pages, using co-use-aware placement and dense page requests to increase useful bytes per read.
+Continuous batching overlaps one query's committed-page materialization with navigation or reranking from other queries, sustaining bounded Flash parallelism without changing per-query search semantics.
 The evaluation separates host-cache hits, CXL-DRAM hits, and Flash fills at iso-recall, and compares the three-tier path with demand access, block-SSD search, and a separate full-corpus CXL-DRAM Oracle.
 A same-machine PipeANN block path provides a named block-I/O comparison at matched recall.
 We evaluate a dual-NVMe Flash backing through the software memory-semantic manager \texttt{vmem\_sw}; we do not equate that manager with a product CXL.mem SSD or claim $160$\,GB/s, and we treat multi-host one-copy as an unevaluated Shared-FAM deployment model.

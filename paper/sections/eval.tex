@@ -12,7 +12,7 @@ We answer five questions:
 \begin{enumerate}
   \item[\textbf{Q1}] Does naive CXL-SSD graph ANNS fail in the ways \S\ref{sec:motivation} claimed?
   \item[\textbf{Q2}] At iso-recall, does \sys{} move FP scoring off the NAND critical path (hide), and what QPS remains vs.\ demand and vs.\ an in-window oracle?
-  \item[\textbf{Q3}] Which Wise Prefetcher decision (when, what, and how) and how much continuous batching move \emph{hide} (critical-path wait, score-from-window), not only QPS?
+  \item[\textbf{Q3}] Which Wise Prefetcher decisions are necessary, and does continuous batching raise useful device occupancy and throughput without changing recall?
   \item[\textbf{Q4}] Does hide appear only after warmup (service hide), or also on a true-cold reload?
   \item[\textbf{Q5}] What remains vs.\ an in-window oracle and vs.\ PipeANN, and is the residual honest?
 \end{enumerate}
@@ -33,13 +33,13 @@ We follow established ANNS evaluation practice~\cite{annbench,bigannchallenge}: 
     Host CPU / DRAM     & dual-socket Xeon, $\sim$64+64\,GiB host DRAM \\
     CXL-DRAM window     & \textbf{absent}; 1\,GiB DramWindow $=$ \texttt{mbind} node~1 \\
     CXL-SSD             & FPGA \texttt{nvmex}+CD8P; \texttt{/dev/vmem0}=\texttt{vmem\_sw} \\
-    Window / cache      & host scoring window; bounded \texttt{vmem\_sw} cache (reported per run) \\
+    Window / cache      & host scoring window; bounded \texttt{vmem\_sw} cache (reported per run); T=8 uses eight 128\,MiB proxy windows and a 100\,MiB device cache \\
     Block-SSD baseline  & PipeANN on \texttt{/mnt/disk0} (\texttt{nvme0n1}), PQ on \\
     Primary corpus      & Text2Image-10M, 200-d, MIPS \\
     Sensitivity         & default vs.\ co-use/extent layout; $L$ picker \\
     Index               & Vamana $R{=}32$, host graph + PQ-64 navigation, committed FP rerank \\
     Target quality      & recall@10 $\ge 0.92$ (picker chose $L{=}400$) \\
-    Protocol            & cold: \texttt{rmmod} \texttt{vmem\_sw} until \texttt{cache\_used}${}=0$ \\
+    Protocol            & declared per row; frozen T=8 uses seed 42, $nq{=}500$, service-state cache; true-cold is isolated in Q4 \\
     \bottomrule
   \end{tabular}
 \end{table}
@@ -88,12 +88,11 @@ If a finding does not reproduce, it is dropped from the intro, not explained awa
 \end{figure*}
 
 \begin{table*}[t]
-  \caption{True-cold T2I-10M, $L{=}400$, $nq{=}100$, seed 42, PQ-64 navigation and committed FP rerank.
-    Hide cells (\texttt{crit\_wait}, score-from-window) stay \ph{} until the runtime split.
-    NAND/promote columns stay \ph{} until remeasured.}
+  \caption{T2I-10M, $L{=}400$, seed 42, PQ-64 navigation, and committed FP rerank.
+    Unmatched rows are diagnostic; NAND/promote values remain \ph{} until remeasured.}
   \label{tab:eval-main}
-  \small
-  \setlength{\tabcolsep}{5pt}
+  \scriptsize
+  \setlength{\tabcolsep}{3pt}
   \begin{tabular*}{\textwidth}{@{\extracolsep{\fill}}lrrrrrr@{}}
     \toprule
     System & Recall@10 & QPS & p99 ($\mu$s) & NAND reads/q & Promote B/q & Host DRAM \\
@@ -107,17 +106,19 @@ If a finding does not reproduce, it is dropped from the intro, not explained awa
     PipeANN pipe T=1   & 0.925 & 57.6 & $1.7{\times}10^{4}$ & \ph & --- & PQ nav \\
     Oracle host DRAM ($nq{=}20$) & 0.950 & 66.5 & $4.8{\times}10^{4}$ & 0 & --- & 9.6\,GiB pop. \\
     Oracle 1\,GiB window ($nq{=}20$) & 0.925 & 85.8 & $1.5{\times}10^{4}$ & 0 & --- & WS pinned \\
-    \textbf{\sys{} committed, default layout} & \ph & \ph & \ph & \ph & \ph & \ph \\
-    \textbf{\sys{} committed, co-use layout} & \ph & \ph & \ph & \ph & \ph & \ph \\
-    \textbf{\sys{} + continuous batching} & \ph & \ph & \ph & \ph & \ph & \ph \\
+    \textbf{\sys{} committed, default} & \ph & \ph & \ph & \ph & \ph & \ph \\
+    \textbf{\sys{} wise, T=1 ($nq{=}100$)} & 0.923 & 116.29 & $1.344{\times}10^{4}$ & \ph & \ph & shared win. \\
+    \textbf{\sys{} + CB, T=8 ($nq{=}500$)} & 0.920 & 689.32 & $3.958{\times}10^{4}$ & \ph & \ph & $8{\times}128$\,MiB \\
+    Local Oracle, T=8 ($nq{=}100$) & 0.923 & 952.07 & $2.872{\times}10^{4}$ & 0 & --- & full corpus \\
     \bottomrule
   \end{tabular*}\\[2pt]
   {\footnotesize \phnote}
 \end{table*}
 
 Figure~\ref{fig:eval-main} and Table~\ref{tab:eval-main} are the submission's main result.
-The committed-path cells stay blank until matched repetitions freeze recall, mean and tail latency, QPS, NAND traffic, and residency counters under one code and cache state.
-We report the residual to both the full-corpus Oracle and same-machine PipeANN; neither a stale oneshot result nor page touch alone is substituted for the new Wise Prefetcher path.
+The frozen T=8 path sustains 689.32 QPS at 0.920 recall and 64.3\% NAND occupancy (mean/P50/P99: 20.053/19.274/39.575\,ms), with a 650--690 QPS repeat band; P95 was not logged and remains to be measured.
+Its throughput is 72.4\% of the 952.07-QPS local-DRAM reference, but different $nq$ and recall make that a diagnostic bound, not a matched speedup.
+The local reference is not the paper's full-corpus CXL-DRAM Oracle.
 
 \subsection{Q3: Each module is necessary}
 \label{sec:eval-ablate}
@@ -138,24 +139,26 @@ We report the residual to both the full-corpus Oracle and same-machine PipeANN; 
 \begin{table}[t]
   \caption{Wise Prefetcher decisions at the primary recall floor.}
   \label{tab:ablate}
-  \small
-  \begin{tabular}{@{}lrrr@{}}
+  \scriptsize
+  \setlength{\tabcolsep}{2.5pt}
+  \begin{tabular}{@{}lrrrr@{}}
     \toprule
-    Variant & QPS & Slot use & Extent use\\
+    Variant & QPS & Slot & Extent & NAND occ.\\
     \midrule
-    Full: Wise + continuous & \ph & \ph & \ph \\
-    Frontier-time issue     & \ph & \ph & \ph \\
-    Broad frontier payload  & \ph & \ph & \ph \\
-    Default ID layout       & \ph & \ph & \ph \\
-    No dense coalescing     & \ph & \ph & 100\% \\
-    Wise only ($-$continuous) & \ph & \ph & \ph \\
+    Wise + continuous & 689.32 & 55.91\% & \ph & 64.3\% \\
+    Frontier issue    & \ph & \ph & \ph & \ph \\
+    Broad payload     & \ph & \ph & \ph & \ph \\
+    Default layout    & \ph & \ph & \ph & \ph \\
+    No coalescing     & \ph & \ph & 100\% & \ph \\
+    Wise only (T=8)   & \ph & \ph & \ph & \ph \\
     \bottomrule
   \end{tabular}\\[2pt]
   {\footnotesize \phnote}
 \end{table}
 
 Figure~\ref{fig:eval-ablate} and Table~\ref{tab:ablate} are the falsifiability test for contribution~3.
-The first two comparisons answer when and what to prefetch; the layout and coalescing comparisons answer how much of each fetched page is truly consumed; the final row isolates continuous batching without changing the prefetch set.
+The first two comparisons answer when and what to prefetch; the layout and coalescing comparisons answer how much of each fetched page is truly consumed; the final row must isolate continuous batching without changing the prefetch set, concurrency, or query protocol.
+The measured full-system row characterizes the frozen path, but it does not replace that matched causal ablation.
 
 \subsection{Q4: Cold hide versus service hide}
 \label{sec:eval-scale}

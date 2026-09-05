@@ -4,7 +4,6 @@
 \section{Conclusion}
 \label{sec:concl}
 
-Graph ANNS has a well-engineered block-SSD path and a well-engineered CXL-DRAM path.
-Flash-backed CXL memory is the third deployment point --- flash-priced capacity, a memory-semantic window, and a future one-copy hosting story --- but it is unusable if treated as slow DRAM or as mmap'd DiskANN.
-\sys{} is a runtime for that tier: after host-side PQ navigation commits a rerank set, wise prefetch materializes only its missing full-precision vector pages, and continuous batching schedules those precise batches across queries.
-The opportunity is the medium; the contribution is separating search information from payload movement so exact scoring reads resident bytes while the remaining materialization wait stays explicit.
+Flash-backed CXL memory offers flash-priced capacity through a memory-semantic window, but is unusable if treated as slow DRAM or mmap'd DiskANN.
+\sys{} separates search information from payload movement: wise prefetch materializes the missing pages of a committed rerank set, and continuous batching overlaps each query's materialization with independent work.
+Thus exact scoring reads resident bytes while the remaining query-local barrier stays explicit.

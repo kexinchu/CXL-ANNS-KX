@@ -110,11 +110,12 @@ quality and I/O cost must therefore be reported together.
 \subsection{One query cannot fill the device}
 \label{sec:mot-qd}
 
-Best-first search is pointer-chasing: hop $i$ must score before the
-walk knows which vector pages hop $i{+}1$ needs.
-A single query therefore leaves device-queue bubbles---the beam
-fill stream ramps slowly, the next fill is unknown, and the walk drains at the
-end (Figure~\ref{fig:mot-bubbles}).
+Best-first search is dependency ordered even when its graph and PQ codes are
+host resident: approximate navigation must commit $C_L$ before the runtime
+knows the exact full-precision payload to fetch, and reranking must wait until
+that payload is resident.
+A single query therefore exposes only one finite fill wave and then waits,
+leaving device-queue bubbles before reranking (Figure~\ref{fig:mot-bubbles}).
 A block interface exposes I/O requests that a scheduler can interleave
 across independent queries.
 On CXL-SSD the programming model is a faulting address space.
@@ -124,11 +125,12 @@ effective queue depth collapses to $\approx 1$ per thread.
 If a query waits for those fills before scoring, NAND latency remains
 on its critical path.
 
-The idle device is a pipeline problem, not a bandwidth wall.
-Continuous issue across queries is what can hold depth; it does
-not, by itself, make one walk as fast as an in-window oracle, and
-it does not change which nodes the walk visits.
-The implementation of that issue belongs in~\S\ref{sec:design}.
+The idle device is a service-pipeline problem, not a bandwidth wall.
+The dependency is local to a query: while one query waits for its committed
+pages, another can navigate, materialize, or rerank.
+Bounded cross-query overlap can therefore sustain useful Flash work without
+changing which candidates any query visits or scores; the mechanism belongs
+in~\S\ref{sec:design}.
 
 \begin{figure}[t]
   \centering
@@ -136,7 +138,7 @@ The implementation of that issue belongs in~\S\ref{sec:design}.
   \caption{Pipeline bubbles on a faulting CXL address space
     (schematic).
     $y$ is in-flight fills; $D$ is the depth NAND parallelism needs.
-    A single walk cannot hold $D$; a blocking load/store is stuck at
+    A single query cannot hold $D$; a blocking load/store is stuck at
     QD$\approx 1$; a static batch drains at the barrier.
     How the runtime issues across queries is~\S\ref{sec:design}.}
   \Description{Three timelines of device queue occupancy under
@@ -153,9 +155,8 @@ touch NAND.
 Prefetch must be wise (C2): trigger at candidate commitment, fetch only
 the committed full-precision payload, and place co-used vectors so each
 page carries more data that reranking consumes.
-One walk cannot fill the device (C3): issue must be asynchronous and
-cross-query so pointer-chasing bubbles do not collapse queue
-depth.\footnote{A small shared pin of entry vertices helps a narrow
+One query cannot fill the device (C3): bounded cross-query overlap must cover
+its materialization barrier with independent work from other queries.\footnote{A small shared pin of entry vertices helps a narrow
 beam more than deepening one walk. That is an admission hint, not a
 positive LFU-hot-set module, and not a fourth challenge.}
 Placement of neighbor IDs in host DRAM is a premise for C2, not a
@@ -175,7 +176,7 @@ learn whom to fetch.
     \midrule
     C1 & Miss cliff $\sim$130--320$\times$ & Score only resident bytes & Score-hide contract \\
     C2 & Page $\sim$3.6$\times$; blind prefetch $\sim$4--5$\times$ & Commit, select, and pack useful pages & Wise prefetcher \\
-    C3 & Pointer-chasing; blocking fill $\Rightarrow$ QD$\approx 1$ & Hold depth across walks & Continuous batching \\
+    C3 & One committed wave; blocking fill $\Rightarrow$ idle Flash & Overlap independent queries & Continuous batching \\
     \bottomrule
   \end{tabular}
 \end{table}

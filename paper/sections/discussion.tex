@@ -5,29 +5,19 @@
 \label{sec:discuss}
 
 \paragraph{Proxy versus product.}
-The measured path is FPGA \texttt{nvmex} plus \texttt{vmem\_sw}, not a shipping CXL.mem SSD.
-HPS does not fill the 32\,GiB BAR from the host CPU; we will not relabel that BAR as the evaluated window.
-Latency cliffs and QD collapse are still properties of memory-semantic flash.
+The measured path is FPGA \texttt{nvmex} plus \texttt{vmem\_sw}, not a shipping CXL.mem SSD; the FPGA BAR is not the evaluated window.
+Shared FAM and one-copy provisioning are likewise unmeasured; device IOPS would remain shared.
 
 \paragraph{Hide is the service contract, not a fallback.}
-A usable ANNS service on this tier means the scoring thread does not wait on NAND: every full-precision distance is taken from bytes already in the window (\texttt{score\_from\_window}${}=100\%$), and \texttt{crit\_wait\_ns} is DRAM-class.
+A usable service means exact scoring reads resident bytes (\texttt{score\_from\_window}${}=100\%$) and \texttt{crit\_wait\_ns} is DRAM-class.
 Graph/PQ live in host DRAM; after candidate commitment, wise prefetch materializes the rerank pages and continuous issue schedules those batches across queries.
 A window miss while scoring is a hide failure we close, not a reason to shrink the claim.
 
-\paragraph{One-copy is a deployment claim, not a result.}
-Figure~\ref{fig:eval-scale}b is a provisioning model.
-Shared FAM is unmeasured.
-Device IOPS remain shared even with one copy.
-
-\paragraph{DiskANN/PipeANN remain the block-path champions.}
+\paragraph{Block-path comparison.}
 PQ navigation plus deep \texttt{aio} avoids most full-precision reads.
 \sys{} also uses PQ navigation, but materializes a committed FP rerank set through a load/store hierarchy rather than issuing traversal records through block I/O.
-A $\sim$11$\times$ QPS gap to PipeANN $T{=}1$ at iso-recall is expected and reported.
-
-\paragraph{Hot set and \texttt{install\_all}.}
-A 64\,MiB shared LFU set raised hit rate and destroyed QPS (window thrash).
-D3 in the paper is entry pin $+$ soft-pin.
-True-cold \texttt{install\_all} did not reproduce a historical $\div$5 QPS drop; we report traffic, not a fake collapse.
+At T=8, \sys{} reaches 689.32 QPS versus a 952.07-QPS same-machine local-DRAM reference; the 72.4\% ratio is diagnostic because query counts and recall differ.
+The remaining gap includes Flash materialization and proxy copying under a cache lock; scaling beyond the fixed budget and removing that copy are engineering questions, not scheduling claims.
 
 \paragraph{What would change our mind.}
 If HPS makes the FPGA BAR a coherent miss window, we re-measure hide there and keep the same counters.

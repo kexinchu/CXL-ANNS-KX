@@ -12,10 +12,10 @@ Search is still best-first graph walk.
 The service contract is a \emph{split}: prefetch and continuous batching may touch CXL-SSD; the scoring thread may not.
 A hop that computes a full-precision distance from bytes that were not already in the window is a hide failure, not a successful promote.
 
-One walk cannot fully hide hop $i{+}1$ until hop $i$ scores (pointer-chasing).
-The wise prefetcher instead turns a committed PQ rerank set into a precise page batch before full-precision scoring.
-Inter-query continuous issue is what keeps device depth up while a single walk is stuck.
-We do not claim the measured prototype has met this contract~(\S\ref{sec:eval}); the modules below are the mechanisms that must.
+The wise prefetcher turns a committed PQ rerank set into one precise page batch before full-precision scoring.
+That precision does not remove the query's materialization barrier: its rerank still waits for its own batch.
+Continuous batching exploits the independence across queries to cover that wait with other useful work.
+The modules below separate these two roles and the evaluation tests them independently.
 
 \begin{figure*}[t]
   \centering
@@ -109,25 +109,45 @@ Cross-query reuse, if it happens, is because committed materialization left usef
 \subsection{D4: Hide engine --- wise prefetch and continuous batching}
 \label{sec:d4}
 
-D4 is the hide engine, not a QPS knob.
-Offline, we pick the smallest beam $L$ that meets the recall@$k$ floor.
-Online, D2 converts each query's committed rerank set into a precise page batch; the runtime issues that batch before full-precision scoring.
-Continuous fetch-level batching keeps a target device depth $D$ across queries so one pointer-chasing walk does not collapse to QD$\approx 1$ (Figure~\ref{fig:design-pipe}).
-Like continuous scheduling in other staged serving systems~\cite{orca}, it admits work at the dependency boundary; here the scheduled objects are committed page fills rather than model iterations.
-Scoring of already-resident records is never queued behind a fill it does not depend on.
-We do not merge the PipeANN binary; its \texttt{cont} path is the block-device contrast, not this runtime.
+\paragraph{A query-local barrier.}
+D2 creates one precise materialization wave after PQ navigation commits $C_L$,
+but the same query cannot rerank until that wave completes.
+Better page selection alone therefore cannot keep Flash busy.
+
+\paragraph{Cross-query overlap.}
+The barrier is local to a query, not to the service: while one query waits,
+another can navigate, materialize its own committed wave, or rerank resident
+bytes.
+Continuous batching interleaves these stages so host work and Flash access
+coexist (Figure~\ref{fig:design-pipe}).
+Like continuous scheduling in other staged serving systems~\cite{orca}, it
+admits work at a semantic boundary---candidate commitment rather than a model
+iteration.
+
+\paragraph{Bounded admission.}
+The runtime bounds in-flight query stages and admits another committed wave as
+capacity becomes available, avoiding both device bubbles and an unbounded work
+queue.
+It neither predicts future candidates nor implements adaptive queue-depth
+control.
+
+\paragraph{Semantic invariance.}
+Each query retains the same graph, PQ codes, beam budget, and visited state, and
+reranks only after its own pages are resident.
+Batching changes timing, but not its candidate set or recall.
 
 \begin{figure*}[t]
   \centering
-  \phbox{0.98\textwidth}{3.4cm}{%
-    Fig.~8 placeholder --- miss pipeline:\\
-    queries $\rightarrow$ fetch-level scheduler (target $D$) $\rightarrow$
-    async CXL-SSD fills $\rightarrow$ host score $\rightarrow$ admit next.\\
-    Show why blocking load/store cannot hold $D$.}
-  \caption{Continuous fetch-level batching over asynchronous memory-semantic fills.
-    Recall is unchanged by construction: prefetch only changes \emph{when} a needed page is resident, not \emph{which} nodes the walk visits.
-    \textbf{Fill-in:} draw the implemented \texttt{cont} path; put the blocking-mmap failure mode on the same figure.}
-  \Description{Scheduler diagram that holds a target device queue depth with async fills.}
+  \resizebox{0.98\textwidth}{!}{\input{sections/fig_design_cont}}
+  \caption{Continuous batching fills the service-level bubbles left by a
+    single precise materialization wave.
+    When Q0 waits for its committed pages, Q1 and Q2 contribute navigation,
+    Flash materialization, or reranking under a bounded in-flight budget.
+    Each query still crosses its own materialization barrier before reranking,
+    so scheduling changes timing but not search semantics.}
+  \Description{Three query timelines overlap host-side PQ navigation,
+    bounded asynchronous Flash materialization, and exact reranking.  Each
+    query reranks only after its own committed pages become resident.}
   \label{fig:design-pipe}
 \end{figure*}
 

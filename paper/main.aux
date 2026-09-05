@@ -53,63 +53,56 @@
 \newlabel{fig:mot-pathology}{{3}{5}{Unwise admission amplifies the cliff (LAION-200k, $d{=}1024$, hops${=}32$). (a)~A 16-KB admission unit generates $3.7\times $ more NAND reads and cuts throughput by $3.6\times $ relative to record admission. (b)~Widening synchronous prefetch lowers promotion precision from 82\% to 29\% and throughput from 21.0 to 5.0 QPS; the unchanged 58\% hit rate is omitted}{figure.caption.8}{}}
 \@writefile{toc}{\contentsline {subsection}{\numberline {3.4}From measurements to constraints}{5}{subsection.3.4}\protected@file@percent }
 \newlabel{sec:mot-map}{{3.4}{5}{From measurements to constraints}{subsection.3.4}{}}
-\@writefile{toc}{\contentsline {section}{\numberline {4}Design}{5}{section.4}\protected@file@percent }
-\newlabel{sec:design}{{4}{5}{Design}{section.4}{}}
-\@writefile{lof}{\contentsline {figure}{\numberline {4}{\ignorespaces Pipeline bubbles on a faulting CXL address space (schematic). $y$ is in-flight fills; $D$ is the depth NAND parallelism needs. A single walk cannot hold $D$; a blocking load/store is stuck at QD$\approx 1$; a static batch drains at the barrier. How the runtime issues across queries is\nonbreakingspace \S  \ref {sec:design}.}}{5}{figure.caption.9}\protected@file@percent }
-\newlabel{fig:mot-bubbles}{{4}{5}{Pipeline bubbles on a faulting CXL address space (schematic). $y$ is in-flight fills; $D$ is the depth NAND parallelism needs. A single walk cannot hold $D$; a blocking load/store is stuck at QD$\approx 1$; a static batch drains at the barrier. How the runtime issues across queries is~\S \ref {sec:design}}{figure.caption.9}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {4}{\ignorespaces Pipeline bubbles on a faulting CXL address space (schematic). $y$ is in-flight fills; $D$ is the depth NAND parallelism needs. A single query cannot hold $D$; a blocking load/store is stuck at QD$\approx 1$; a static batch drains at the barrier. How the runtime issues across queries is\nonbreakingspace \S  \ref {sec:design}.}}{5}{figure.caption.9}\protected@file@percent }
+\newlabel{fig:mot-bubbles}{{4}{5}{Pipeline bubbles on a faulting CXL address space (schematic). $y$ is in-flight fills; $D$ is the depth NAND parallelism needs. A single query cannot hold $D$; a blocking load/store is stuck at QD$\approx 1$; a static batch drains at the barrier. How the runtime issues across queries is~\S \ref {sec:design}}{figure.caption.9}{}}
 \citation{leap,cacheinhand}
 \@writefile{lot}{\contentsline {table}{\numberline {2}{\ignorespaces Measured pathologies become the three constraints Intro named. C1 uses the 10M-item probes in Figure\nonbreakingspace \ref {fig:mot-cliff}; C2 uses LAION-200k; C3 follows from the dependency and issue path illustrated above.}}{6}{table.caption.10}\protected@file@percent }
 \newlabel{tab:findings}{{2}{6}{Measured pathologies become the three constraints Intro named. C1 uses the 10M-item probes in Figure~\ref {fig:mot-cliff}; C2 uses LAION-200k; C3 follows from the dependency and issue path illustrated above}{table.caption.10}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {4}Design}{6}{section.4}\protected@file@percent }
+\newlabel{sec:design}{{4}{6}{Design}{section.4}{}}
 \@writefile{toc}{\contentsline {subsection}{\numberline {4.1}D1: Semantic placement}{6}{subsection.4.1}\protected@file@percent }
 \newlabel{sec:d1}{{4.1}{6}{D1: Semantic placement}{subsection.4.1}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {3}{\ignorespaces Default placement. \textbf  {Fill-in:} bytes on the corpus you report (e.g., 25M $\times $ dim).}}{6}{table.caption.12}\protected@file@percent }
+\newlabel{tab:placement}{{3}{6}{Default placement. \textbf {Fill-in:} bytes on the corpus you report (e.g., 25M $\times $ dim)}{table.caption.12}{}}
 \@writefile{toc}{\contentsline {subsection}{\numberline {4.2}D2: Wise prefetch at candidate commitment}{6}{subsection.4.2}\protected@file@percent }
 \newlabel{sec:d2}{{4.2}{6}{D2: Wise prefetch at candidate commitment}{subsection.4.2}{}}
 \@writefile{toc}{\contentsline {paragraph}{When: after commitment.}{6}{section*.13}\protected@file@percent }
-\@writefile{lot}{\contentsline {table}{\numberline {3}{\ignorespaces Default placement. \textbf  {Fill-in:} bytes on the corpus you report (e.g., 25M $\times $ dim).}}{6}{table.caption.12}\protected@file@percent }
-\newlabel{tab:placement}{{3}{6}{Default placement. \textbf {Fill-in:} bytes on the corpus you report (e.g., 25M $\times $ dim)}{table.caption.12}{}}
 \@writefile{toc}{\contentsline {paragraph}{What: the committed payload.}{6}{section*.14}\protected@file@percent }
 \@writefile{toc}{\contentsline {paragraph}{How: make each page useful.}{6}{section*.15}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {4.3}D3: Entry pin and soft-pin (hot set demoted)}{6}{subsection.4.3}\protected@file@percent }
-\newlabel{sec:d3}{{4.3}{6}{D3: Entry pin and soft-pin (hot set demoted)}{subsection.4.3}{}}
 \citation{orca}
 \@writefile{lof}{\contentsline {figure}{\numberline {5}{\ignorespaces FlashANNS{} architecture. From the host, scored bytes look like CXL-DRAM; capacity is CXL-SSD. The residency plane is the only path that moves full-precision bytes. Search never page-faults a neighbor ``to be helpful.'' \textbf  {Fill-in:} use shipped names (\texttt  {PREFETCH\_BATCH}, DramWindow); mark \texttt  {vmem\_sw}.}}{7}{figure.caption.11}\protected@file@percent }
 \newlabel{fig:design-arch}{{5}{7}{\sys {} architecture. From the host, scored bytes look like CXL-DRAM; capacity is CXL-SSD. The residency plane is the only path that moves full-precision bytes. Search never page-faults a neighbor ``to be helpful.'' \textbf {Fill-in:} use shipped names (\texttt {PREFETCH\_BATCH}, DramWindow); mark \texttt {vmem\_sw}}{figure.caption.11}{}}
 \@writefile{lof}{\contentsline {figure}{\numberline {6}{\ignorespaces Wise prefetch answers three questions. \emph  {When}: after PQ navigation commits $C_L$. \emph  {What}: only missing unique pages of its full-precision vectors. \emph  {How}: co-use-aware placement, exact filtering, and dense short runs increase useful vector slots per Flash read.}}{7}{figure.caption.16}\protected@file@percent }
 \newlabel{fig:design-promote}{{6}{7}{Wise prefetch answers three questions. \emph {When}: after PQ navigation commits $C_L$. \emph {What}: only missing unique pages of its full-precision vectors. \emph {How}: co-use-aware placement, exact filtering, and dense short runs increase useful vector slots per Flash read}{figure.caption.16}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.3}D3: Entry pin and soft-pin (hot set demoted)}{7}{subsection.4.3}\protected@file@percent }
+\newlabel{sec:d3}{{4.3}{7}{D3: Entry pin and soft-pin (hot set demoted)}{subsection.4.3}{}}
 \@writefile{toc}{\contentsline {subsection}{\numberline {4.4}D4: Hide engine --- wise prefetch and continuous batching}{7}{subsection.4.4}\protected@file@percent }
 \newlabel{sec:d4}{{4.4}{7}{D4: Hide engine --- wise prefetch and continuous batching}{subsection.4.4}{}}
+\@writefile{toc}{\contentsline {paragraph}{A query-local barrier.}{7}{section*.17}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Cross-query overlap.}{7}{section*.18}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Bounded admission.}{7}{section*.19}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Semantic invariance.}{7}{section*.20}\protected@file@percent }
 \@writefile{toc}{\contentsline {subsection}{\numberline {4.5}D5: Observability}{7}{subsection.4.5}\protected@file@percent }
 \newlabel{sec:d5}{{4.5}{7}{D5: Observability}{subsection.4.5}{}}
-\@writefile{toc}{\contentsline {paragraph}{What we refuse to hide.}{7}{section*.18}\protected@file@percent }
-\@writefile{toc}{\contentsline {section}{\numberline {5}Implementation}{7}{section.5}\protected@file@percent }
-\newlabel{sec:impl}{{5}{7}{Implementation}{section.5}{}}
-\@writefile{toc}{\contentsline {paragraph}{What we measure (2026-08-30, \texttt  {gpu01}).}{7}{section*.19}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{What we refuse to hide.}{7}{section*.22}\protected@file@percent }
 \citation{annbench,bigannchallenge}
-\@writefile{lof}{\contentsline {figure}{\numberline {7}{\ignorespaces Continuous fetch-level batching over asynchronous memory-semantic fills. Recall is unchanged by construction: prefetch only changes \emph  {when} a needed page is resident, not \emph  {which} nodes the walk visits. \textbf  {Fill-in:} draw the implemented \texttt  {cont} path; put the blocking-mmap failure mode on the same figure.}}{8}{figure.caption.17}\protected@file@percent }
-\newlabel{fig:design-pipe}{{7}{8}{Continuous fetch-level batching over asynchronous memory-semantic fills. Recall is unchanged by construction: prefetch only changes \emph {when} a needed page is resident, not \emph {which} nodes the walk visits. \textbf {Fill-in:} draw the implemented \texttt {cont} path; put the blocking-mmap failure mode on the same figure}{figure.caption.17}{}}
-\@writefile{toc}{\contentsline {paragraph}{What is implemented.}{8}{section*.20}\protected@file@percent }
-\@writefile{toc}{\contentsline {paragraph}{What is not implemented, and is not claimed.}{8}{section*.21}\protected@file@percent }
-\@writefile{toc}{\contentsline {paragraph}{Prototype scale.}{8}{section*.22}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {7}{\ignorespaces Continuous batching fills the service-level bubbles left by a single precise materialization wave. When Q0 waits for its committed pages, Q1 and Q2 contribute navigation, Flash materialization, or reranking under a bounded in-flight budget. Each query still crosses its own materialization barrier before reranking, so scheduling changes timing but not search semantics.}}{8}{figure.caption.21}\protected@file@percent }
+\newlabel{fig:design-pipe}{{7}{8}{Continuous batching fills the service-level bubbles left by a single precise materialization wave. When Q0 waits for its committed pages, Q1 and Q2 contribute navigation, Flash materialization, or reranking under a bounded in-flight budget. Each query still crosses its own materialization barrier before reranking, so scheduling changes timing but not search semantics}{figure.caption.21}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {5}Implementation}{8}{section.5}\protected@file@percent }
+\newlabel{sec:impl}{{5}{8}{Implementation}{section.5}{}}
+\@writefile{toc}{\contentsline {paragraph}{Measured prototype (2026-08-30, \texttt  {gpu01}).}{8}{section*.23}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Implemented scope.}{8}{section*.24}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Not claimed.}{8}{section*.25}\protected@file@percent }
 \@writefile{toc}{\contentsline {section}{\numberline {6}Evaluation}{8}{section.6}\protected@file@percent }
 \newlabel{sec:eval}{{6}{8}{Evaluation}{section.6}{}}
-\@writefile{lot}{\contentsline {table}{\numberline {4}{\ignorespaces Locked evaluation platform (2026-08-30, \texttt  {gpu01}).}}{8}{table.caption.23}\protected@file@percent }
-\newlabel{tab:setup}{{4}{8}{Locked evaluation platform (2026-08-30, \texttt {gpu01})}{table.caption.23}{}}
 \@writefile{toc}{\contentsline {subsection}{\numberline {6.1}Setup}{8}{subsection.6.1}\protected@file@percent }
 \newlabel{sec:eval-setup}{{6.1}{8}{Setup}{subsection.6.1}{}}
-\@writefile{toc}{\contentsline {paragraph}{Baselines.}{8}{section*.24}\protected@file@percent }
 \citation{diskann,freshdiskann,pipeann}
 \citation{spann,starling}
-\citation{spfresh,filtereddiskann}
-\citation{milvus}
-\citation{cxlanns,cosmos}
-\citation{secondtier,fatrq,hm-ann}
-\citation{bauhaus}
-\citation{infiniswap,canvas}
-\citation{aifm,leap,rethinkingruntimes}
-\citation{tpp,nomad,neomem,memtierscxl}
-\citation{canfarmemory,pond}
-\citation{directcxl,memorypooling}
-\citation{cxlssd,skybyte,fromblocktobyte,cmmh}
+\citation{spfresh,filtereddiskann,milvus}
+\@writefile{lot}{\contentsline {table}{\numberline {4}{\ignorespaces Locked evaluation platform (2026-08-30, \texttt  {gpu01}).}}{9}{table.caption.26}\protected@file@percent }
+\newlabel{tab:setup}{{4}{9}{Locked evaluation platform (2026-08-30, \texttt {gpu01})}{table.caption.26}{}}
+\@writefile{toc}{\contentsline {paragraph}{Baselines.}{9}{section*.27}\protected@file@percent }
 \@writefile{toc}{\contentsline {subsection}{\numberline {6.2}Q1: Naive CXL-SSD fails}{9}{subsection.6.2}\protected@file@percent }
 \newlabel{sec:eval-mot}{{6.2}{9}{Q1: Naive CXL-SSD fails}{subsection.6.2}{}}
 \@writefile{toc}{\contentsline {subsection}{\numberline {6.3}Q2: End-to-end iso-recall (the money plot)}{9}{subsection.6.3}\protected@file@percent }
@@ -120,44 +113,50 @@
 \newlabel{sec:eval-scale}{{6.5}{9}{Q4: Cold hide versus service hide}{subsection.6.5}{}}
 \@writefile{toc}{\contentsline {subsection}{\numberline {6.6}Q5: Losses, overhead, and fairness}{9}{subsection.6.6}\protected@file@percent }
 \newlabel{sec:eval-limit}{{6.6}{9}{Q5: Losses, overhead, and fairness}{subsection.6.6}{}}
-\@writefile{toc}{\contentsline {paragraph}{Takeaway.}{9}{section*.30}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Takeaway.}{9}{section*.33}\protected@file@percent }
 \@writefile{toc}{\contentsline {section}{\numberline {7}Related Work}{9}{section.7}\protected@file@percent }
 \newlabel{sec:related}{{7}{9}{Related Work}{section.7}{}}
-\@writefile{toc}{\contentsline {paragraph}{Block-SSD ANNS}{9}{section*.31}\protected@file@percent }
-\@writefile{toc}{\contentsline {paragraph}{CXL-DRAM and near-memory ANNS}{9}{section*.32}\protected@file@percent }
-\@writefile{toc}{\contentsline {paragraph}{Far-memory runtimes and CXL tiering}{9}{section*.33}\protected@file@percent }
-\@writefile{toc}{\contentsline {paragraph}{CXL-SSD hardware and generic software}{9}{section*.34}\protected@file@percent }
-\@writefile{toc}{\contentsline {section}{\numberline {8}Discussion and Limitations}{9}{section.8}\protected@file@percent }
-\newlabel{sec:discuss}{{8}{9}{Discussion and Limitations}{section.8}{}}
-\@writefile{toc}{\contentsline {paragraph}{Proxy versus product.}{9}{section*.36}\protected@file@percent }
-\@writefile{lof}{\contentsline {figure}{\numberline {8}{\ignorespaces Hide at the primary recall floor. The money plot is critical-path NAND wait, not QPS alone. FlashANNS{} passes only if \texttt  {crit\_wait} approaches the in-window oracle. QPS vs.\ PipeANN is a named memory-semantic versus block-I/O comparison. Until hide counters pass we write ``gap to demand,'' not ``search cannot see flash.''}}{10}{figure.caption.25}\protected@file@percent }
-\newlabel{fig:eval-main}{{8}{10}{Hide at the primary recall floor. The money plot is critical-path NAND wait, not QPS alone. \sys {} passes only if \texttt {crit\_wait} approaches the in-window oracle. QPS vs.\ PipeANN is a named memory-semantic versus block-I/O comparison. Until hide counters pass we write ``gap to demand,'' not ``search cannot see flash.''}{figure.caption.25}{}}
-\@writefile{lot}{\contentsline {table}{\numberline {5}{\ignorespaces True-cold T2I-10M, $L{=}400$, $nq{=}100$, seed 42, PQ-64 navigation and committed FP rerank. Hide cells (\texttt  {crit\_wait}, score-from-window) stay \textemdash {} until the runtime split. NAND/promote columns stay \textemdash {} until remeasured.}}{10}{table.caption.26}\protected@file@percent }
-\newlabel{tab:eval-main}{{5}{10}{True-cold T2I-10M, $L{=}400$, $nq{=}100$, seed 42, PQ-64 navigation and committed FP rerank. Hide cells (\texttt {crit\_wait}, score-from-window) stay \ph {} until the runtime split. NAND/promote columns stay \ph {} until remeasured}{table.caption.26}{}}
-\@writefile{lof}{\contentsline {figure}{\numberline {9}{\ignorespaces Wise Prefetcher and continuous-batching ablation. Prefetch variants hold candidate IDs and recall fixed; the utilization panel distinguishes page precision, vector-slot utilization, and extent utilization. \textbf  {Fill-in:} same recall floor as Figure\nonbreakingspace \ref {fig:eval-main}.}}{10}{figure.caption.27}\protected@file@percent }
-\newlabel{fig:eval-ablate}{{9}{10}{Wise Prefetcher and continuous-batching ablation. Prefetch variants hold candidate IDs and recall fixed; the utilization panel distinguishes page precision, vector-slot utilization, and extent utilization. \textbf {Fill-in:} same recall floor as Figure~\ref {fig:eval-main}}{figure.caption.27}{}}
-\@writefile{toc}{\contentsline {paragraph}{Hide is the service contract, not a fallback.}{10}{section*.37}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Block-SSD ANNS}{9}{section*.35}\protected@file@percent }
+\citation{cxlanns,cosmos,secondtier,fatrq,hm-ann}
+\citation{bauhaus}
+\citation{infiniswap,canvas,aifm,leap,rethinkingruntimes}
+\citation{tpp,nomad,neomem,memtierscxl,canfarmemory,pond}
+\citation{directcxl,memorypooling}
+\citation{cxlssd,skybyte,fromblocktobyte,cmmh}
+\@writefile{lof}{\contentsline {figure}{\numberline {8}{\ignorespaces Hide at the primary recall floor. The money plot is critical-path NAND wait, not QPS alone. FlashANNS{} passes only if \texttt  {crit\_wait} approaches the in-window oracle. QPS vs.\ PipeANN is a named memory-semantic versus block-I/O comparison. Until hide counters pass we write ``gap to demand,'' not ``search cannot see flash.''}}{10}{figure.caption.28}\protected@file@percent }
+\newlabel{fig:eval-main}{{8}{10}{Hide at the primary recall floor. The money plot is critical-path NAND wait, not QPS alone. \sys {} passes only if \texttt {crit\_wait} approaches the in-window oracle. QPS vs.\ PipeANN is a named memory-semantic versus block-I/O comparison. Until hide counters pass we write ``gap to demand,'' not ``search cannot see flash.''}{figure.caption.28}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {5}{\ignorespaces T2I-10M, $L{=}400$, seed 42, PQ-64 navigation, and committed FP rerank. Unmatched rows are diagnostic; NAND/promote values remain \textemdash {} until remeasured.}}{10}{table.caption.29}\protected@file@percent }
+\newlabel{tab:eval-main}{{5}{10}{T2I-10M, $L{=}400$, seed 42, PQ-64 navigation, and committed FP rerank. Unmatched rows are diagnostic; NAND/promote values remain \ph {} until remeasured}{table.caption.29}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {9}{\ignorespaces Wise Prefetcher and continuous-batching ablation. Prefetch variants hold candidate IDs and recall fixed; the utilization panel distinguishes page precision, vector-slot utilization, and extent utilization. \textbf  {Fill-in:} same recall floor as Figure\nonbreakingspace \ref {fig:eval-main}.}}{10}{figure.caption.30}\protected@file@percent }
+\newlabel{fig:eval-ablate}{{9}{10}{Wise Prefetcher and continuous-batching ablation. Prefetch variants hold candidate IDs and recall fixed; the utilization panel distinguishes page precision, vector-slot utilization, and extent utilization. \textbf {Fill-in:} same recall floor as Figure~\ref {fig:eval-main}}{figure.caption.30}{}}
+\@writefile{toc}{\contentsline {paragraph}{CXL-DRAM and near-memory ANNS}{10}{section*.36}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Far-memory runtimes and CXL tiering}{10}{section*.37}\protected@file@percent }
 \bibstyle{ACM-Reference-Format}
 \bibdata{refs}
 \bibcite{canfarmemory}{{1}{2020}{{Amaro et~al\mbox  {.}}}{{}}}
 \bibcite{annbench}{{2}{2017}{{Aum{\"u}ller et~al\mbox  {.}}}{{}}}
 \bibcite{rethinkingruntimes}{{3}{2021}{{Calciu et~al\mbox  {.}}}{{}}}
+\@writefile{lot}{\contentsline {table}{\numberline {6}{\ignorespaces Wise Prefetcher decisions at the primary recall floor.}}{11}{table.caption.31}\protected@file@percent }
+\newlabel{tab:ablate}{{6}{11}{Wise Prefetcher decisions at the primary recall floor}{table.caption.31}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {10}{\ignorespaces True-cold (\texttt  {vmem\_sw} \texttt  {cache\_used}${}=0$) versus a discarded warmup then 100 queries. Hide that appears only after warmup is a service property, not a cold-start property. Shared-FAM provisioning stays a discussion model, not this figure.}}{11}{figure.caption.32}\protected@file@percent }
+\newlabel{fig:eval-scale}{{10}{11}{True-cold (\texttt {vmem\_sw} \texttt {cache\_used}${}=0$) versus a discarded warmup then 100 queries. Hide that appears only after warmup is a service property, not a cold-start property. Shared-FAM provisioning stays a discussion model, not this figure}{figure.caption.32}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {7}{\ignorespaces Closest systems and their defining distinction.}}{11}{table.caption.34}\protected@file@percent }
+\newlabel{tab:related}{{7}{11}{Closest systems and their defining distinction}{table.caption.34}{}}
+\@writefile{toc}{\contentsline {paragraph}{CXL-SSD hardware and generic software}{11}{section*.38}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {8}Discussion and Limitations}{11}{section.8}\protected@file@percent }
+\newlabel{sec:discuss}{{8}{11}{Discussion and Limitations}{section.8}{}}
+\@writefile{toc}{\contentsline {paragraph}{Proxy versus product.}{11}{section*.39}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Hide is the service contract, not a fallback.}{11}{section*.40}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Block-path comparison.}{11}{section*.41}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{What would change our mind.}{11}{section*.42}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {9}Conclusion}{11}{section.9}\protected@file@percent }
+\newlabel{sec:concl}{{9}{11}{Conclusion}{section.9}{}}
+\@writefile{toc}{\contentsline {section}{References}{11}{section*.44}\protected@file@percent }
 \bibcite{spann}{{4}{2021}{{Chen et~al\mbox  {.}}}{{}}}
 \bibcite{secondtier}{{5}{2024}{{Cheng et~al\mbox  {.}}}{{}}}
 \bibcite{cxl31}{{6}{2023}{{Compute Express Link Consortium}}{{}}}
 \bibcite{nsg}{{7}{2019}{{Fu et~al\mbox  {.}}}{{}}}
 \bibcite{opq}{{8}{2013}{{Ge et~al\mbox  {.}}}{{}}}
-\@writefile{lot}{\contentsline {table}{\numberline {6}{\ignorespaces Wise Prefetcher decisions at the primary recall floor.}}{11}{table.caption.28}\protected@file@percent }
-\newlabel{tab:ablate}{{6}{11}{Wise Prefetcher decisions at the primary recall floor}{table.caption.28}{}}
-\@writefile{lof}{\contentsline {figure}{\numberline {10}{\ignorespaces True-cold (\texttt  {vmem\_sw} \texttt  {cache\_used}${}=0$) versus a discarded warmup then 100 queries. Hide that appears only after warmup is a service property, not a cold-start property. Shared-FAM provisioning stays a discussion model, not this figure.}}{11}{figure.caption.29}\protected@file@percent }
-\newlabel{fig:eval-scale}{{10}{11}{True-cold (\texttt {vmem\_sw} \texttt {cache\_used}${}=0$) versus a discarded warmup then 100 queries. Hide that appears only after warmup is a service property, not a cold-start property. Shared-FAM provisioning stays a discussion model, not this figure}{figure.caption.29}{}}
-\@writefile{toc}{\contentsline {paragraph}{One-copy is a deployment claim, not a result.}{11}{section*.38}\protected@file@percent }
-\@writefile{toc}{\contentsline {paragraph}{DiskANN/PipeANN remain the block-path champions.}{11}{section*.39}\protected@file@percent }
-\@writefile{toc}{\contentsline {paragraph}{Hot set and \texttt  {install\_all}.}{11}{section*.40}\protected@file@percent }
-\@writefile{toc}{\contentsline {paragraph}{What would change our mind.}{11}{section*.41}\protected@file@percent }
-\@writefile{toc}{\contentsline {section}{\numberline {9}Conclusion}{11}{section.9}\protected@file@percent }
-\newlabel{sec:concl}{{9}{11}{Conclusion}{section.9}{}}
-\@writefile{toc}{\contentsline {section}{References}{11}{section*.43}\protected@file@percent }
 \bibcite{filtereddiskann}{{9}{2023}{{Gollapudi et~al\mbox  {.}}}{{}}}
 \bibcite{memorypooling}{{10}{2023}{{Gouk et~al\mbox  {.}}}{{}}}
 \bibcite{directcxl}{{11}{2022}{{Gouk et~al\mbox  {.}}}{{}}}
@@ -172,8 +171,6 @@
 \bibcite{cosmos}{{20}{2025}{{Ko et~al\mbox  {.}}}{{}}}
 \bibcite{diskannlib}{{21}{2024}{{Krishnaswamy et~al\mbox  {.}}}{{}}}
 \bibcite{fromblocktobyte}{{22}{2025}{{Kwon et~al\mbox  {.}}}{{}}}
-\@writefile{lot}{\contentsline {table}{\numberline {7}{\ignorespaces Related systems on the dimensions that actually differ. \textbf  {Fill-in:} keep these columns; add a row only if it changes a column.}}{12}{table.caption.35}\protected@file@percent }
-\newlabel{tab:related}{{7}{12}{Related systems on the dimensions that actually differ. \textbf {Fill-in:} keep these columns; add a row only if it changes a column}{table.caption.35}{}}
 \bibcite{cacheinhand}{{23}{2023}{{Kwon et~al\mbox  {.}}}{{}}}
 \bibcite{pond}{{24}{2023}{{Li et~al\mbox  {.}}}{{}}}
 \bibcite{hnsw}{{25}{2020}{{Malkov and Yashunin}}{{}}}
@@ -199,7 +196,7 @@
 \bibcite{neomem}{{45}{2024}{{Zhou et~al\mbox  {.}}}{{}}}
 \newlabel{tocindent-1}{0pt}
 \newlabel{tocindent0}{0pt}
-\newlabel{tocindent1}{7.50002pt}
+\newlabel{tocindent1}{5.00002pt}
 \newlabel{tocindent2}{12.77782pt}
 \newlabel{tocindent3}{0pt}
 \newlabel{tocindent4}{0pt}
