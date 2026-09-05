@@ -34,9 +34,9 @@
     "threads": 1,
     "flags": ["--pipe-w", "16", "--extent-run"]
   },
-  "nosteal-t8": {
+  "wise-only": {
     "kind": "internal",
-    "threads": 8,
+    "threads": "matrix",
     "per_thread_window": 134217728,
     "pipe_depth": 2,
     "issue_qd": 0,

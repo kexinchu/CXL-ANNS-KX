@@ -45,7 +45,7 @@ def _internal_command(root: Path, dataset: dict[str, Any], system: dict[str, Any
         "--nav-graph", a["nav_graph"], "--graph-file", a["graph"], "--entry", a["entry"],
         "--queries", a["query_subset"], "--gt", a["ground_truth"], "--id-map", a["id_map"],
         "--beam", str(spec["L"]), "--k", str(spec["k"]), "--iters", str(spec["iters"]), "--max-q", str(spec["nq"]),
-        "--shuffle-seed", "42", "--threads", str(system["threads"]), "--cpu-affinity", "--policy", "P3",
+        "--shuffle-seed", "42", "--threads", str(spec.get("threads", system["threads"])), "--cpu-affinity", "--policy", "P3",
         "--no-hide-warm-entry", "--no-direct-install", "--no-score-cache", "--no-stripe-fill",
         "--expand-batch", "8", "--issue-ahead", "1", "--eval-trace-dir", str(Path(spec["run_dir"]) / "trace"),
     ]
@@ -87,9 +87,9 @@ def expand_runs(
         phase_cfg, system_ids, levels, states = matrix["smoke"], [s for s in matrix["q2"]["systems"] if systems[s]["kind"] == "internal"], [400], ["proof"]
     elif phase == "calibration":
         phase_cfg, system_ids, levels, states = matrix["calibration"], matrix["q2"]["systems"], matrix["base_L"], ["cold"]
-    elif phase in ("q2", "q3_t1", "q3_t8", "q4"):
+    elif phase in ("q2", "q3_t1", "q3_t8", "q3_load", "q4_hide", "q4_cold_warm", "q4_cache"):
         phase_cfg, system_ids, states = matrix[phase], matrix[phase]["systems"], matrix[phase].get("states", ["cold"])
-        levels = sorted({_anchor_l(anchors, system) for system in system_ids})
+        levels = matrix["base_L"] if phase == "q2" else sorted({_anchor_l(anchors, system) for system in system_ids})
     else:
         raise RunnerError(f"unknown phase {phase}")
     if system_id is not None:
@@ -104,22 +104,34 @@ def expand_runs(
             raise RunnerError(f"{level}: not a declared {phase} L")
         levels = [level]
     runs: list[dict[str, Any]] = []
+    thread_values = phase_cfg.get("threads", [None])
+    cache_values = phase_cfg.get("cache_gib", [None])
     for level in levels:
         for repeat in range(int(phase_cfg["repeats"])):
             ordered = list(system_ids)
             seed_text = f"{matrix['seed']}:{dataset_id}:{phase}:{level}:{repeat}"
             random.Random(int(hashlib.sha256(seed_text.encode()).hexdigest()[:16], 16)).shuffle(ordered)
             for state in states:
+              for threads in thread_values:
+               for cache_gib in cache_values:
                 for system_id in ordered:
-                    if phase not in ("smoke", "calibration") and _anchor_l(anchors, system_id) != level:
+                    if phase not in ("smoke", "calibration", "q2") and _anchor_l(anchors, system_id) != level:
                         continue
-                    run_id = f"{dataset_id}-{phase}-L{level}-r{repeat}-{state}-{system_id}"
+                    suffix = (f"-T{threads}" if threads is not None else "") + (f"-C{cache_gib}G" if cache_gib is not None else "")
+                    run_id = f"{dataset_id}-{phase}-L{level}-r{repeat}-{state}-{system_id}{suffix}"
                     spec: dict[str, Any] = {
                         "run_id": run_id, "dataset": dataset_id, "metric": dataset["metric"], "phase": phase,
                         "system": system_id, "state": state, "L": level, "k": matrix["k"], "nq": phase_cfg["nq"],
                         "repeat": repeat, "cache_limit": matrix["cache_limit"], "run_dir": str(out / run_id),
                         "external": systems[system_id]["kind"] == "external-pipeann",
                     }
+                    if threads is not None:
+                        spec["threads"] = threads
+                    if cache_gib is not None:
+                        spec["cache_gib"] = cache_gib
+                        spec["required_cache_limit"] = cache_gib * 1024**3
+                    if state == "warm":
+                        spec["cold_parent_run_id"] = f"{dataset_id}-{phase}-L{level}-r{repeat}-cold-{system_id}{suffix}"
                     spec["iters"] = level if matrix["internal_iters"] == "L" else None
                     spec["command"] = _pipeann_command(dataset_id, dataset, spec) if spec["external"] else _internal_command(root, dataset, systems[system_id], spec)
                     bad = set(spec["command"]) & REMOVED_FLAGS

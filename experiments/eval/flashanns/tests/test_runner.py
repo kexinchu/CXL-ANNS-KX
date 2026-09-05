@@ -16,6 +16,11 @@ ROOT = Path(__file__).resolve().parents[4]
 
 
 class RunnerTest(unittest.TestCase):
+    def test_runtime_emits_required_latency_percentiles(self):
+        source = (ROOT / "serving" / "search_beam.cpp").read_text()
+        for token in ("p50=", "p95=", "p99="):
+            self.assertIn(token, source)
+
     def test_smoke_expands_all_internal_proof_systems(self):
         runs = expand_runs(ROOT, "t2i10m", "smoke")
         self.assertEqual({run["system"] for run in runs}, {"demand", "flashanns"})
@@ -40,8 +45,8 @@ class RunnerTest(unittest.TestCase):
         first = expand_runs(ROOT, "t2i10m", "q2", anchors={"L": 400})
         second = expand_runs(ROOT, "t2i10m", "q2", anchors={"L": 400})
         self.assertEqual(first, second)
-        self.assertEqual(len(first), 15)
-        self.assertEqual(len({run["run_id"] for run in first}), 15)
+        self.assertEqual(len(first), 90)
+        self.assertEqual(len({run["run_id"] for run in first}), 90)
 
     def test_q2_consumes_primary_frozen_anchor_for_each_system(self):
         anchors = {
@@ -59,10 +64,37 @@ class RunnerTest(unittest.TestCase):
             system: {run["L"] for run in runs if run["system"] == system}
             for system in ("demand", "pipeann", "flashanns")
         }
-        self.assertEqual(
-            levels,
-            {"demand": {100}, "pipeann": {200}, "flashanns": {400}},
-        )
+        self.assertEqual(levels, {
+            "demand": {50, 100, 200, 400, 800, 1600},
+            "pipeann": {50, 100, 200, 400, 800, 1600},
+            "flashanns": {50, 100, 200, 400, 800, 1600},
+        })
+
+    def test_q3_t8_expands_concurrency_dimension(self):
+        runs = expand_runs(ROOT, "t2i10m", "q3_t8", anchors={"L": 400})
+        self.assertEqual({run["threads"] for run in runs}, {1, 2, 4, 8, 16})
+        self.assertEqual({run["system"] for run in runs}, {"wise-only", "flashanns"})
+        self.assertEqual(len(runs), 2 * 5 * 5)
+        for run in runs:
+            command = run["command"]
+            self.assertEqual(
+                int(command[command.index("--threads") + 1]), run["threads"]
+            )
+
+    def test_q4_cache_expands_cache_dimension_without_changing_it(self):
+        runs = expand_runs(ROOT, "t2i10m", "q4_cache", anchors={"L": 400})
+        self.assertEqual({run["cache_gib"] for run in runs}, {1, 2, 4, 8})
+        self.assertEqual(len(runs), 4 * 5)
+        for run in runs:
+            self.assertEqual(run["required_cache_limit"], run["cache_gib"] * 1024**3)
+
+    def test_q4_cold_warm_has_stable_pair_links(self):
+        runs = expand_runs(ROOT, "t2i10m", "q4_cold_warm", anchors={"L": 400})
+        self.assertEqual(len(runs), 10)
+        cold = {run["repeat"]: run for run in runs if run["state"] == "cold"}
+        warm = {run["repeat"]: run for run in runs if run["state"] == "warm"}
+        for repeat in range(5):
+            self.assertEqual(warm[repeat]["cold_parent_run_id"], cold[repeat]["run_id"])
 
     def test_external_pipeann_uses_native_binary(self):
         runs = expand_runs(ROOT, "t2i10m", "q2", anchors={"L": 400})

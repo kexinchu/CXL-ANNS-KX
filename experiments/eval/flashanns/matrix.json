@@ -9,8 +9,11 @@
   "extended_L": [2400, 3200],
   "smoke": {"nq": 100, "repeats": 1},
   "calibration": {"nq": 500, "repeats": 1},
-  "q2": {"nq": 10000, "repeats": 5, "systems": ["demand", "pipeann", "flashanns"]},
+  "q2": {"nq": 10000, "repeats": 5, "systems": ["demand", "pipeann", "flashanns"], "sweep_L": true},
   "q3_t1": {"nq": 10000, "repeats": 5, "systems": ["serial-t1", "batch-t1", "extent-t1"]},
-  "q3_t8": {"nq": 10000, "repeats": 5, "systems": ["nosteal-t8", "flashanns"]},
-  "q4": {"nq": 10000, "repeats": 5, "systems": ["flashanns"], "states": ["cold", "warm"]}
+  "q3_t8": {"nq": 10000, "repeats": 5, "systems": ["wise-only", "flashanns"], "threads": [1, 2, 4, 8, 16]},
+  "q3_load": {"nq": 10000, "repeats": 5, "systems": ["wise-only", "pipeann", "flashanns"], "arrival_rates": "calibrated_to_saturation"},
+  "q4_hide": {"nq": 10000, "repeats": 5, "systems": ["demand", "flashanns"]},
+  "q4_cold_warm": {"nq": 10000, "repeats": 5, "systems": ["flashanns"], "states": ["cold", "warm"]},
+  "q4_cache": {"dataset": "t2i10m", "nq": 10000, "repeats": 5, "systems": ["flashanns"], "cache_gib": [1, 2, 4, 8]}
 }

@@ -2922,6 +2922,7 @@ int main(int argc, char** argv) {
   mean_lat /= lat_ms.empty() ? 1 : lat_ms.size();
   double p50 = percentile(lat_ms, 0.50);
   double p90 = percentile(lat_ms, 0.90);
+  double p95 = percentile(lat_ms, 0.95);
   double p99 = percentile(lat_ms, 0.99);
   double recall = recall_n ? recall_sum / recall_n : -1.0;
   double hit_pct = 0;
@@ -2936,7 +2937,8 @@ int main(int argc, char** argv) {
   printf("wall_s=%.3f throughput_QPS=%.2f\n", sec, qps);
   printf("cxl_ssd_to_dram_promote_GBps=%.3f promote_bytes=%llu target=12.0\n", promote_gbs,
          (unsigned long long)metrics.promote_bytes);
-  printf("latency_ms mean=%.3f p50=%.3f p90=%.3f p99=%.3f\n", mean_lat, p50, p90, p99);
+  printf("latency_ms mean=%.3f p50=%.3f p90=%.3f p95=%.3f p99=%.3f\n",
+         mean_lat, p50, p90, p95, p99);
   if (recall_n) printf("recall@%u=%.4f\n", k, recall);
   printf("cxl_dram_hit_pct=%.2f\n", hit_pct);
   {

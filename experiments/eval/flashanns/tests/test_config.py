@@ -53,6 +53,23 @@ class ConfigTest(unittest.TestCase):
         )
         self.assertNotIn("oracle", self.systems)
 
+    def test_six_figure_matrix_is_complete(self):
+        self.assertTrue(self.matrix["q2"]["sweep_L"])
+        self.assertEqual(
+            self.matrix["q3_t8"]["systems"], ["wise-only", "flashanns"]
+        )
+        self.assertEqual(self.matrix["q3_t8"]["threads"], [1, 2, 4, 8, 16])
+        self.assertEqual(
+            self.matrix["q3_load"]["systems"],
+            ["wise-only", "pipeann", "flashanns"],
+        )
+        self.assertEqual(self.matrix["q4_hide"]["systems"], ["demand", "flashanns"])
+        self.assertEqual(
+            self.matrix["q4_cold_warm"]["states"], ["cold", "warm"]
+        )
+        self.assertEqual(self.matrix["q4_cache"]["cache_gib"], [1, 2, 4, 8])
+        self.assertEqual(self.systems["wise-only"]["threads"], "matrix")
+
     def test_overall_plan_excludes_oracle_as_an_executable_system(self):
         plan = (
             self.repo_root

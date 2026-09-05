@@ -94,7 +94,8 @@ def validate_configs(
         raise ConfigError("extended_L sweep differs from the frozen contract")
 
     referenced = set()
-    for phase in ("q2", "q3_t1", "q3_t8", "q4"):
+    phases = ("q2", "q3_t1", "q3_t8", "q3_load", "q4_hide", "q4_cold_warm", "q4_cache")
+    for phase in phases:
         phase_cfg = matrix.get(phase)
         if not isinstance(phase_cfg, dict):
             raise ConfigError(f"missing matrix phase {phase}")
@@ -106,8 +107,16 @@ def validate_configs(
         referenced.update(phase_systems)
     if matrix["q2"]["systems"] != Q2_SYSTEMS:
         raise ConfigError(f"q2 systems must be {Q2_SYSTEMS}")
-    if matrix["q4"].get("states") != ["cold", "warm"]:
-        raise ConfigError("q4 states must be cold then warm")
+    if matrix["q2"].get("sweep_L") is not True:
+        raise ConfigError("q2 must sweep L")
+    if matrix["q3_t8"].get("threads") != [1, 2, 4, 8, 16]:
+        raise ConfigError("q3_t8 threads differ from the frozen contract")
+    if matrix["q3_load"].get("arrival_rates") != "calibrated_to_saturation":
+        raise ConfigError("q3_load must use calibrated arrival rates")
+    if matrix["q4_cold_warm"].get("states") != ["cold", "warm"]:
+        raise ConfigError("q4_cold_warm states must be cold then warm")
+    if matrix["q4_cache"].get("dataset") != "t2i10m" or matrix["q4_cache"].get("cache_gib") != [1, 2, 4, 8]:
+        raise ConfigError("q4_cache must sweep T2I at 1,2,4,8 GiB")
 
     missing_systems = sorted(referenced - set(systems))
     if missing_systems:
