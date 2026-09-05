@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Complete one admitted non-T2I dataset under the immutable 7a04 runtime.
+# Complete one admitted non-T2I dataset under the immutable 42c8 runtime.
 set -euo pipefail
 
 if [[ $# -ne 1 || ( "$1" != yfcc10m && "$1" != laion10m ) ]]; then
@@ -9,8 +9,8 @@ fi
 
 DATASET=$1
 ROOT=/root/chukexin/CXL-ANNS-KX/.worktrees/eval-flashanns-10m
-TAG=7a04
-EXPECTED_BINARY=7a04678165a2
+TAG=42c8
+EXPECTED_BINARY=42c849109aa0
 BASE=$ROOT/results/eval/flashanns
 RAW=$BASE/raw/$DATASET/$TAG
 ACCEPTED=$BASE/accepted/$DATASET/$TAG
@@ -224,4 +224,4 @@ for arrival_rate in "${rates[@]}"; do
   done
 done
 
-echo "DATASET_D75A_CAMPAIGN_COMPLETE dataset=$DATASET"
+echo "DATASET_42C8_CAMPAIGN_COMPLETE dataset=$DATASET"
