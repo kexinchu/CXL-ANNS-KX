@@ -8,7 +8,7 @@ ANCHORS=$ROOT/results/eval/flashanns/calibration/t2i10m.json
 source "$ROOT/tools/eval_host_cold_lib.sh"
 cd "$ROOT"
 
-eval_wait_for_accepted_count flashanns-eval-q4coldwarm-20260905-v2.service \
+eval_wait_for_accepted_count flashanns-eval-q4coldwarm-20260905-v3.service \
   "$ROOT/results/eval/flashanns/accepted/t2i10m/q4_cold_warm" 10
 
 for cache_gib in 1 2 4 8; do

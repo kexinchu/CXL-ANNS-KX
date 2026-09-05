@@ -7,7 +7,7 @@ ACCEPTED=$ROOT/results/eval/flashanns/accepted/t2i10m/q2
 source "$ROOT/tools/eval_host_cold_lib.sh"
 cd "$ROOT"
 
-eval_wait_for_accepted_count flashanns-eval-q4cache-20260905-v2.service \
+eval_wait_for_accepted_count flashanns-eval-q4cache-20260905-v3.service \
   "$ROOT/results/eval/flashanns/accepted/t2i10m/q4_cache" 20
 
 run_point() {

@@ -30,6 +30,7 @@ eval_wait_for_accepted_count() {
   local accepted_root=$2
   local expected=$3
   local observed state
+  mkdir -p "$accepted_root"
   while true; do
     observed=$(find "$accepted_root" -name run.json -type f 2>/dev/null | wc -l)
     if [[ "$observed" == "$expected" ]]; then
