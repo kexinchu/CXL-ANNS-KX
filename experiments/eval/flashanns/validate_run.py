@@ -29,14 +29,16 @@ def validate_record(record: dict[str, Any]) -> None:
         errors.append("invalid validation.status")
     if record["system"] == "oracle":
         errors.append("Oracle system is excluded from the executable evaluation contract")
+    external = bool(record.get("external"))
     expected_cache = 4294967296
     if record.get("phase") == "q4_cache":
         expected_cache = int(record.get("cache_gib", 0)) * 1024**3
         if record.get("cache_gib") not in (1, 2, 4, 8):
             errors.append("q4_cache cache_gib is not declared")
-    for where in ("preflight_before", "preflight_after"):
-        if record[where].get("cache_limit") != expected_cache:
-            errors.append(f"{where}.cache_limit is not {expected_cache}")
+    if not external:
+        for where in ("preflight_before", "preflight_after"):
+            if record[where].get("cache_limit") != expected_cache:
+                errors.append(f"{where}.cache_limit is not {expected_cache}")
     metrics = record["metrics"]
     if metrics.get("completed_queries") != record["nq"]:
         errors.append("completed_queries differs from nq")
@@ -46,7 +48,8 @@ def validate_record(record: dict[str, Any]) -> None:
         errors.append("score_bounce is nonzero")
     if record["system"] == "flashanns" and metrics.get("score_flash", 0) != 0:
         errors.append("score_flash is nonzero")
-    for field in SAME_SEARCH_FIELDS:
+    required_sidecars = ("query_ids_sha256", "result_ids_sha256") if external else SAME_SEARCH_FIELDS
+    for field in required_sidecars:
         if not record["sidecars"].get(field):
             errors.append(f"missing sidecar {field}")
     if errors:

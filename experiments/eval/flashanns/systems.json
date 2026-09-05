@@ -9,6 +9,7 @@
   "pipeann": {
     "kind": "external-pipeann",
     "threads": 8,
+    "block_devices": ["/dev/nvme0n1"],
     "flags": []
   },
   "flashanns": {

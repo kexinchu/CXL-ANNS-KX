@@ -65,6 +65,15 @@ class ValidateRunTest(unittest.TestCase):
         with self.assertRaisesRegex(RunValidationError, "Oracle system is excluded"):
             validate_record(record("oracle"))
 
+    def test_external_pipeann_does_not_claim_internal_candidate_trace(self):
+        item = record("pipeann")
+        item["external"] = True
+        item["sidecars"]["candidate_offsets_sha256"] = None
+        item["sidecars"]["candidate_ids_sha256"] = None
+        item["preflight_before"] = {"external": True}
+        item["preflight_after"] = {"external": True}
+        validate_record(item)
+
     def test_same_search_requires_all_identity_hashes(self):
         left, right = record("demand"), record("flashanns")
         validate_same_search([left, right])

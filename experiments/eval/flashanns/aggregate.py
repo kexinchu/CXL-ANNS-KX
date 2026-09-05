@@ -99,7 +99,8 @@ def aggregate_records(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
         for identity in ("artifact_manifest_sha256",):
             if len({r[identity] for r in group}) != 1:
                 raise AggregationError(f"{key}: {identity} mismatch")
-        for identity in ("query_ids_sha256", "candidate_ids_sha256"):
+        trace_identities = ("query_ids_sha256", "result_ids_sha256") if group[0].get("external") else ("query_ids_sha256", "candidate_ids_sha256")
+        for identity in trace_identities:
             if len({r["sidecars"].get(identity) for r in group}) != 1:
                 raise AggregationError(f"{key}: {identity} mismatch")
         row: dict[str, Any] = dict(zip(

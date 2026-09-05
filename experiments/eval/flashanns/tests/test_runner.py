@@ -37,6 +37,18 @@ class RunnerTest(unittest.TestCase):
             "cpu_utilization_pct": 300.0, "peak_rss_kib": 123456,
         })
 
+    def test_pipeann_parser_converts_microseconds_and_recall_percent(self):
+        text = (
+            " L Beamwidth QPS Mean Latency 99.9 Latency Mean IOs Mean IO (us) CPU (s) Recall@10\n"
+            " 400 8 1234.50 6400.00 19000.00 42.0 3100.0 8.0 93.25\n"
+        )
+        metrics = run_one.parse_pipeann_metrics(text, nq=10000, returncode=0)
+        self.assertEqual(metrics["throughput_QPS"], 1234.5)
+        self.assertEqual(metrics["mean_latency_ms"], 6.4)
+        self.assertEqual(metrics["latency_p999_ms"], 19.0)
+        self.assertEqual(metrics["recall@10"], 0.9325)
+        self.assertEqual(metrics["completed_queries"], 10000)
+
     def test_warm_evidence_marks_the_exact_cold_parent(self):
         evidence = run_one.make_warm_evidence({"cache_used": 7}, "cold-run")
         self.assertTrue(evidence["accepted"])

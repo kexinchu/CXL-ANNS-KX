@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import array
 import hashlib
 import json
 import os
 import re
+import struct
 import subprocess
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -54,9 +57,9 @@ def claim_volatile_evidence(
     return claim
 
 
-def _block_counters(contract: dict[str, Any]) -> dict[str, str | None]:
+def _block_counters_for_devices(devices: list[str]) -> dict[str, str | None]:
     result: dict[str, str | None] = {}
-    for device in contract["nvme_dev"]:
+    for device in devices:
         name = Path(device).name
         path = Path("/sys/class/block") / name / "stat"
         try:
@@ -64,6 +67,10 @@ def _block_counters(contract: dict[str, Any]) -> dict[str, str | None]:
         except OSError:
             result[name] = None
     return result
+
+
+def _block_counters(contract: dict[str, Any]) -> dict[str, str | None]:
+    return _block_counters_for_devices(list(contract["nvme_dev"]))
 
 
 def block_counter_deltas(
@@ -128,6 +135,34 @@ def _parse_metrics(log: Path, nq: int, returncode: int) -> dict[str, Any]:
     return metrics
 
 
+def parse_pipeann_metrics(text: str, nq: int, returncode: int) -> dict[str, Any]:
+    metrics: dict[str, Any] = {"completed_queries": nq if returncode == 0 else 0}
+    lines = text.splitlines()
+    for index, line in enumerate(lines):
+        if "Mean Latency" not in line or "99.9 Latency" not in line:
+            continue
+        for candidate in lines[index + 1 :]:
+            fields = candidate.split()
+            if len(fields) < 8 or not fields[0].isdigit():
+                continue
+            try:
+                metrics.update({
+                    "throughput_QPS": float(fields[2]),
+                    "mean_latency_ms": float(fields[3]) / 1000.0,
+                    "latency_p999_ms": float(fields[4]) / 1000.0,
+                    "mean_ios": float(fields[5]),
+                    "mean_io_latency_us": float(fields[6]),
+                    "cpu_time_s": float(fields[7]),
+                })
+                if "Recall@" in line and len(fields) >= 9:
+                    recall = float(fields[8])
+                    metrics["recall@10"] = recall / 100.0 if recall > 1 else recall
+                return metrics
+            except ValueError:
+                continue
+    return metrics
+
+
 def _sidecars(trace_dir: Path) -> dict[str, Any]:
     result: dict[str, Any] = {}
     for name in ("query_ids.u32", "latency_ns.u64", "candidate_offsets.u64", "candidate_ids.u32", "result_ids.u32"):
@@ -143,6 +178,32 @@ def _sidecars(trace_dir: Path) -> dict[str, Any]:
         result[canonical] = _sha256(path) if path.is_file() else None
         result[key] = result[canonical]
     return result
+
+
+def _pipeann_sidecars(run_dir: Path, spec: dict[str, Any]) -> tuple[dict[str, Any], int]:
+    result_path = run_dir / f"pipeann-result_{spec['L']}_idx_uint32.bin"
+    completed = 0
+    if result_path.is_file():
+        with result_path.open("rb") as src:
+            raw = src.read(8)
+        if len(raw) == 8:
+            completed, result_k = struct.unpack("<II", raw)
+            if result_k != spec["k"] or result_path.stat().st_size != 8 + completed * result_k * 4:
+                completed = 0
+    trace = run_dir / "trace"
+    trace.mkdir(exist_ok=True)
+    query_ids = trace / "query_ids.u32"
+    values = array.array("I", range(completed))
+    if sys.byteorder != "little":
+        values.byteswap()
+    query_ids.write_bytes(values.tobytes())
+    return {
+        "query_ids_sha256": _sha256(query_ids),
+        "candidate_offsets_sha256": None,
+        "candidate_ids_sha256": None,
+        "result_ids_sha256": _sha256(result_path) if completed else None,
+        "latency_ns_sha256": None,
+    }, completed
 
 
 def make_warm_evidence(postflight: dict[str, Any], cold_run_id: str) -> dict[str, Any]:
@@ -161,22 +222,32 @@ def run_spec(
     volatile_evidence: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     root = Path(root)
-    datasets, _, _ = load_configs(root)
+    datasets, systems, _ = load_configs(root)
     dataset = datasets[spec["dataset"]]
+    external = bool(spec.get("external"))
     contract_path = root / "experiments" / "eval" / "flashanns" / "live-contract.json"
     contract = json.loads(contract_path.read_text())
     if spec.get("phase") == "q4_cache":
         contract = dict(contract)
         contract["cache_limit"] = int(spec["required_cache_limit"])
-    preflight_state = "cold" if spec["state"] == "proof" else spec["state"]
-    before = snapshot_and_validate(
-        contract, dataset, preflight_state, identity_evidence, volatile_evidence
-    )
+    preflight_state = "external" if external else ("cold" if spec["state"] == "proof" else spec["state"])
+    if external:
+        before = {
+            "external": True,
+            "block_devices": list(systems[spec["system"]].get("block_devices", [])),
+        }
+    else:
+        before = snapshot_and_validate(
+            contract, dataset, preflight_state, identity_evidence, volatile_evidence
+        )
     evidence_claim = None
     if preflight_state == "cold":
         assert volatile_evidence is not None
         evidence_claim = claim_volatile_evidence(root, volatile_evidence, spec["run_id"])
-    device_before = _block_counters(contract)
+    device_before = (
+        _block_counters_for_devices(before["block_devices"])
+        if external else _block_counters(contract)
+    )
 
     run_dir = Path(spec["run_dir"])
     run_dir.parent.mkdir(parents=True, exist_ok=True)
@@ -193,10 +264,20 @@ def run_spec(
         completed = subprocess.run(timed_command, stdout=stream, stderr=subprocess.STDOUT, text=True, check=False)
         stream.flush()
         os.fsync(stream.fileno())
-    after = snapshot_and_validate(contract, dataset, "post", identity_evidence)
-    device_after = _block_counters(contract)
+    after = dict(before) if external else snapshot_and_validate(contract, dataset, "post", identity_evidence)
+    device_after = (
+        _block_counters_for_devices(before["block_devices"])
+        if external else _block_counters(contract)
+    )
     manifest = root / "results" / "eval" / "flashanns" / "manifests" / f"{spec['dataset']}.json"
     binary = Path(spec["command"][0])
+    if external:
+        metrics = parse_pipeann_metrics(log.read_text(errors="replace"), spec["nq"], completed.returncode)
+        sidecars, result_count = _pipeann_sidecars(run_dir, spec)
+        metrics["completed_queries"] = result_count
+    else:
+        metrics = _parse_metrics(log, spec["nq"], completed.returncode)
+        sidecars = _sidecars(run_dir / "trace")
     record = {
         **{key: spec[key] for key in ("run_id", "dataset", "metric", "phase", "system", "state", "L", "k", "nq", "repeat", "command")},
         "git": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=root, text=True).strip(),
@@ -206,9 +287,10 @@ def run_spec(
         "preflight_after": after,
         "device_before": device_before,
         "device_after": device_after,
-        "metrics": _parse_metrics(log, spec["nq"], completed.returncode),
-        "sidecars": _sidecars(run_dir / "trace"),
+        "metrics": metrics,
+        "sidecars": sidecars,
         "validation": {"status": "pending", "returncode": completed.returncode},
+        "external": external,
     }
     record["metrics"].update(block_counter_deltas(device_before, device_after))
     if resource_log.is_file():
