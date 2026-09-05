@@ -37,8 +37,8 @@ eval_wait_for_accepted_count() {
       return
     fi
     state=$(systemctl is-active "$prerequisite_unit" 2>/dev/null || true)
-    if [[ "$state" == "failed" ]]; then
-      echo "REFUSE failed prerequisite $prerequisite_unit: accepted=$observed expected=$expected" >&2
+    if [[ "$state" != "active" && "$state" != "activating" && "$state" != "deactivating" ]]; then
+      echo "REFUSE ended prerequisite $prerequisite_unit state=$state: accepted=$observed expected=$expected" >&2
       return 2
     fi
     sleep 30
