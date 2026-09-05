@@ -81,6 +81,12 @@ class RunnerTest(unittest.TestCase):
                 int(command[command.index("--threads") + 1]), run["threads"]
             )
 
+    def test_ablation_systems_share_flashanns_recall_anchor(self):
+        anchors = {"primary": {"flashanns": {"L": 400}}}
+        t1 = expand_runs(ROOT, "t2i10m", "q3_t1", anchors=anchors)
+        t8 = expand_runs(ROOT, "t2i10m", "q3_t8", anchors=anchors)
+        self.assertEqual({run["L"] for run in t1 + t8}, {400})
+
     def test_q4_cache_expands_cache_dimension_without_changing_it(self):
         runs = expand_runs(ROOT, "t2i10m", "q4_cache", anchors={"L": 400})
         self.assertEqual({run["cache_gib"] for run in runs}, {1, 2, 4, 8})

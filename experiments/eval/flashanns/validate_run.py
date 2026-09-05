@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import copy
 import json
 from pathlib import Path
 from typing import Any
@@ -76,6 +77,29 @@ def load_records(paths: list[Path]) -> list[dict[str, Any]]:
     return records
 
 
+def seal_records(records: list[dict[str, Any]], out_dir: Path) -> list[Path]:
+    """Write validated copies; raw run directories remain immutable evidence."""
+    out_dir = Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    paths: list[Path] = []
+    for record in records:
+        validate_record(record)
+        sealed = copy.deepcopy(record)
+        source_status = sealed["validation"].get("status")
+        sealed["validation"] = {
+            **sealed["validation"],
+            "source_status": source_status,
+            "status": "accepted",
+        }
+        path = out_dir / record["run_id"] / "run.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        if path.exists():
+            raise RunValidationError(f"refusing existing sealed run {record['run_id']}")
+        path.write_text(json.dumps(sealed, indent=2, sort_keys=True) + "\n")
+        paths.append(path)
+    return paths
+
+
 def _select_anchor(records: list[dict[str, Any]], target: float) -> dict[str, Any]:
     selected: dict[str, Any] = {}
     systems = sorted({record["system"] for record in records})
@@ -139,6 +163,7 @@ def main() -> int:
     parser.add_argument("--freeze-anchor", type=float)
     parser.add_argument("--extra-anchor", type=float)
     parser.add_argument("--out", type=Path)
+    parser.add_argument("--seal-dir", type=Path)
     args = parser.parse_args()
     records = load_records(args.paths)
     output: dict[str, Any] | None = None
@@ -149,6 +174,8 @@ def main() -> int:
     else:
         for record in records:
             validate_record(record)
+    if args.seal_dir:
+        seal_records(records, args.seal_dir)
     if args.out:
         output = output or {"accepted": True, "runs": [r["run_id"] for r in records]}
         args.out.parent.mkdir(parents=True, exist_ok=True)

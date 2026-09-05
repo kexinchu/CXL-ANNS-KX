@@ -22,16 +22,19 @@
   "serial-t1": {
     "kind": "internal",
     "threads": 1,
+    "per_thread_window": 134217728,
     "flags": ["--no-vmem-prefetch", "--pipe-w", "1", "--no-extent-run"]
   },
   "batch-t1": {
     "kind": "internal",
     "threads": 1,
+    "per_thread_window": 134217728,
     "flags": ["--pipe-w", "16", "--no-extent-run"]
   },
   "extent-t1": {
     "kind": "internal",
     "threads": 1,
+    "per_thread_window": 134217728,
     "flags": ["--pipe-w", "16", "--extent-run"]
   },
   "wise-only": {

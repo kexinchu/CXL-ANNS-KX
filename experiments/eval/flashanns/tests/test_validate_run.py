@@ -117,6 +117,15 @@ class ValidateRunTest(unittest.TestCase):
         with self.assertRaisesRegex(RunValidationError, "does not cover"):
             validate_run.freeze_anchors([item], 0.90)
 
+    def test_seal_records_writes_accepted_copies_without_mutating_raw(self):
+        item = record()
+        with tempfile.TemporaryDirectory() as tmp:
+            paths = validate_run.seal_records([item], Path(tmp))
+            sealed = json.loads(paths[0].read_text())
+        self.assertEqual(item["validation"]["status"], "pending")
+        self.assertEqual(sealed["validation"]["status"], "accepted")
+        self.assertEqual(sealed["validation"]["source_status"], "pending")
+
 
 if __name__ == "__main__":
     unittest.main()

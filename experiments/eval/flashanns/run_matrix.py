@@ -22,7 +22,13 @@ def _anchor_l(anchors: dict[str, Any] | None, system: str) -> int:
     if not anchors:
         raise RunnerError("phase requires frozen recall anchors")
     selected = anchors.get("primary", anchors)
-    value = selected.get(system, selected.get("L"))
+    anchor_system = {
+        "serial-t1": "flashanns",
+        "batch-t1": "flashanns",
+        "extent-t1": "flashanns",
+        "wise-only": "flashanns",
+    }.get(system, system)
+    value = selected.get(anchor_system, selected.get("L"))
     if isinstance(value, dict):
         value = value.get("L")
     if not isinstance(value, int) or value <= 0:
