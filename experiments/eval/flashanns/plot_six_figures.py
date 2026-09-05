@@ -30,6 +30,14 @@ def _number(row: dict[str, str], key: str, default: float = 0.0) -> float:
     return default if raw in ("", None) else float(raw)
 
 
+def _t2i_phase(rows: list[dict[str, str]], phase: str) -> list[dict[str, str]]:
+    """Select the explicitly declared representative-dataset ablation rows."""
+    return [
+        row for row in rows
+        if row.get("dataset") == "t2i10m" and row.get("phase") == phase
+    ]
+
+
 def _error(row: dict[str, str], key: str) -> tuple[float, float]:
     value = _number(row, key)
     stem = key.removesuffix("_median")
@@ -80,7 +88,7 @@ def _wise(rows: list[dict[str, str]], path: Path) -> None:
     import matplotlib.pyplot as plt
     import numpy as np
 
-    selected = [r for r in rows if r.get("dataset") == "t2i10m" and r.get("phase") == "q3_t1"]
+    selected = _t2i_phase(rows, "q3_t1")
     by_system = {r["system"]: r for r in selected}
     systems = [s for s in ("serial-t1", "batch-t1", "extent-t1") if s in by_system]
     fig, axes = plt.subplots(1, 3, figsize=(7.4, 2.65), constrained_layout=True)
@@ -133,8 +141,8 @@ def _group_lines(ax: Any, rows: Iterable[dict[str, str]], xkey: str, ykey: str) 
 def _batching(rows: list[dict[str, str]], path: Path) -> None:
     import matplotlib.pyplot as plt
 
-    scaling = [r for r in rows if r.get("phase") == "q3_t8"]
-    load = [r for r in rows if r.get("phase") == "q3_load"]
+    scaling = _t2i_phase(rows, "q3_t8")
+    load = _t2i_phase(rows, "q3_load")
     fig, axes = plt.subplots(1, 3, figsize=(7.4, 2.65), constrained_layout=True)
     _group_lines(axes[0], scaling, "threads", "qps_median")
     _style(axes[0], "Concurrent queries", "Throughput (QPS)", "(a) Scaling")
@@ -164,9 +172,9 @@ def _hide(rows: list[dict[str, str]], path: Path) -> None:
     import matplotlib.pyplot as plt
     import numpy as np
 
-    hide = [r for r in rows if r.get("phase") == "q4_hide"]
+    hide = _t2i_phase(rows, "q4_hide")
     cold_warm = [r for r in rows if r.get("phase") == "q4_cold_warm"]
-    cache = sorted((r for r in rows if r.get("phase") == "q4_cache"),
+    cache = sorted(_t2i_phase(rows, "q4_cache"),
                    key=lambda r: _number(r, "cache_gib"))
     fig, axes = plt.subplots(2, 2, figsize=(6.8, 5.0), constrained_layout=True)
 

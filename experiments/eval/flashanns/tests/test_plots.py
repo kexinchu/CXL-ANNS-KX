@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from experiments.eval.flashanns.plot_six_figures import COLORS, render_figures
+from experiments.eval.flashanns.plot_six_figures import COLORS, _t2i_phase, render_figures
 
 
 class PlotTest(unittest.TestCase):
@@ -32,6 +32,14 @@ class PlotTest(unittest.TestCase):
 
     def test_oracle_has_no_plot_style(self):
         self.assertNotIn("oracle", COLORS)
+
+    def test_representative_ablation_rows_are_t2i_only(self):
+        rows = [
+            self._row(dataset="t2i10m", phase="q3_t8"),
+            self._row(dataset="yfcc10m", phase="q3_t8"),
+            self._row(dataset="laion10m", phase="q4_hide"),
+        ]
+        self.assertEqual(_t2i_phase(rows, "q3_t8"), [rows[0]])
 
     def test_writes_six_one_page_vector_pdfs(self):
         with tempfile.TemporaryDirectory() as td:
