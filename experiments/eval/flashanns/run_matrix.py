@@ -197,7 +197,7 @@ def expand_runs(
                     if run_tag is not None:
                         spec["campaign_tag"] = run_tag
                     if state == "warm":
-                        spec["cold_parent_run_id"] = f"{dataset_id}-{phase}-L{level}-r{repeat}-cold-{system_id}{suffix}"
+                        spec["cold_parent_run_id"] = f"{dataset_id}-{phase}-L{level}-r{repeat}-cold-{system_id}{suffix}{tag_suffix}"
                     spec["iters"] = level if matrix["internal_iters"] == "L" else None
                     spec["command"] = _pipeann_command(root, dataset_id, dataset, spec) if spec["external"] else _internal_command(root, dataset, systems[system_id], spec)
                     bad = set(spec["command"]) & REMOVED_FLAGS

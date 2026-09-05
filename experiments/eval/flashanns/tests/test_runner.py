@@ -90,6 +90,22 @@ class RunnerTest(unittest.TestCase):
         self.assertTrue(evidence["cold_parent_accepted"])
         self.assertEqual(evidence["cold_parent_run_id"], "cold-run")
 
+    def test_tagged_warm_run_references_tagged_cold_parent(self):
+        runs = expand_runs(
+            ROOT,
+            "t2i10m",
+            "q4_cold_warm",
+            anchors={"L": 400},
+            state_value="warm",
+            repeat_id=0,
+            run_tag="d75a",
+        )
+        self.assertEqual(len(runs), 1)
+        self.assertEqual(
+            runs[0]["cold_parent_run_id"],
+            "t2i10m-q4_cold_warm-L400-r0-cold-flashanns-d75a",
+        )
+
     def test_runtime_emits_required_latency_percentiles(self):
         source = (ROOT / "serving" / "search_beam.cpp").read_text()
         for token in ("p50=", "p95=", "p99="):
