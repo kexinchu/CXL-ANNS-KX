@@ -3,8 +3,8 @@
 set -euo pipefail
 
 ROOT=/root/chukexin/CXL-ANNS-KX/.worktrees/eval-flashanns-10m
-UNIT=flashanns-eval-t2i-d75a.service
-ACCEPTED=$ROOT/results/eval/flashanns/accepted/t2i10m/d75a
+UNIT=flashanns-eval-t2i-7a04.service
+ACCEPTED=$ROOT/results/eval/flashanns/accepted/t2i10m/7a04
 
 source "$ROOT/tools/eval_host_cold_lib.sh"
 eval_wait_for_accepted_count "$UNIT" "$ACCEPTED" 270

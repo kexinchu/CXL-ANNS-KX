@@ -3,8 +3,8 @@
 set -euo pipefail
 
 ROOT=/root/chukexin/CXL-ANNS-KX/.worktrees/eval-flashanns-10m
-TAG=d75a
-EXPECTED_BINARY=d75a619d346c
+TAG=7a04
+EXPECTED_BINARY=7a04678165a2
 IDENTITY=$ROOT/results/eval/flashanns/preflight/t2i-full-identity.json
 EVIDENCE=$ROOT/results/eval/flashanns/preflight/t2i-postfix-${TAG}-volatile.json
 RAW=$ROOT/results/eval/flashanns/raw/t2i10m/postfix-proof-${TAG}
