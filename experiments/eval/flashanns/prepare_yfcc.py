@@ -29,6 +29,32 @@ def widen_u8bin(source: Path, destination: Path, expected_rows: int,
         raise ValueError(f"{source}: size does not match uint8 header")
     destination.parent.mkdir(parents=True, exist_ok=True)
     digest = hashlib.sha256()
+    if destination.exists():
+        if _header(destination) != (rows, dim):
+            raise ValueError(f"{destination}: existing header differs from source")
+        if destination.stat().st_size != 8 + rows * dim * 4:
+            raise ValueError(f"{destination}: existing float32 size mismatch")
+        with source.open("rb") as src, destination.open("rb") as dst:
+            src.seek(8)
+            header = dst.read(8)
+            digest.update(header)
+            remaining = rows
+            while remaining:
+                take = min(remaining, chunk_rows)
+                raw = src.read(take * dim)
+                widened = dst.read(take * dim * 4)
+                if len(raw) != take * dim or len(widened) != take * dim * 4:
+                    raise ValueError("existing widening is truncated")
+                if not np.array_equal(
+                    np.frombuffer(widened, dtype="<f4"),
+                    np.frombuffer(raw, dtype=np.uint8),
+                ):
+                    raise ValueError("existing widening changes coordinates")
+                digest.update(widened)
+                remaining -= take
+        return {"source": str(source), "destination": str(destination), "rows": rows,
+                "dimension": dim, "normalization": "none", "sha256": digest.hexdigest()}
+
     with source.open("rb") as src, destination.open("xb") as dst:
         src.seek(8)
         header = struct.pack("<II", rows, dim)
@@ -51,13 +77,54 @@ def widen_u8bin(source: Path, destination: Path, expected_rows: int,
             "dimension": dim, "normalization": "none", "sha256": digest.hexdigest()}
 
 
+def extract_fbin_prefix(source: Path, destination: Path, rows: int,
+                        expected_dim: int) -> None:
+    source, destination = Path(source), Path(destination)
+    source_rows, dim = _header(source)
+    if rows > source_rows or dim != expected_dim:
+        raise ValueError("requested query prefix exceeds source or changes dimension")
+    if source.stat().st_size != 8 + source_rows * dim * 4:
+        raise ValueError("query source size does not match float32 header")
+    payload_bytes = rows * dim * 4
+    if destination.exists():
+        if _header(destination) != (rows, dim) or destination.stat().st_size != 8 + payload_bytes:
+            raise ValueError("existing query prefix shape or size mismatch")
+        with source.open("rb") as src, destination.open("rb") as dst:
+            src.seek(8)
+            dst.seek(8)
+            if src.read(payload_bytes) != dst.read(payload_bytes):
+                raise ValueError("existing query prefix differs from source")
+        return
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    with source.open("rb") as src, destination.open("xb") as dst:
+        src.seek(8)
+        dst.write(struct.pack("<II", rows, dim))
+        payload = src.read(payload_bytes)
+        if len(payload) != payload_bytes:
+            raise ValueError("truncated query prefix")
+        dst.write(payload)
+
+
 def extract_gt_topk(source: Path, destination: Path, rows: int, k: int) -> None:
     source, destination = Path(source), Path(destination)
     source_rows, source_k = _header(source)
     if rows > source_rows or k > source_k:
         raise ValueError("requested GT subset exceeds source")
-    if source.stat().st_size != 8 + source_rows * source_k * 4:
-        raise ValueError("GT size does not match header")
+    ids_bytes = source_rows * source_k * 4
+    if source.stat().st_size not in (8 + ids_bytes, 8 + 2 * ids_bytes):
+        raise ValueError("GT size is neither ids-only nor ids-plus-distances")
+    expected_out = 8 + rows * k * 4
+    if destination.exists():
+        if _header(destination) != (rows, k) or destination.stat().st_size != expected_out:
+            raise ValueError("existing GT subset shape or size mismatch")
+        with source.open("rb") as src, destination.open("rb") as dst:
+            src.seek(8)
+            dst.seek(8)
+            for _ in range(rows):
+                source_row = src.read(source_k * 4)
+                if len(source_row) != source_k * 4 or dst.read(k * 4) != source_row[: k * 4]:
+                    raise ValueError("existing GT subset differs from source IDs")
+        return
     destination.parent.mkdir(parents=True, exist_ok=True)
     with source.open("rb") as src, destination.open("xb") as dst:
         dst.write(struct.pack("<II", rows, k))
@@ -81,10 +148,7 @@ def main() -> int:
     }
     query_100k = args.out_dir / "query_100k.fbin"
     query_10k = args.out_dir / "query_10k.fbin"
-    with query_100k.open("rb") as src, query_10k.open("xb") as dst:
-        src.seek(8)
-        dst.write(struct.pack("<II", 10_000, 192))
-        dst.write(src.read(10_000 * 192 * 4))
+    extract_fbin_prefix(query_100k, query_10k, 10_000, 192)
     extract_gt_topk(args.source_dir / "unfiltered.GT.public.ibin", args.out_dir / "gt_10k_k10.ibin", 10_000, 10)
     (args.out_dir / "conversion-manifest.json").write_text(json.dumps(manifests, indent=2, sort_keys=True) + "\n")
     return 0
