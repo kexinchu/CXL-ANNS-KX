@@ -109,6 +109,8 @@ class AggregateTest(unittest.TestCase):
                 "dist": 999_999,
                 "crit_wait_ns": 200_000_000,
                 "nvme_read_B": 104_857_600,
+                "requested_pages": 200,
+                "issued_pages": 300,
             }
         row = aggregate_records(records)[0]
         self.assertEqual(row["recall_at_10_median"], 0.92)
@@ -120,6 +122,8 @@ class AggregateTest(unittest.TestCase):
         self.assertEqual(row["critical_wait_ms_median"], 2)
         self.assertEqual(row["nand_mib_per_query_median"], 1)
         self.assertEqual(row["committed_candidates_median"], 400)
+        self.assertEqual(row["missing_pages_median"], 2)
+        self.assertEqual(row["issued_pages_per_query_median"], 3)
 
 
 if __name__ == "__main__":

@@ -99,10 +99,16 @@ def _wise(rows: list[dict[str, str]], path: Path) -> None:
     _style(axes[0], "", "Throughput (QPS)", "(a) When")
 
     source = by_system.get("batch-t1") or by_system.get("extent-t1")
-    funnel_keys = ("committed_candidates_median", "unique_pages_median", "missing_pages_median")
+    funnel_keys = (
+        "committed_candidates_median",
+        "missing_pages_median",
+        "issued_pages_per_query_median",
+    )
     funnel = [_number(source, key) if source else 0 for key in funnel_keys]
     axes[1].bar(range(3), funnel, color=("#999999", "#56b4e9", "#0072b2"))
-    axes[1].set_xticks(range(3), ("Committed", "Unique", "Missing"), rotation=18, ha="right")
+    axes[1].set_xticks(
+        range(3), ("Committed", "Missing pages", "Issued pages"), rotation=18, ha="right"
+    )
     _style(axes[1], "", "Items/query", "(b) What")
     if source:
         axes[1].text(0.98, 0.98,

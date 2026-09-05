@@ -46,9 +46,9 @@ def _canonical_metrics(record: dict[str, Any]) -> dict[str, float]:
     # PQ navigation distance evaluations and is not a candidate-set size.
     metrics["committed_candidates"] = float(record["L"])
     if "requested_pages" in metrics:
-        metrics["unique_pages"] = metrics["requested_pages"] / nq
+        metrics["missing_pages"] = metrics["requested_pages"] / nq
     if "issued_pages" in metrics:
-        metrics["missing_pages"] = metrics["issued_pages"] / nq
+        metrics["issued_pages_per_query"] = metrics["issued_pages"] / nq
     if "issue_commands" in metrics:
         metrics["nand_commands_per_query"] = metrics["issue_commands"] / nq
     if "nvme_real_GBps" in metrics:
