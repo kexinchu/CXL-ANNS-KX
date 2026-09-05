@@ -50,7 +50,9 @@ def _canonical_metrics(record: dict[str, Any]) -> dict[str, float]:
     if "issued_pages" in metrics:
         metrics["issued_pages_per_query"] = metrics["issued_pages"] / nq
     if "issue_commands" in metrics:
-        metrics["nand_commands_per_query"] = metrics["issue_commands"] / nq
+        metrics["read_batches_per_query"] = metrics["issue_commands"] / nq
+    if "nand_read_commands" in metrics:
+        metrics["nand_commands_per_query"] = metrics["nand_read_commands"] / nq
     if "nvme_real_GBps" in metrics:
         metrics["useful_bandwidth_mib_s"] = metrics["nvme_real_GBps"] * 1024.0
     return metrics
