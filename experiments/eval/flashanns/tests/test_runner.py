@@ -155,6 +155,20 @@ class RunnerTest(unittest.TestCase):
                 level=401,
             )
 
+    def test_live_selectors_reduce_matrix_to_one_run(self):
+        run = expand_runs(
+            ROOT, "t2i10m", "q3_t8", anchors={"L": 400},
+            system_id="wise-only", level=400, repeat_id=2, threads_value=8,
+        )
+        self.assertEqual(len(run), 1)
+        self.assertEqual((run[0]["repeat"], run[0]["threads"]), (2, 8))
+        cached = expand_runs(
+            ROOT, "t2i10m", "q4_cache", anchors={"L": 400},
+            system_id="flashanns", level=400, repeat_id=3, cache_gib_value=2,
+        )
+        self.assertEqual(len(cached), 1)
+        self.assertEqual((cached[0]["repeat"], cached[0]["cache_gib"]), (3, 2))
+
     def test_calibration_defaults_to_base_levels_and_allows_conditional_extension(self):
         base = expand_runs(ROOT, "t2i10m", "calibration")
         self.assertEqual({run["L"] for run in base}, {50, 100, 200, 400, 800, 1600})

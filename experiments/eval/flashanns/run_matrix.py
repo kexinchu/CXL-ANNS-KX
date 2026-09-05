@@ -82,6 +82,10 @@ def expand_runs(
     out: Path | None = None,
     system_id: str | None = None,
     level: int | None = None,
+    repeat_id: int | None = None,
+    threads_value: int | None = None,
+    cache_gib_value: int | None = None,
+    state_value: str | None = None,
 ) -> list[dict[str, Any]]:
     root = Path(root)
     datasets, systems, matrix = load_configs(root)
@@ -112,8 +116,24 @@ def expand_runs(
     runs: list[dict[str, Any]] = []
     thread_values = phase_cfg.get("threads", [None])
     cache_values = phase_cfg.get("cache_gib", [None])
+    if repeat_id is not None and repeat_id not in range(int(phase_cfg["repeats"])):
+        raise RunnerError(f"repeat {repeat_id} is not declared for {phase}")
+    if threads_value is not None:
+        if threads_value not in thread_values:
+            raise RunnerError(f"threads {threads_value} is not declared for {phase}")
+        thread_values = [threads_value]
+    if cache_gib_value is not None:
+        if cache_gib_value not in cache_values:
+            raise RunnerError(f"cache {cache_gib_value} GiB is not declared for {phase}")
+        cache_values = [cache_gib_value]
+    if state_value is not None:
+        if state_value not in states:
+            raise RunnerError(f"state {state_value} is not declared for {phase}")
+        states = [state_value]
     for level in levels:
         for repeat in range(int(phase_cfg["repeats"])):
+            if repeat_id is not None and repeat != repeat_id:
+                continue
             ordered = list(system_ids)
             seed_text = f"{matrix['seed']}:{dataset_id}:{phase}:{level}:{repeat}"
             random.Random(int(hashlib.sha256(seed_text.encode()).hexdigest()[:16], 16)).shuffle(ordered)
@@ -184,13 +204,18 @@ def main() -> int:
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--system")
     parser.add_argument("--L", dest="level", type=int)
+    parser.add_argument("--repeat", dest="repeat_id", type=int)
+    parser.add_argument("--threads", dest="threads_value", type=int)
+    parser.add_argument("--cache-gib", dest="cache_gib_value", type=int)
+    parser.add_argument("--state", dest="state_value")
     parser.add_argument("--identity-evidence", type=Path)
     parser.add_argument("--volatile-evidence", type=Path)
     args = parser.parse_args()
     root = Path(__file__).resolve().parents[3]
     anchors = json.loads(args.anchors.read_text()) if args.anchors else None
     runs = expand_runs(
-        root, args.dataset, args.phase, anchors, args.out, args.system, args.level
+        root, args.dataset, args.phase, anchors, args.out, args.system, args.level,
+        args.repeat_id, args.threads_value, args.cache_gib_value, args.state_value,
     )
     if args.dry_run:
         for spec in runs:
