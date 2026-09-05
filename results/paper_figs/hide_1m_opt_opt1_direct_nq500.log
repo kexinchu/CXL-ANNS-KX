@@ -1,0 +1,12 @@
+==== opt opt1_direct 2026-09-04T03:42:30+00:00 ====
+cache_used=104857600 evictions=4874426
+mapped vmem /dev/vmem0 off=1020054732800 len=2048917504 fd=5 prefetch=1 cache_used=104857600
+nav-graph /root/chukexin/CXL-ANNS-KX/results/paper_figs/nav_1m_10k.bin n0=10000 dim=200 R=32
+id-slot-map /mnt/disk0/chukexin_motivation/serving_t2i_10m/id_to_slot_1m_extent.bin n=1000000 (physical neighbor pairing)
+diskann graph-file /mnt/disk0/chukexin_motivation/serving_t2i_10m/diskann_t2i_1m.graph.bin bytes=128000000 (host N(u), no SSD ID faults)
+vec_stride=2048 (packed=800) graph_in_dram=1 diskann=1
+mapped HOST DRAM anon+mbind node=1 len=2147483648 (fallback; not DAX)
+P3v2 softpin W=16 budget=67108864 install_top=4 fetch_top=0 page_group_b=0 install_all=0 threads=1 per_thread_window=0 cont_batch=0 score_page=0 expand_batch=1 issue_ahead=1 min_issue_use=0.00 spec_beam_nbrs=0 expand_sib=0 slot_map=1 sync_hop=0 score_cache=0 direct_install=1 stripe_fill=0
+loaded id-map new→old n=1000000 (file=40000000) from /mnt/disk0/chukexin_motivation/serving_t2i_10m/new_to_old_pagebin.bin
+query_select nq=500/10000 shuffle_seed=-1 query_ids=/root/chukexin/CXL-ANNS-KX/results/paper_figs/qids_test500.bin first=4 last=9994 flush_window=0 oneshot_fp=1 oracle_dram=0 oracle_window=0 pin_entry=1 host_used=1501356 host_cap=33554432 host_bytes=2147483648 dram_bytes=2147483648 pin_cap=67108864
+roles host_bytes=2147483648 require_cxl_dram=0 cpu_affinity=1 per_thread_window=0 cxl_dram_dev=-

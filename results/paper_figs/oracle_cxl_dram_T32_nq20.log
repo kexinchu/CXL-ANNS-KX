@@ -1,0 +1,21 @@
+==== Oracle DiskANN T=32 2026-09-03T22:39:23+00:00 ====
+populated host layout /mnt/disk0/chukexin_motivation/serving_t2i_10m/diskann_t2i_10m.bin len=20480004096 (DRAM oracle)
+nav-graph /root/chukexin/CXL-ANNS-KX/results/paper_figs/nav_10k.bin n0=10000 dim=200 R=32
+vec_stride=2048 (packed=800) graph_in_dram=1 diskann=1
+oracle DiskANN scores from corpus mmap (/mnt/disk0/chukexin_motivation/serving_t2i_10m/diskann_t2i_10m.bin); dummy window 67108864
+loaded id-map new→old n=10000000 from /mnt/disk0/chukexin_motivation/serving_t2i_10m/new_to_old_pagebin.bin
+query_select nq=20/10000 shuffle_seed=42 flush_window=0 oneshot_fp=1 oracle_dram=1 oracle_window=0 pin_entry=1 host_used=1098156 host_cap=33554432 host_bytes=2147483648 dram_bytes=67108864 pin_cap=4194304
+roles host_bytes=2147483648 require_cxl_dram=0 cpu_affinity=1 per_thread_window=0 cxl_dram_dev=-
+policy=P0 budget=67108864 dram_bytes=67108864 nq=20 beam=400 k=10 iters=0 oneshot_fp=1 pin_bytes=606208/4194304
+wall_s=0.048 throughput_QPS=418.55
+cxl_ssd_to_dram_promote_GBps=0.013 promote_bytes=606208 target=12.0
+latency_ms mean=25.615 p50=25.233 p90=34.714 p99=35.383
+recall@10=0.9450
+cxl_dram_hit_pct=97.12
+metrics queries=20 dram_hits=4992 ssd_misses=148 hit_pct=97.12 promote_bytes=606208 avg_promote_ns=7567.9 prefetch_pages=0 evicts=0 dist=123452
+hide from_win=123452 from_cxl_dram=123452 from_bounce=0 from_win_pct=100.00 from_cxl_dram_pct=100.00 hide_prec=0.00 crit_wait_ns=0 device_fill_ns=0 overlap=0.00
+prefetch_use issued=0 used=0 page_use_pct=0.00 look_issued=0 look_used=0 look_use_pct=0.00 miss_use_pct=0.00 byte_use_pct=0.00 slot_use_pct=0.00 issue_use_pct=0.00 slots_on_pages=0 slots_scored=0 issue_slots=0 issue_want=0 scored_vec_B=0 nvme_read_B=0
+issue_use_hist=[0,.2):0 [.2,.4):0 [.4,.6):0 [.6,.8):0 [.8,1]:0
+spec_beam pages=0 ids=0
+nvme_real_GBps=0.000 occ_vs_rnd_peak=0.0% peak_GBps=1.560 page_use=0.00 slot_use=0.00 issue_use=0.00
+CSV,P0,67108864,67108864,20,400,0,418.55,25.615,25.233,34.714,35.383,0.9450,97.12,4992,148,100.00,0.00,0,0.00

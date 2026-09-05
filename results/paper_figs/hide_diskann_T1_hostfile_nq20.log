@@ -1,0 +1,22 @@
+==== Hide-shaped DiskANN T=1 1GiB window 2026-09-03T02:24:13+00:00 ====
+nav-graph /root/chukexin/CXL-ANNS-KX/results/paper_figs/nav_10k.bin n0=10000 dim=200 R=32
+vec_stride=2048 (packed=800) graph_in_dram=1 diskann=1
+mapped HOST DRAM anon+mbind node=1 len=1073741824 (fallback; not DAX)
+P3v2 softpin W=16 budget=67108864 install_top=4 fetch_top=0 page_group_b=0 install_all=0 threads=1 per_thread_window=0 cont_batch=0 score_page=0 expand_batch=8 issue_ahead=2 min_issue_use=0.00 spec_beam_nbrs=0
+loaded id-map new→old n=10000000 from /mnt/disk0/chukexin_motivation/serving_t2i_10m/new_to_old_pagebin.bin
+query_select nq=20/10000 shuffle_seed=42 flush_window=0 oneshot_fp=1 oracle_dram=0 oracle_window=0 pin_entry=1 host_used=1098156 host_cap=33554432 host_bytes=2147483648 dram_bytes=1073741824 pin_cap=268435456
+roles host_bytes=2147483648 require_cxl_dram=0 cpu_affinity=1 per_thread_window=0 cxl_dram_dev=-
+hide_warm_entry ids=8192 pin_bytes=16777216/268435456
+policy=P3 budget=67108864 dram_bytes=1073741824 nq=20 beam=400 k=10 iters=0 oneshot_fp=1 pin_bytes=16777216/268435456
+wall_s=0.548 throughput_QPS=36.47
+cxl_ssd_to_dram_promote_GBps=1.723 promote_bytes=944865280 target=12.0
+latency_ms mean=27.420 p50=27.850 p90=39.938 p99=42.614
+recall@10=0.9550
+cxl_dram_hit_pct=6.63
+metrics queries=20 dram_hits=8192 ssd_misses=115350 hit_pct=6.63 promote_bytes=944865280 avg_promote_ns=1989.4 prefetch_pages=230660 evicts=0 dist=130523
+hide from_win=130503 from_cxl_dram=0 from_bounce=20 from_win_pct=99.98 from_cxl_dram_pct=0.00 hide_prec=113.16 crit_wait_ns=15453105 device_fill_ns=23202169 overlap=0.04
+prefetch_use issued=111234 used=111234 page_use_pct=100.00 look_issued=0 look_used=0 look_use_pct=0.00 miss_use_pct=100.00 byte_use_pct=22.91 slot_use_pct=56.83 issue_use_pct=0.00 slots_on_pages=222468 slots_scored=126436 issue_slots=0 issue_want=0 scored_vec_B=104402400 nvme_read_B=0
+issue_use_hist=[0,.2):0 [.2,.4):0 [.4,.6):0 [.6,.8):0 [.8,1]:0
+spec_beam pages=0 ids=0
+nvme_real_GBps=0.000 occ_vs_rnd_peak=0.0% peak_GBps=1.560 page_use=100.00 slot_use=56.83 issue_use=0.00
+CSV,P3,67108864,1073741824,20,400,0,36.47,27.420,27.850,39.938,42.614,0.9550,6.63,8192,115350,99.98,113.16,15453105,0.04

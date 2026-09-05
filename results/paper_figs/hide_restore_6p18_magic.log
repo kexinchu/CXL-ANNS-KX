@@ -1,0 +1,5 @@
+# single-disk restore 2026-08-31T22:55:05+00:00 kernel=6.18.0-rc5
+srcversion=7F910D7C91EB4A768171C12
+nvme_dev=/dev/nvme2n1
+target_bdf=0000:d9:00.0
+ssd_size=1920383410176

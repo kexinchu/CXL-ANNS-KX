@@ -7,21 +7,15 @@
 \section{Design}
 \label{sec:design}
 
-\sys{} is a userspace ANNS runtime plus a thin residency plane in front of
-host DRAM, a bounded window that plays the role of CXL-DRAM, and a
-flash-backed CXL address space that holds $D$
-(Figure~\ref{fig:design-arch}). Search is still best-first graph walk.
-The service contract is a \emph{split}: prefetch and continuous
-batching may touch CXL-SSD; the scoring thread may not. A hop that
-computes a full-precision distance from bytes that were not already in
-the window is a hide failure, not a successful promote.
+\sys{} is a userspace ANNS runtime plus a thin residency plane in front of host DRAM, a bounded window that plays the role of CXL-DRAM, and a flash-backed CXL address space that holds $D$ (Figure~\ref{fig:design-arch}).
+Search is still best-first graph walk.
+The service contract is a \emph{split}: prefetch and continuous batching may touch CXL-SSD; the scoring thread may not.
+A hop that computes a full-precision distance from bytes that were not already in the window is a hide failure, not a successful promote.
 
-One walk cannot fully hide hop $i{+}1$ until hop $i$ scores
-(pointer-chasing). Intra-query hide is lookahead of the current
-frontier only. Inter-query continuous issue is what keeps device depth
-up while a single walk is stuck. We do not claim the measured prototype
-has met this contract~(\S\ref{sec:eval}); the modules below are the
-mechanisms that must.
+The wise prefetcher turns a committed PQ rerank set into one precise page batch before full-precision scoring.
+That precision does not remove the query's materialization barrier: its rerank still waits for its own batch.
+Continuous batching exploits the independence across queries to cover that wait with other useful work.
+The modules below separate these two roles and the evaluation tests them independently.
 
 \begin{figure*}[t]
   \centering
@@ -30,40 +24,33 @@ mechanisms that must.
     top: Placement $|$ Window admit $|$ Prefetch+\texttt{cont} $|$ $L$ ctrl;\\
     middle: residency plane (fill off crit path / score from window);\\
     bottom: host DRAM (graph/PQ) $|$ window $=$ virtual CXL-DRAM $|$ CXL-SSD.}
-  \caption{\sys{} architecture. From the host, scored bytes look like
-    CXL-DRAM; capacity is CXL-SSD. The residency plane is the only path
-    that moves full-precision bytes. Search never page-faults a neighbor
-    ``to be helpful.''
-    \textbf{Fill-in:} use shipped names (\texttt{PREFETCH\_BATCH},
-    DramWindow, \texttt{install\_top}); mark \texttt{vmem\_sw}.}
-  \Description{Layered architecture of the ANNS runtime over three memory
-    tiers.}
+  \caption{\sys{} architecture.
+    From the host, scored bytes look like CXL-DRAM; capacity is CXL-SSD.
+    The residency plane is the only path that moves full-precision bytes.
+    Search never page-faults a neighbor ``to be helpful.''
+    \textbf{Fill-in:} use shipped names (\texttt{PREFETCH\_BATCH}, DramWindow); mark \texttt{vmem\_sw}.}
+  \Description{Layered architecture of the ANNS runtime over three memory tiers.}
   \label{fig:design-arch}
 \end{figure*}
 
 \subsection{D1: Semantic placement}
 \label{sec:d1}
 
-Table~\ref{tab:placement} is the default map. The graph adjacency and the
-PQ codebook are touched on every hop and are small relative to the
-full-precision corpus; they live in host DRAM so they never compete with
-vectors for the CXL-SSD window (F2, F7). Query state (candidates, visited
-set, thread-local arenas) is likewise host-local. Full-precision vectors
-default to the CXL-SSD address space. A bounded \emph{hub / shared hot
-set} of records is explicitly cached into the window or into CXL-DRAM
-(\S\ref{sec:d3}). Frontier-top neighbors are candidates for precise
-promotion, not for bulk 2-hop prefetch (F3).
+Table~\ref{tab:placement} is the default map.
+The graph adjacency and the PQ codebook are touched on every hop and are small relative to the full-precision corpus; they live in host DRAM so they never compete with vectors for the CXL-SSD window (F2, F7).
+Query state (candidates, visited set, thread-local arenas) is likewise host-local.
+Full-precision vectors default to the CXL-SSD address space.
+A bounded \emph{hub / shared hot set} of vector pages is explicitly cached into the window or into CXL-DRAM (\S\ref{sec:d3}).
+Only full-precision vectors in a committed rerank set become prefetch candidates; a discovered frontier does not (F3).
 
-This is a deliberate difference from DiskANN, where adjacency and vectors
-share SSD sectors. We pay a modest host-DRAM tax for the graph in order
-to stop the window from turning into an accidental adjacency cache.
+This is a deliberate difference from DiskANN, where adjacency and vectors share SSD sectors.
+We pay a modest host-DRAM tax for the graph in order to stop the window from turning into an accidental adjacency cache.
 
 \begin{table}[t]
-  \caption{Default placement. \textbf{Fill-in:} bytes on the corpus you
-    report (e.g., 25M $\times$ dim).}
+  \caption{Default placement. \textbf{Fill-in:} bytes on the corpus you report (e.g., 25M $\times$ dim).}
   \label{tab:placement}
   \small
-  \begin{tabular}{@{}lll@{}}
+  \begin{tabular}{@{}p{0.28\columnwidth}p{0.22\columnwidth}p{0.42\columnwidth}@{}}
     \toprule
     Object & Default tier & Why \\
     \midrule
@@ -72,114 +59,105 @@ to stop the window from turning into an accidental adjacency cache.
     Query / visited      & host DRAM & per-worker state \\
     Full-precision vec.  & CXL-SSD   & capacity \\
     Entry / soft-pin     & window (tiny) & F7; LFU hot set demoted \\
-    Frontier-top nbrs    & window via prefetch & F3, F5; score only if resident \\
+    Committed rerank vec. & window via prefetch & F3, F5; score only if resident \\
     \bottomrule
   \end{tabular}
 \end{table}
 
-\subsection{D2: Bounded precise promotion}
+\subsection{D2: Wise prefetch at candidate commitment}
 \label{sec:d2}
 
-Promotion is an explicit \texttt{promote(ids[], level, budget)} on the
-residency plane (Figure~\ref{fig:design-promote}). The only ids that
-enter the call are the neighbors of the \emph{current frontier top-$M$}
---- the nodes the walk will expand next. A global and a per-query byte
-budget cap how much may move. \texttt{install\_top} decides \emph{who
-stays} in the window after a fill, not \emph{who the hop may wait for
-to score}. Precision is
-$\mathrm{scored\textrm{-}from\textrm{-}window}/\mathrm{fetched}$, not
-``every fetched page later scored from a host bounce.''
+\paragraph{When: after commitment.}
+The host first completes its approximate beam using the adjacency graph and PQ codes, without reading full-precision vectors from Flash.
+When that beam commits the bounded rerank set $C_L$, the prefetcher issues immediately: after uncertainty has been pruned, but before exact scoring dereferences any vector in $C_L$.
+This trigger deliberately gives up speculative lead time to avoid moving payload for candidates that will not survive.
+The single-query path may still wait for materialization to complete; the invariant is that the subsequent scoring loads do not themselves fault on Flash.
 
-The measured P3 loop still scores from that bounce after
-\texttt{PREFETCH\_BATCH} returns~(\S\ref{sec:impl}). That is overlap,
-not hide; the rewrite in the evaluation plan splits the two.
+\paragraph{What: the committed payload.}
+The residency plane maps the IDs in $C_L$ to their full-precision vector pages, removes pages that are resident or already in flight, and deduplicates the rest.
+Every requested page is therefore justified by at least one vector that exact reranking will consume.
+Adjacency, PQ codes, speculative neighbors, and unused frontier records are not part of this wave.
+Because Flash moves 4\,KiB pages, however, a justified page may still carry vector slots that this query will not score.
 
-We forbid the policies F3 already falsified: synchronous high-coverage
-2-hop prefetch, \texttt{install\_all}, and ``fault harder'' loops that
-raise queue depth by touching unused pages. Over-promotion is the
-failure mode the byte budget exists to prevent.
+\paragraph{How: make each page useful.}
+Offline, a co-use-aware layout groups vectors that disjoint training searches tend to request together and places the resulting pages into short runs.
+Online, exact page filtering avoids duplicate movement, and the runtime fills gaps only in a short, sufficiently dense run; it never expands a sparse request into a whole SSD stripe.
+This combination targets useful payload per read rather than batch size alone.
+Unlike generic remote-memory or device-side sequential prefetchers~\cite{leap,cacheinhand}, the request is justified by the committed rerank set rather than an inferred address stream.
+We distinguish page precision (a fetched page contains any scored vector), vector-slot utilization (scored slots over all slots read), and extent utilization (requested pages over pages transferred after coalescing); vector-slot utilization is the direct measure of real in-page use.
 
 \begin{figure}[t]
   \centering
-  \phbox{0.98\columnwidth}{3.4cm}{%
-    Fig.~7 placeholder --- promote path:\\
-    frontier top-$M$ $\rightarrow$ budget check $\rightarrow$ async fill
-    $\rightarrow$ window insert $\rightarrow$ precision feedback.}
-  \caption{Bounded precise promotion. Only soon-to-expand neighbors are
-    eligible; a byte budget and a live precision estimate keep the window
-    from becoming a junkyard.
-    \textbf{Fill-in:} annotate the implemented ioctl / batch path and the
-    default $M$ / budget used in~\S\ref{sec:eval}.}
-  \Description{Flow diagram of bounded promotion with a precision feedback
-    loop.}
+  \resizebox{0.88\columnwidth}{!}{\input{sections/fig_design_wise}}
+  \caption{Wise prefetch answers three questions.
+    \emph{When}: after PQ navigation commits $C_L$.
+    \emph{What}: only missing unique pages of its full-precision vectors.
+    \emph{How}: co-use-aware placement, exact filtering, and dense short runs increase useful vector slots per Flash read.}
+  \Description{A left-to-right pipeline showing PQ candidate commitment, selection of missing full-precision vector pages, locality-aware request formation, materialization into the CXL cache and host window, and exact reranking.}
   \label{fig:design-promote}
 \end{figure}
-
-On corpora where several vectors share a 4\,KB page (low dimension), a
-\emph{page-bin / reorder} layout clusters IDs that the walk co-touches so
-that one fill admits several useful records. This is layout serving
-residency, not a new index family. We report it as a placement option
-and show when it helps (small dim) and when it does not (vector $\approx$
-page).
 
 \subsection{D3: Entry pin and soft-pin (hot set demoted)}
 \label{sec:d3}
 
 Single-query deepening is a bad way to spend a small window (F4, F7).
-A 64\,MiB shared LFU set raised hit rate and \emph{destroyed} QPS on a
-warm protocol (14.3$\rightarrow$2.4); we do not ship it as D3.
-What remains is a tiny hard pin of the entry subgraph ($\le$32\,MiB)
-and a hop-decaying soft-pin of recently installed pages. Pinning is
-never implicit in a page fault. Cross-query reuse, if it happens, is
-because prefetch and \texttt{install\_top} left useful pages in the
-window---not because an LFU daemon is competing with search.
+A 64\,MiB shared LFU set raised hit rate and \emph{destroyed} QPS on a warm protocol (14.3$\rightarrow$2.4); we do not ship it as D3.
+What remains is a tiny hard pin of the entry subgraph ($\le$32\,MiB) and a hop-decaying soft-pin of recently installed pages.
+Pinning is never implicit in a page fault.
+Cross-query reuse, if it happens, is because committed materialization left useful pages in the window---not because an LFU daemon is competing with search.
 
-\subsection{D4: Hide engine --- lookahead prefetch and continuous batching}
+\subsection{D4: Hide engine --- wise prefetch and continuous batching}
 \label{sec:d4}
 
-D4 is the hide engine, not a QPS knob. Offline, we pick the smallest
-beam $L$ that meets the recall@$k$ floor. Online, the runtime issues
-\texttt{PREFETCH\_BATCH} for pages the \emph{next} hop (and the next
-admitted query) will score, then computes distances only on bytes
-already in the window. Continuous fetch-level batching keeps a target
-device depth $D$ across queries so one pointer-chasing walk does not
-collapse to QD$\approx 1$ (Figure~\ref{fig:design-pipe}). Scoring of
-already-resident records is never queued behind a fill it does not
-depend on. We do not merge the PipeANN binary; its \texttt{cont} path
-is the block-device contrast, not this runtime.
+\paragraph{A query-local barrier.}
+D2 creates one precise materialization wave after PQ navigation commits $C_L$,
+but the same query cannot rerank until that wave completes.
+Better page selection alone therefore cannot keep Flash busy.
+
+\paragraph{Cross-query overlap.}
+The barrier is local to a query, not to the service: while one query waits,
+another can navigate, materialize its own committed wave, or rerank resident
+bytes.
+Continuous batching interleaves these stages so host work and Flash access
+coexist (Figure~\ref{fig:design-pipe}).
+Like continuous scheduling in other staged serving systems~\cite{orca}, it
+admits work at a semantic boundary---candidate commitment rather than a model
+iteration.
+
+\paragraph{Bounded admission.}
+The runtime bounds in-flight query stages and admits another committed wave as
+capacity becomes available, avoiding both device bubbles and an unbounded work
+queue.
+It neither predicts future candidates nor implements adaptive queue-depth
+control.
+
+\paragraph{Semantic invariance.}
+Each query retains the same graph, PQ codes, beam budget, and visited state, and
+reranks only after its own pages are resident.
+Batching changes timing, but not its candidate set or recall.
 
 \begin{figure*}[t]
   \centering
-  \phbox{0.98\textwidth}{3.4cm}{%
-    Fig.~8 placeholder --- miss pipeline:\\
-    queries $\rightarrow$ fetch-level scheduler (target $D$) $\rightarrow$
-    async CXL-SSD fills $\rightarrow$ host score $\rightarrow$ admit next.\\
-    Show why blocking load/store cannot hold $D$.}
-  \caption{Continuous fetch-level batching over asynchronous
-    memory-semantic fills. Recall is unchanged by construction: prefetch
-    only changes \emph{when} a needed page is resident, not \emph{which}
-    nodes the walk visits.
-    \textbf{Fill-in:} draw the implemented \texttt{cont} path; put the
-    blocking-mmap failure mode on the same figure.}
-  \Description{Scheduler diagram that holds a target device queue depth
-    with async fills.}
+  \resizebox{0.98\textwidth}{!}{\input{sections/fig_design_cont}}
+  \caption{Continuous batching fills the service-level bubbles left by a
+    single precise materialization wave.
+    When Q0 waits for its committed pages, Q1 and Q2 contribute navigation,
+    Flash materialization, or reranking under a bounded in-flight budget.
+    Each query still crosses its own materialization barrier before reranking,
+    so scheduling changes timing but not search semantics.}
+  \Description{Three query timelines overlap host-side PQ navigation,
+    bounded asynchronous Flash materialization, and exact reranking.  Each
+    query reranks only after its own committed pages become resident.}
   \label{fig:design-pipe}
 \end{figure*}
 
 \subsection{D5: Observability}
 \label{sec:d5}
 
-Every experiment in~\S\ref{sec:eval} is required to report hide
-counters first: fraction of full-precision scores whose bytes were
-already in the window (\texttt{score\_from\_window}), critical-path
-wait on NAND (\texttt{crit\_wait\_ns}), overlap
-(\texttt{device\_fill\_ns}/\texttt{wall\_ns}), then QPS at the
-iso-recall floor. Promote precision is
-scored-from-window$/$fetched. QPS without those counters is not a hide
-result.
+Every experiment in~\S\ref{sec:eval} is required to report hide counters first: fraction of full-precision scores whose bytes were already in the window (\texttt{score\_from\_window}), critical-path NAND wait (\texttt{crit\_wait\_ns}), and device-fill/wall overlap, then QPS at the iso-recall floor.
+Prefetch efficiency is reported as page precision, vector-slot utilization, and extent utilization; a page touched once is not evidence that all of its payload was useful.
+QPS without those counters is not a hide result.
 
 \paragraph{What we refuse to hide.}
-If a module cannot move \texttt{crit\_wait\_ns} or
-\texttt{score\_from\_window} in an ablation, it is removed from the
-contribution list rather than kept as decoration. An LFU hot set that
-raises hit rate and drops QPS is already in that bin.
+If a module cannot move \texttt{crit\_wait\_ns} or \texttt{score\_from\_window} in an ablation, it is removed from the contribution list rather than kept as decoration.
+An LFU hot set that raises hit rate and drops QPS is already in that bin.

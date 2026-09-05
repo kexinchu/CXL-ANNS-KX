@@ -6,26 +6,22 @@
 \section{Fill-in Checklist}
 \label{app:checklist}
 
-Table~\ref{tab:app-checklist} is the author-facing map from each
-placeholder to the result file that should replace it. Delete this
-appendix before a submission if it is still author notes; or keep a
-cleaned artifact appendix after the numbers exist.
+Table~\ref{tab:app-checklist} is the author-facing map from each placeholder to the result file that should replace it.
+Delete this appendix before a submission if it is still author notes; or keep a cleaned artifact appendix after the numbers exist.
 
 \begin{table*}[t]
-  \caption{Placeholder $\rightarrow$ intended source. Author notes; not a
-    scientific result.}
+  \caption{Placeholder $\rightarrow$ intended source. Author notes; not a scientific result.}
   \label{tab:app-checklist}
   \small
   \begin{tabular}{@{}llp{0.46\textwidth}@{}}
     \toprule
     Id & Type & Replace with \\
     \midrule
-    Fig.~\ref{fig:intro-position} & figure* & 3-column deployment $+$ runtime overlay \\
-    Fig.~\ref{fig:bg-cxl} & figure & Measured/proxy CXL-SSD stack \\
-    Fig.~\ref{fig:mot-cliff} & figure & Cold / soft / warm latency $+$ search breakdown \\
-    Fig.~\ref{fig:mot-pathology} & figure* & Page vs.\ record; prefetch precision; beam sweep \\
-    Fig.~\ref{fig:mot-bubbles} & figure & \texttt{sections/fig\_bubbles.tex} or a measured redraw \\
-    Tab.~\ref{tab:findings} & table & Headline deltas from MOTIVATION\_FINDINGS \\
+    Fig.~\ref{fig:intro-position} & figure* & TikZ 3-column deployment (done) \\
+    Fig.~\ref{fig:mot-cliff} & figure & Log-y bars: cold / soft / warm (LAION-200k F8) \\
+    Fig.~\ref{fig:mot-pathology} & figure* & Page vs.\ record; blind $k$-hop; beam as unwise \\
+    Fig.~\ref{fig:mot-bubbles} & figure & TikZ: single walk / QD$\approx 1$ / static drain \\
+    Tab.~\ref{tab:findings} & table & 3-row C1--C3 (done; no \ph) \\
     Fig.~\ref{fig:design-arch} & figure* & Implemented component names \\
     Tab.~\ref{tab:placement} & table & Byte counts on the primary corpus \\
     Fig.~\ref{fig:design-promote} & figure & Promote API $+$ default $M$/budget \\
@@ -44,8 +40,5 @@ cleaned artifact appendix after the numbers exist.
 \section{Artifact Outline}
 \label{app:artifact}
 
-An ASPLOS artifact should include: the identity gate for the CXL-SSD
-node; scripts that reset the window (cold protocol); the iso-recall
-harness; and the exact command lines that produce
-Figures~\ref{fig:eval-main}--\ref{fig:eval-scale}. We will not point a
-reviewer at an identifiable internal hostname.
+An ASPLOS artifact should include: the identity gate for the CXL-SSD node; scripts that reset the window (cold protocol); the iso-recall harness; and the exact command lines that produce Figures~\ref{fig:eval-main}--\ref{fig:eval-scale}.
+We will not point a reviewer at an identifiable internal hostname.

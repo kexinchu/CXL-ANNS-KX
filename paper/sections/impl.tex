@@ -4,41 +4,20 @@
 \section{Implementation}
 \label{sec:impl}
 
-\sys{} is a userspace beam search (\texttt{serving/search\_beam}) over a
-CXAN packed (or page-binned) image \texttt{mmap}'d from
-\texttt{/dev/vmem0}. Policy P3 issues hop-ranked miss pages with
-\texttt{VMEM\_IOC\_PREFETCH\_BATCH}, copies into a host bounce
-(\texttt{PageCopyPool}), scores there, and installs only
-\texttt{install\_top} pages into a 1\,GiB DramWindow. That split is
-exactly the hide debt~\S\ref{sec:eval}: scoring still waits on the
-bounce, so NAND is not yet off the critical path.
+\sys{} is a userspace beam search with the adjacency graph and 64-byte PQ codes in host DRAM and full-precision vectors mapped from \texttt{/dev/vmem0}.
+The host completes PQ navigation, commits the $L$ rerank candidates, removes resident and duplicate 4\,KiB pages, and materializes the remaining pages into DramWindow before full-precision MIPS reranking.
+The explicit residency barrier leaves materialization wait on the query path, but prevents the subsequent scoring loads from triggering Flash faults.
+For continuous batching, workers maintain a bounded number of in-flight query stages and share asynchronous copy resources; completion-driven admission lets navigation or reranking from one query overlap another query's materialization without allowing either query to cross its own residency barrier early.
 
-\paragraph{What we measure (2026-08-30, \texttt{gpu01}).}
-Kernel \texttt{6.18.0-rc5}. FPGA Altera \texttt{0000:15:00.0} bound to
-\texttt{ntcx}/\texttt{mem2nvme} (32\,GiB BAR). NAND I/O goes through
-\texttt{nvmex} on \texttt{0000:d9:00.0} ($\rightarrow$
-\texttt{/dev/nvme4n1}, Dell CD8P 1.92\,TB). Userspace
-\texttt{/dev/vmem0} is \texttt{vmem\_sw}: 28\,GiB logical RAM map, 4\,GiB
-device cache, 2\,MiB stripe. HPS registers return
-\texttt{-EOPNOTSUPP}; stores to the BAR read back as \texttt{0xff}.
-Hardware \texttt{vmem.ko} implements \texttt{PREFETCH\_BATCH} but is
-\textbf{not} the measured path. CXL-DRAM DAX is absent; DramWindow is
-anonymous pages bound to NUMA node~1.
+\paragraph{Measured prototype (2026-08-30, \texttt{gpu01}).}
+We evaluate a userspace \texttt{vmem\_sw} proxy over two CD8P SSDs: \texttt{/dev/vmem0} exposes a 28\,GiB logical map backed by a 4\,GiB device cache with 2\,MiB striping.
+CXL-DRAM DAX and hardware fills into the FPGA BAR are absent, so DramWindow is host memory bound to NUMA node~1.
+The results therefore include proxy copying and cache-lock overhead and are not measurements of a shipping CXL.mem SSD.
 
-\paragraph{What is implemented.}
-P0 demand promote and P3 bounded install; \texttt{PREFETCH\_BATCH};
-page-bin layout pack; iso-recall $L$ picker; optional graph copy into
-host DRAM (intended default for hide rows). Entry subgraph $\le$32\,MiB
-is pinned. A shared LFU hot set was prototyped and \emph{lost} QPS on
-the warm protocol; we do not ship it as a result.
+\paragraph{Implemented scope.}
+The prototype includes demand access, committed-candidate materialization, host graph and PQ-64 navigation, batched prefetch, co-use/extent layout, the iso-recall $L$ picker, bounded cross-query scheduling, and a pinned entry subgraph of at most 32\,MiB.
+A shared LFU hot set reduced warm-run QPS and is excluded.
 
-\paragraph{What is not implemented, and is not claimed.}
-Product CXL.mem SSD; HPS fill of the FPGA BAR; Shared FAM; a 160\,GB/s
-DRAM--SSD engine; closed-loop F9 miss-chop; multi-thread shared-window
-speedup. DiskANN PQ-off is never placed on the PQ-on line.
-
-\paragraph{Prototype scale.}
-The serving binary is a single translation unit plus small headers on
-top of the CXAN layout. The software CXL-SSD path is the out-of-tree
-\texttt{vmem\_sw} driver. A log header that omits kernel, BDF, and
-\texttt{vmem\_sw} vs.\ \texttt{vmem.ko} is an invalid row.
+\paragraph{Not claimed.}
+Product CXL.mem SSD; HPS fill of the FPGA BAR; Shared FAM; a 160\,GB/s DRAM--SSD engine; closed-loop F9 miss-chop; speculative candidate execution; or an adaptive queue-depth controller.
+DiskANN PQ-off is never placed on the PQ-on line.

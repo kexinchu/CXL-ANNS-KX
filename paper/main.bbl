@@ -2,7 +2,7 @@
 %%% Do NOT edit. File created by BibTeX with style
 %%% ACM-Reference-Format-Journals [18-Jan-2012].
 
-\begin{thebibliography}{19}
+\begin{thebibliography}{45}
 
 %%% ====================================================================
 %%% NOTE TO THE USER: you can override these defaults by providing
@@ -36,129 +36,48 @@
 \providecommand\natexlab[1]{#1}
 \providecommand\showeprint[2][]{arXiv:#2}
 
-\bibitem[Anonymous(2024)]%
-        {secondtier}
-\bibfield{author}{\bibinfo{person}{Anonymous}.}
-  \bibinfo{year}{2024}\natexlab{}.
-\newblock \showarticletitle{Second-Tier Memory for Vector Search}.
-\newblock \bibinfo{journal}{\emph{arXiv preprint}} (\bibinfo{year}{2024}).
+\bibitem[Amaro et~al\mbox{.}(2020)]%
+        {canfarmemory}
+\bibfield{author}{\bibinfo{person}{Emmanuel Amaro},
+  \bibinfo{person}{Christopher Branner-Augmon}, \bibinfo{person}{Zhihong Luo},
+  \bibinfo{person}{Amy Ousterhout}, \bibinfo{person}{Marcos~K. Aguilera},
+  \bibinfo{person}{Aurojit Panda}, \bibinfo{person}{Sylvia Ratnasamy}, {and}
+  \bibinfo{person}{Scott Shenker}.} \bibinfo{year}{2020}\natexlab{}.
+\newblock \showarticletitle{Can Far Memory Improve Job Throughput?}. In
+  \bibinfo{booktitle}{\emph{Proceedings of the Fifteenth European Conference on
+  Computer Systems}}. \bibinfo{publisher}{Association for Computing Machinery},
+  \bibinfo{address}{New York, NY, USA}, \bibinfo{pages}{1--16}.
 \newblock
+\href{https://doi.org/10.1145/3342195.3387522}{doi:\nolinkurl{10.1145/3342195.3387522}}
+
+
+\bibitem[Aum{\"u}ller et~al\mbox{.}(2017)]%
+        {annbench}
+\bibfield{author}{\bibinfo{person}{Martin Aum{\"u}ller}, \bibinfo{person}{Erik
+  Bernhardsson}, {and} \bibinfo{person}{Alexander~John Faithfull}.}
+  \bibinfo{year}{2017}\natexlab{}.
+\newblock \showarticletitle{{ANN-Benchmarks}: A Benchmarking Tool for
+  Approximate Nearest Neighbor Algorithms}. In
+  \bibinfo{booktitle}{\emph{Similarity Search and Applications}}.
+  \bibinfo{publisher}{Springer}, \bibinfo{address}{Cham, Switzerland},
+  \bibinfo{pages}{34--49}.
 \newblock
-\shownote{Replace with the Second-Tier Memory citation.}.
+\href{https://doi.org/10.1007/978-3-319-68474-1_3}{doi:\nolinkurl{10.1007/978-3-319-68474-1_3}}
 
 
-\bibitem[Anonymous(2025a)]%
-        {bauhaus}
-\bibfield{author}{\bibinfo{person}{Anonymous}.}
-  \bibinfo{year}{2025}\natexlab{a}.
-\newblock \showarticletitle{Bauhaus: {CXL} Memory Tiering and Stranded
-  Capacity}.
-\newblock \bibinfo{journal}{\emph{Placeholder}} (\bibinfo{year}{2025}).
+\bibitem[Calciu et~al\mbox{.}(2021)]%
+        {rethinkingruntimes}
+\bibfield{author}{\bibinfo{person}{Irina Calciu}, \bibinfo{person}{M.~Talha
+  Imran}, \bibinfo{person}{Ivan Puddu}, \bibinfo{person}{Sanidhya Kashyap},
+  \bibinfo{person}{Hasan~Al Maruf}, \bibinfo{person}{Onur Mutlu}, {and}
+  \bibinfo{person}{Aasheesh Kolli}.} \bibinfo{year}{2021}\natexlab{}.
+\newblock \showarticletitle{Rethinking Software Runtimes for Disaggregated
+  Memory}. In \bibinfo{booktitle}{\emph{Proceedings of the 26th ACM
+  International Conference on Architectural Support for Programming Languages
+  and Operating Systems}}. \bibinfo{publisher}{Association for Computing
+  Machinery}, \bibinfo{address}{New York, NY, USA}, \bibinfo{pages}{79--92}.
 \newblock
-
-
-\bibitem[Anonymous(2025b)]%
-        {cmm-h}
-\bibfield{author}{\bibinfo{person}{Anonymous}.}
-  \bibinfo{year}{2025}\natexlab{b}.
-\newblock \showarticletitle{{CMM-H}: {CXL} Memory Module with {NAND} Backing}.
-\newblock \bibinfo{journal}{\emph{Placeholder}} (\bibinfo{year}{2025}).
-\newblock
-\newblock
-\shownote{Replace with the CMM-H citation.}.
-
-
-\bibitem[Anonymous(2025c)]%
-        {cosmos}
-\bibfield{author}{\bibinfo{person}{Anonymous}.}
-  \bibinfo{year}{2025}\natexlab{c}.
-\newblock \showarticletitle{{Cosmos}: {CXL}-Based Full In-Memory Approximate
-  Nearest Neighbor Search with Near-Data Processing}.
-\newblock \bibinfo{journal}{\emph{IEEE Computer Architecture Letters}}
-  (\bibinfo{year}{2025}).
-\newblock
-\newblock
-\shownote{Replace with the camera-ready Cosmos / CAL'25 citation.}.
-
-
-\bibitem[Anonymous(2025d)]%
-        {cxl-anyssd}
-\bibfield{author}{\bibinfo{person}{Anonymous}.}
-  \bibinfo{year}{2025}\natexlab{d}.
-\newblock \showarticletitle{{CXL-AnySSD}: Composable {CXL} {SSD}s without
-  Swapping}.
-\newblock  (\bibinfo{year}{2025}).
-\newblock
-\newblock
-\shownote{UIUC thesis; replace with the public citation.}.
-
-
-\bibitem[Anonymous(2025e)]%
-        {distributedann}
-\bibfield{author}{\bibinfo{person}{Anonymous}.}
-  \bibinfo{year}{2025}\natexlab{e}.
-\newblock \showarticletitle{{DistributedANN}: Serving a Logical {DiskANN} Graph
-  over a Distributed Key-Value Store}.
-\newblock \bibinfo{journal}{\emph{arXiv preprint arXiv:2509.06046}}
-  (\bibinfo{year}{2025}).
-\newblock
-
-
-\bibitem[Anonymous(2025f)]%
-        {fromblocktobyte}
-\bibfield{author}{\bibinfo{person}{Anonymous}.}
-  \bibinfo{year}{2025}\natexlab{f}.
-\newblock \showarticletitle{From Block to Byte: Rethinking {SSD}s with {CXL}}.
-  In \bibinfo{booktitle}{\emph{Placeholder}}.
-\newblock
-\newblock
-\shownote{Replace with the From-Block-to-Byte citation.}.
-
-
-\bibitem[Anonymous(2025g)]%
-        {phnsw}
-\bibfield{author}{\bibinfo{person}{Anonymous}.}
-  \bibinfo{year}{2025}\natexlab{g}.
-\newblock \showarticletitle{{P-HNSW}: Crash-Consistent Hierarchical Navigable
-  Small World Graphs on Persistent Memory}.
-\newblock \bibinfo{journal}{\emph{Placeholder}} (\bibinfo{year}{2025}).
-\newblock
-
-
-\bibitem[Anonymous(2025h)]%
-        {pipeann}
-\bibfield{author}{\bibinfo{person}{Anonymous}.}
-  \bibinfo{year}{2025}\natexlab{h}.
-\newblock \showarticletitle{{PipeANN}: Pipelined Graph-Based Approximate
-  Nearest Neighbor Search on {SSD}}. In \bibinfo{booktitle}{\emph{USENIX
-  Symposium on Operating Systems Design and Implementation}}.
-\newblock
-\newblock
-\shownote{Replace with the camera-ready PipeANN / OSDI'25 citation.}.
-
-
-\bibitem[Anonymous(2025i)]%
-        {skybyte}
-\bibfield{author}{\bibinfo{person}{Anonymous}.}
-  \bibinfo{year}{2025}\natexlab{i}.
-\newblock \showarticletitle{{SkyByte}: Architecting an Efficient
-  Memory-Semantic {CXL}-based {SSD}}. In
-  \bibinfo{booktitle}{\emph{Placeholder}}.
-\newblock
-\newblock
-\shownote{Replace with the SkyByte citation.}.
-
-
-\bibitem[Anonymous(2026)]%
-        {fatrq}
-\bibfield{author}{\bibinfo{person}{Anonymous}.}
-  \bibinfo{year}{2026}\natexlab{}.
-\newblock \showarticletitle{{FaTRQ}: Far-Memory-Aware Residual Quantization for
-  Vector Search}.
-\newblock \bibinfo{journal}{\emph{arXiv preprint}} (\bibinfo{year}{2026}).
-\newblock
-\newblock
-\shownote{Replace with the camera-ready FaTRQ citation.}.
+\href{https://doi.org/10.1145/3445814.3446713}{doi:\nolinkurl{10.1145/3445814.3446713}}
 
 
 \bibitem[Chen et~al\mbox{.}(2021)]%
@@ -169,18 +88,163 @@
   \bibinfo{person}{Mao Yang}, {and} \bibinfo{person}{Jingdong Wang}.}
   \bibinfo{year}{2021}\natexlab{}.
 \newblock \showarticletitle{{SPANN}: Highly-efficient Billion-scale Approximate
-  Nearest Neighbor Search}. In \bibinfo{booktitle}{\emph{Advances in Neural
-  Information Processing Systems}}.
+  Nearest Neighborhood Search}. In \bibinfo{booktitle}{\emph{Advances in Neural
+  Information Processing Systems}}, Vol.~\bibinfo{volume}{34}.
+  \bibinfo{publisher}{Curran Associates, Inc.}, \bibinfo{address}{Red Hook, NY,
+  USA}, \bibinfo{pages}{5199--5212}.
 \newblock
+\urldef\tempurl%
+\url{https://proceedings.neurips.cc/paper/2021/hash/2cf49e22106c288c95c9d94bb9b0739a-Abstract.html}
+\showURL{%
+\tempurl}
 
 
-\bibitem[CXL Consortium(2023)]%
-        {cxl30}
-CXL Consortium \bibinfo{year}{2023}\natexlab{}.
+\bibitem[Cheng et~al\mbox{.}(2024)]%
+        {secondtier}
+\bibfield{author}{\bibinfo{person}{Rongxin Cheng}, \bibinfo{person}{Yifan
+  Peng}, \bibinfo{person}{Xingda Wei}, \bibinfo{person}{Hongrui Xie},
+  \bibinfo{person}{Rong Chen}, \bibinfo{person}{Sijie Shen}, {and}
+  \bibinfo{person}{Haibo Chen}.} \bibinfo{year}{2024}\natexlab{}.
+\newblock \bibinfo{title}{Characterizing the Dilemma of Performance and Index
+  Size in Billion-Scale Vector Search and Breaking It with Second-Tier Memory}.
+\newblock
+\showeprint[arxiv]{2405.03267}
+\href{https://doi.org/10.48550/arXiv.2405.03267}{doi:\nolinkurl{10.48550/arXiv.2405.03267}}
+
+
+\bibitem[Compute Express Link Consortium(2023)]%
+        {cxl31}
+Compute Express Link Consortium \bibinfo{year}{2023}\natexlab{}.
 \newblock \bibinfo{booktitle}{\emph{{Compute Express Link} Specification,
   Revision 3.1}}.
-\newblock CXL Consortium.
+\newblock Compute Express Link Consortium.
 \newblock
+\urldef\tempurl%
+\url{https://www.computeexpresslink.org/spec-landing-page-compute-express-link}
+\showURL{%
+\tempurl}
+
+
+\bibitem[Fu et~al\mbox{.}(2019)]%
+        {nsg}
+\bibfield{author}{\bibinfo{person}{Cong Fu}, \bibinfo{person}{Chao Xiang},
+  \bibinfo{person}{Changxu Wang}, {and} \bibinfo{person}{Deng Cai}.}
+  \bibinfo{year}{2019}\natexlab{}.
+\newblock \showarticletitle{Fast Approximate Nearest Neighbor Search With The
+  Navigating Spreading-out Graph}.
+\newblock \bibinfo{journal}{\emph{Proceedings of the VLDB Endowment}}
+  \bibinfo{volume}{12}, \bibinfo{number}{5} (\bibinfo{year}{2019}),
+  \bibinfo{pages}{461--474}.
+\newblock
+\href{https://doi.org/10.14778/3303753.3303754}{doi:\nolinkurl{10.14778/3303753.3303754}}
+
+
+\bibitem[Ge et~al\mbox{.}(2013)]%
+        {opq}
+\bibfield{author}{\bibinfo{person}{Tiezheng Ge}, \bibinfo{person}{Kaiming He},
+  \bibinfo{person}{Qifa Ke}, {and} \bibinfo{person}{Jian Sun}.}
+  \bibinfo{year}{2013}\natexlab{}.
+\newblock \showarticletitle{Optimized Product Quantization for Approximate
+  Nearest Neighbor Search}. In \bibinfo{booktitle}{\emph{IEEE Conference on
+  Computer Vision and Pattern Recognition}}. \bibinfo{publisher}{IEEE},
+  \bibinfo{address}{Los Alamitos, CA, USA}, \bibinfo{pages}{2946--2953}.
+\newblock
+\href{https://doi.org/10.1109/CVPR.2013.379}{doi:\nolinkurl{10.1109/CVPR.2013.379}}
+
+
+\bibitem[Gollapudi et~al\mbox{.}(2023)]%
+        {filtereddiskann}
+\bibfield{author}{\bibinfo{person}{Siddharth Gollapudi}, \bibinfo{person}{Neel
+  Karia}, \bibinfo{person}{Varun Sivashankar}, \bibinfo{person}{Ravishankar
+  Krishnaswamy}, \bibinfo{person}{Nikit Begwani}, \bibinfo{person}{Swapnil
+  Raz}, \bibinfo{person}{Yiyong Lin}, \bibinfo{person}{Yin Zhang},
+  \bibinfo{person}{Neelam Mahapatro}, \bibinfo{person}{Premkumar Srinivasan},
+  \bibinfo{person}{Amit Singh}, {and} \bibinfo{person}{Harsha~Vardhan
+  Simhadri}.} \bibinfo{year}{2023}\natexlab{}.
+\newblock \showarticletitle{{Filtered-DiskANN}: Graph Algorithms for
+  Approximate Nearest Neighbor Search with Filters}. In
+  \bibinfo{booktitle}{\emph{Proceedings of the ACM Web Conference 2023}}.
+  \bibinfo{publisher}{Association for Computing Machinery},
+  \bibinfo{address}{New York, NY, USA}, \bibinfo{pages}{3406--3416}.
+\newblock
+\href{https://doi.org/10.1145/3543507.3583552}{doi:\nolinkurl{10.1145/3543507.3583552}}
+
+
+\bibitem[Gouk et~al\mbox{.}(2023)]%
+        {memorypooling}
+\bibfield{author}{\bibinfo{person}{Donghyun Gouk}, \bibinfo{person}{Miryeong
+  Kwon}, \bibinfo{person}{Hanyeoreum Bae}, \bibinfo{person}{Sangwon Lee}, {and}
+  \bibinfo{person}{Myoungsoo Jung}.} \bibinfo{year}{2023}\natexlab{}.
+\newblock \showarticletitle{Memory Pooling With {CXL}}.
+\newblock \bibinfo{journal}{\emph{IEEE Micro}} \bibinfo{volume}{43},
+  \bibinfo{number}{2} (\bibinfo{year}{2023}), \bibinfo{pages}{48--57}.
+\newblock
+\href{https://doi.org/10.1109/MM.2023.3237491}{doi:\nolinkurl{10.1109/MM.2023.3237491}}
+
+
+\bibitem[Gouk et~al\mbox{.}(2022)]%
+        {directcxl}
+\bibfield{author}{\bibinfo{person}{Donghyun Gouk}, \bibinfo{person}{Sangwon
+  Lee}, \bibinfo{person}{Miryeong Kwon}, {and} \bibinfo{person}{Myoungsoo
+  Jung}.} \bibinfo{year}{2022}\natexlab{}.
+\newblock \showarticletitle{Direct Access, High-Performance Memory
+  Disaggregation with {DirectCXL}}. In \bibinfo{booktitle}{\emph{2022 USENIX
+  Annual Technical Conference}}. \bibinfo{publisher}{USENIX Association},
+  \bibinfo{address}{USA}, \bibinfo{pages}{287--294}.
+\newblock
+\urldef\tempurl%
+\url{https://www.usenix.org/conference/atc22/presentation/gouk}
+\showURL{%
+\tempurl}
+
+
+\bibitem[Gu et~al\mbox{.}(2017)]%
+        {infiniswap}
+\bibfield{author}{\bibinfo{person}{Juncheng Gu}, \bibinfo{person}{Youngmoon
+  Lee}, \bibinfo{person}{Yiwen Zhang}, \bibinfo{person}{Mosharaf Chowdhury},
+  {and} \bibinfo{person}{Kang~G. Shin}.} \bibinfo{year}{2017}\natexlab{}.
+\newblock \showarticletitle{Efficient Memory Disaggregation with {Infiniswap}}.
+  In \bibinfo{booktitle}{\emph{14th USENIX Symposium on Networked Systems
+  Design and Implementation}}. \bibinfo{publisher}{USENIX Association},
+  \bibinfo{address}{USA}, \bibinfo{pages}{649--667}.
+\newblock
+\urldef\tempurl%
+\url{https://www.usenix.org/conference/nsdi17/technical-sessions/presentation/gu}
+\showURL{%
+\tempurl}
+
+
+\bibitem[Guo and Lu(2025)]%
+        {pipeann}
+\bibfield{author}{\bibinfo{person}{Hao Guo} {and} \bibinfo{person}{Youyou Lu}.}
+  \bibinfo{year}{2025}\natexlab{}.
+\newblock \showarticletitle{Achieving Low-Latency Graph-Based Vector Search via
+  Aligning Best-First Search Algorithm with {SSD}}. In
+  \bibinfo{booktitle}{\emph{19th USENIX Symposium on Operating Systems Design
+  and Implementation}}. \bibinfo{publisher}{USENIX Association},
+  \bibinfo{address}{USA}, \bibinfo{pages}{171--186}.
+\newblock
+\urldef\tempurl%
+\url{https://www.usenix.org/conference/osdi25/presentation/guo}
+\showURL{%
+\tempurl}
+
+
+\bibitem[Guo et~al\mbox{.}(2020)]%
+        {scann}
+\bibfield{author}{\bibinfo{person}{Ruiqi Guo}, \bibinfo{person}{Philip Sun},
+  \bibinfo{person}{Erik Lindgren}, \bibinfo{person}{Quan Geng},
+  \bibinfo{person}{David Simcha}, \bibinfo{person}{Felix Chern}, {and}
+  \bibinfo{person}{Sanjiv Kumar}.} \bibinfo{year}{2020}\natexlab{}.
+\newblock \showarticletitle{Accelerating Large-Scale Inference with Anisotropic
+  Vector Quantization}. In \bibinfo{booktitle}{\emph{Proceedings of the 37th
+  International Conference on Machine Learning}}. \bibinfo{publisher}{PMLR},
+  \bibinfo{address}{Online}, \bibinfo{pages}{3887--3896}.
+\newblock
+\urldef\tempurl%
+\url{https://proceedings.mlr.press/v119/guo20h.html}
+\showURL{%
+\tempurl}
 
 
 \bibitem[Jang et~al\mbox{.}(2023)]%
@@ -191,21 +255,153 @@ CXL Consortium \bibinfo{year}{2023}\natexlab{}.
   \bibinfo{year}{2023}\natexlab{}.
 \newblock \showarticletitle{{CXL-ANNS}: Software-Hardware Collaborative Memory
   Disaggregation and Computation for Billion-Scale Approximate Nearest Neighbor
-  Search}. In \bibinfo{booktitle}{\emph{USENIX Annual Technical Conference}}.
+  Search}. In \bibinfo{booktitle}{\emph{2023 USENIX Annual Technical
+  Conference}}. \bibinfo{publisher}{USENIX Association},
+  \bibinfo{address}{USA}, \bibinfo{pages}{585--600}.
 \newblock
+\urldef\tempurl%
+\url{https://www.usenix.org/conference/atc23/presentation/jang}
+\showURL{%
+\tempurl}
 
 
-\bibitem[Jang et~al\mbox{.}(2024)]%
-        {cxlanns-tocs}
-\bibfield{author}{\bibinfo{person}{Junhyeok Jang}, \bibinfo{person}{Hanjin
-  Choi}, \bibinfo{person}{Hanyeoreum Bae}, \bibinfo{person}{Seungjun Lee},
-  \bibinfo{person}{Miryeong Kwon}, {and} \bibinfo{person}{Myoungsoo Jung}.}
-  \bibinfo{year}{2024}\natexlab{}.
-\newblock \showarticletitle{Bridging Software-Hardware for Billion-Scale {ANNS}
-  with {CXL} Memory Disaggregation}.
-\newblock \bibinfo{journal}{\emph{ACM Transactions on Computer Systems}}
-  (\bibinfo{year}{2024}).
+\bibitem[J{\'e}gou et~al\mbox{.}(2011)]%
+        {pq}
+\bibfield{author}{\bibinfo{person}{Herv{\'e} J{\'e}gou},
+  \bibinfo{person}{Matthijs Douze}, {and} \bibinfo{person}{Cordelia Schmid}.}
+  \bibinfo{year}{2011}\natexlab{}.
+\newblock \showarticletitle{Product Quantization for Nearest Neighbor Search}.
+\newblock \bibinfo{journal}{\emph{IEEE Transactions on Pattern Analysis and
+  Machine Intelligence}} \bibinfo{volume}{33}, \bibinfo{number}{1}
+  (\bibinfo{year}{2011}), \bibinfo{pages}{117--128}.
 \newblock
+\href{https://doi.org/10.1109/TPAMI.2010.57}{doi:\nolinkurl{10.1109/TPAMI.2010.57}}
+
+
+\bibitem[Johnson et~al\mbox{.}(2021)]%
+        {faiss}
+\bibfield{author}{\bibinfo{person}{Jeff Johnson}, \bibinfo{person}{Matthijs
+  Douze}, {and} \bibinfo{person}{Herv{\'e} J{\'e}gou}.}
+  \bibinfo{year}{2021}\natexlab{}.
+\newblock \showarticletitle{Billion-Scale Similarity Search with {GPU}s}.
+\newblock \bibinfo{journal}{\emph{IEEE Transactions on Big Data}}
+  \bibinfo{volume}{7}, \bibinfo{number}{3} (\bibinfo{year}{2021}),
+  \bibinfo{pages}{535--547}.
+\newblock
+\href{https://doi.org/10.1109/TBDATA.2019.2921572}{doi:\nolinkurl{10.1109/TBDATA.2019.2921572}}
+
+
+\bibitem[Jung(2022)]%
+        {hellobytes}
+\bibfield{author}{\bibinfo{person}{Myoungsoo Jung}.}
+  \bibinfo{year}{2022}\natexlab{}.
+\newblock \showarticletitle{Hello Bytes, Bye Blocks: {PCIe} Storage Meets
+  Compute Express Link for Memory Expansion ({CXL-SSD})}. In
+  \bibinfo{booktitle}{\emph{14th ACM Workshop on Hot Topics in Storage and File
+  Systems}}. \bibinfo{publisher}{Association for Computing Machinery},
+  \bibinfo{address}{New York, NY, USA}, \bibinfo{pages}{45--51}.
+\newblock
+\href{https://doi.org/10.1145/3538643.3539745}{doi:\nolinkurl{10.1145/3538643.3539745}}
+
+
+\bibitem[Kim et~al\mbox{.}(2026)]%
+        {bauhaus}
+\bibfield{author}{\bibinfo{person}{Kyungbin Kim}, \bibinfo{person}{Sungsu Ahn},
+  \bibinfo{person}{Wonjung Jeong}, \bibinfo{person}{Jongmin Kim},
+  \bibinfo{person}{Sangun Choi}, \bibinfo{person}{Minseong Gil},
+  \bibinfo{person}{Minseong Kim}, \bibinfo{person}{Dongha Jung},
+  \bibinfo{person}{Yunjay Hong}, \bibinfo{person}{Haekang Jung}, {and}
+  \bibinfo{person}{Yunho Oh}.} \bibinfo{year}{2026}\natexlab{}.
+\newblock \showarticletitle{Bauhaus: Restructuring Vector Database for {LLM}
+  Retrieval on {CXL}-Based Tiered Memory}.
+\newblock \bibinfo{journal}{\emph{IEEE Trans. Comput.}} \bibinfo{volume}{75},
+  \bibinfo{number}{4} (\bibinfo{year}{2026}), \bibinfo{pages}{1309--1322}.
+\newblock
+\href{https://doi.org/10.1109/TC.2026.3656215}{doi:\nolinkurl{10.1109/TC.2026.3656215}}
+
+
+\bibitem[Ko et~al\mbox{.}(2025)]%
+        {cosmos}
+\bibfield{author}{\bibinfo{person}{Seoyoung Ko}, \bibinfo{person}{Hyunjeong
+  Shim}, \bibinfo{person}{Wanju Doh}, \bibinfo{person}{Sungmin Yun},
+  \bibinfo{person}{Jinin So}, \bibinfo{person}{Yongsuk Kwon},
+  \bibinfo{person}{Sang-Soo Park}, \bibinfo{person}{Si-Dong Roh},
+  \bibinfo{person}{Minyong Yoon}, \bibinfo{person}{Taeksang Song}, {and}
+  \bibinfo{person}{Jung~Ho Ahn}.} \bibinfo{year}{2025}\natexlab{}.
+\newblock \showarticletitle{Cosmos: A {CXL}-Based Full In-Memory System for
+  Approximate Nearest Neighbor Search}.
+\newblock \bibinfo{journal}{\emph{IEEE Computer Architecture Letters}}
+  \bibinfo{volume}{24}, \bibinfo{number}{1} (\bibinfo{year}{2025}),
+  \bibinfo{pages}{173--176}.
+\newblock
+\href{https://doi.org/10.1109/LCA.2025.3570235}{doi:\nolinkurl{10.1109/LCA.2025.3570235}}
+
+
+\bibitem[Krishnaswamy et~al\mbox{.}(2024)]%
+        {diskannlib}
+\bibfield{author}{\bibinfo{person}{Ravishankar Krishnaswamy},
+  \bibinfo{person}{Magdalen~Dobson Manohar}, {and}
+  \bibinfo{person}{Harsha~Vardhan Simhadri}.} \bibinfo{year}{2024}\natexlab{}.
+\newblock \showarticletitle{The {DiskANN} Library: Graph-Based Indices for
+  Fast, Fresh and Filtered Vector Search}.
+\newblock \bibinfo{journal}{\emph{IEEE Data Engineering Bulletin}}
+  \bibinfo{volume}{48}, \bibinfo{number}{3} (\bibinfo{year}{2024}),
+  \bibinfo{pages}{20--42}.
+\newblock
+\urldef\tempurl%
+\url{http://sites.computer.org/debull/A24sept/p20.pdf}
+\showURL{%
+\tempurl}
+
+
+\bibitem[Kwon et~al\mbox{.}(2025)]%
+        {fromblocktobyte}
+\bibfield{author}{\bibinfo{person}{Miryeong Kwon}, \bibinfo{person}{Donghyun
+  Gouk}, \bibinfo{person}{Junhyeok Jang}, \bibinfo{person}{Jinwoo Baek},
+  \bibinfo{person}{Hyunwoo You}, \bibinfo{person}{Sangyoon Ji},
+  \bibinfo{person}{Hongjoo Jung}, \bibinfo{person}{Junseok Moon},
+  \bibinfo{person}{Seungkwan Kang}, \bibinfo{person}{Seungjun Lee}, {and}
+  \bibinfo{person}{Myoungsoo Jung}.} \bibinfo{year}{2025}\natexlab{}.
+\newblock \showarticletitle{From Block to Byte: Transforming {PCIe} Solid-State
+  Devices With Compute Express Link Memory Protocol and Instruction
+  Annotation}.
+\newblock \bibinfo{journal}{\emph{IEEE Micro}} \bibinfo{volume}{45},
+  \bibinfo{number}{6} (\bibinfo{year}{2025}), \bibinfo{pages}{46--55}.
+\newblock
+\href{https://doi.org/10.1109/MM.2025.3581448}{doi:\nolinkurl{10.1109/MM.2025.3581448}}
+
+
+\bibitem[Kwon et~al\mbox{.}(2023)]%
+        {cacheinhand}
+\bibfield{author}{\bibinfo{person}{Miryeong Kwon}, \bibinfo{person}{Sangwon
+  Lee}, {and} \bibinfo{person}{Myoungsoo Jung}.}
+  \bibinfo{year}{2023}\natexlab{}.
+\newblock \showarticletitle{Cache in Hand: Expander-Driven {CXL} Prefetcher for
+  Next Generation {CXL-SSD}}. In \bibinfo{booktitle}{\emph{15th ACM Workshop on
+  Hot Topics in Storage and File Systems}}. \bibinfo{publisher}{Association for
+  Computing Machinery}, \bibinfo{address}{New York, NY, USA},
+  \bibinfo{pages}{24--30}.
+\newblock
+\href{https://doi.org/10.1145/3599691.3603406}{doi:\nolinkurl{10.1145/3599691.3603406}}
+
+
+\bibitem[Li et~al\mbox{.}(2023)]%
+        {pond}
+\bibfield{author}{\bibinfo{person}{Huaicheng Li}, \bibinfo{person}{Daniel~S.
+  Berger}, \bibinfo{person}{Lisa Hsu}, \bibinfo{person}{Daniel Ernst},
+  \bibinfo{person}{Pantea Zardoshti}, \bibinfo{person}{Stanko Novakovic},
+  \bibinfo{person}{Monish Shah}, \bibinfo{person}{Samir Rajadnya},
+  \bibinfo{person}{Scott Lee}, \bibinfo{person}{Ishwar Agarwal},
+  \bibinfo{person}{Mark~D. Hill}, \bibinfo{person}{Marcus Fontoura}, {and}
+  \bibinfo{person}{Ricardo Bianchini}.} \bibinfo{year}{2023}\natexlab{}.
+\newblock \showarticletitle{Pond: {CXL}-Based Memory Pooling Systems for Cloud
+  Platforms}. In \bibinfo{booktitle}{\emph{Proceedings of the 28th ACM
+  International Conference on Architectural Support for Programming Languages
+  and Operating Systems, Volume 2}}. \bibinfo{publisher}{Association for
+  Computing Machinery}, \bibinfo{address}{New York, NY, USA},
+  \bibinfo{pages}{574--587}.
+\newblock
+\href{https://doi.org/10.1145/3575693.3578835}{doi:\nolinkurl{10.1145/3575693.3578835}}
 
 
 \bibitem[Malkov and Yashunin(2020)]%
@@ -213,10 +409,45 @@ CXL Consortium \bibinfo{year}{2023}\natexlab{}.
 \bibfield{author}{\bibinfo{person}{Yury~A. Malkov} {and}
   \bibinfo{person}{Dmitry~A. Yashunin}.} \bibinfo{year}{2020}\natexlab{}.
 \newblock \showarticletitle{Efficient and Robust Approximate Nearest Neighbor
-  Search Using Hierarchical Navigable Small World Graphs}. In
-  \bibinfo{booktitle}{\emph{IEEE Transactions on Pattern Analysis and Machine
-  Intelligence}}.
+  Search Using Hierarchical Navigable Small World Graphs}.
+\newblock \bibinfo{journal}{\emph{IEEE Transactions on Pattern Analysis and
+  Machine Intelligence}} \bibinfo{volume}{42}, \bibinfo{number}{4}
+  (\bibinfo{year}{2020}), \bibinfo{pages}{824--836}.
 \newblock
+\href{https://doi.org/10.1109/TPAMI.2018.2889473}{doi:\nolinkurl{10.1109/TPAMI.2018.2889473}}
+
+
+\bibitem[Maruf and Chowdhury(2020)]%
+        {leap}
+\bibfield{author}{\bibinfo{person}{Hasan~Al Maruf} {and}
+  \bibinfo{person}{Mosharaf Chowdhury}.} \bibinfo{year}{2020}\natexlab{}.
+\newblock \showarticletitle{Effectively Prefetching Remote Memory with {Leap}}.
+  In \bibinfo{booktitle}{\emph{2020 USENIX Annual Technical Conference}}.
+  \bibinfo{publisher}{USENIX Association}, \bibinfo{address}{USA},
+  \bibinfo{pages}{843--857}.
+\newblock
+\urldef\tempurl%
+\url{https://www.usenix.org/conference/atc20/presentation/al-maruf}
+\showURL{%
+\tempurl}
+
+
+\bibitem[Maruf et~al\mbox{.}(2023)]%
+        {tpp}
+\bibfield{author}{\bibinfo{person}{Hasan~Al Maruf}, \bibinfo{person}{Hao Wang},
+  \bibinfo{person}{Abhishek Dhanotia}, \bibinfo{person}{Johannes Weiner},
+  \bibinfo{person}{Niket Agarwal}, \bibinfo{person}{Pallab Bhattacharya},
+  \bibinfo{person}{Chris Petersen}, \bibinfo{person}{Mosharaf Chowdhury},
+  \bibinfo{person}{Shobhit~O. Kanaujia}, {and} \bibinfo{person}{Prakash
+  Chauhan}.} \bibinfo{year}{2023}\natexlab{}.
+\newblock \showarticletitle{{TPP}: Transparent Page Placement for {CXL}-Enabled
+  Tiered-Memory}. In \bibinfo{booktitle}{\emph{Proceedings of the 28th ACM
+  International Conference on Architectural Support for Programming Languages
+  and Operating Systems, Volume 3}}. \bibinfo{publisher}{Association for
+  Computing Machinery}, \bibinfo{address}{New York, NY, USA},
+  \bibinfo{pages}{742--755}.
+\newblock
+\href{https://doi.org/10.1145/3582016.3582063}{doi:\nolinkurl{10.1145/3582016.3582063}}
 
 
 \bibitem[Ren et~al\mbox{.}(2020)]%
@@ -225,19 +456,64 @@ CXL Consortium \bibinfo{year}{2023}\natexlab{}.
   {and} \bibinfo{person}{Dong Li}.} \bibinfo{year}{2020}\natexlab{}.
 \newblock \showarticletitle{{HM-ANN}: Efficient Billion-Point Nearest Neighbor
   Search on Heterogeneous Memory}. In \bibinfo{booktitle}{\emph{Advances in
-  Neural Information Processing Systems}}.
+  Neural Information Processing Systems}}, Vol.~\bibinfo{volume}{33}.
+  \bibinfo{publisher}{Curran Associates, Inc.}, \bibinfo{address}{Red Hook, NY,
+  USA}, \bibinfo{pages}{10672--10684}.
 \newblock
+\urldef\tempurl%
+\url{https://proceedings.neurips.cc/paper/2020/hash/788d986905533aba051261497ecffcbb-Abstract.html}
+\showURL{%
+\tempurl}
+
+
+\bibitem[Ruan et~al\mbox{.}(2020)]%
+        {aifm}
+\bibfield{author}{\bibinfo{person}{Zhenyuan Ruan}, \bibinfo{person}{Malte
+  Schwarzkopf}, \bibinfo{person}{Marcos~K. Aguilera}, {and}
+  \bibinfo{person}{Adam Belay}.} \bibinfo{year}{2020}\natexlab{}.
+\newblock \showarticletitle{{AIFM}: High-Performance, Application-Integrated
+  Far Memory}. In \bibinfo{booktitle}{\emph{14th USENIX Symposium on Operating
+  Systems Design and Implementation}}. \bibinfo{publisher}{USENIX Association},
+  \bibinfo{address}{USA}, \bibinfo{pages}{315--332}.
+\newblock
+\urldef\tempurl%
+\url{https://www.usenix.org/conference/osdi20/presentation/ruan}
+\showURL{%
+\tempurl}
+
+
+\bibitem[Simhadri et~al\mbox{.}(2022)]%
+        {bigannchallenge}
+\bibfield{author}{\bibinfo{person}{Harsha~Vardhan Simhadri},
+  \bibinfo{person}{George Williams}, \bibinfo{person}{Martin Aum{\"u}ller},
+  \bibinfo{person}{Matthijs Douze}, \bibinfo{person}{Artem Babenko},
+  \bibinfo{person}{Dmitry Baranchuk}, \bibinfo{person}{Qi Chen},
+  \bibinfo{person}{Lucas Hosseini}, \bibinfo{person}{Ravishankar Krishnaswamy},
+  \bibinfo{person}{Gopal Srinivasa}, \bibinfo{person}{Suhas~Jayaram
+  Subramanya}, {and} \bibinfo{person}{Jingdong Wang}.}
+  \bibinfo{year}{2022}\natexlab{}.
+\newblock \showarticletitle{Results of the NeurIPS'21 Challenge on
+  Billion-Scale Approximate Nearest Neighbor Search}. In
+  \bibinfo{booktitle}{\emph{NeurIPS 2021 Competitions and Demonstrations
+  Track}}. \bibinfo{publisher}{PMLR}, \bibinfo{address}{Online},
+  \bibinfo{pages}{177--189}.
+\newblock
+\urldef\tempurl%
+\url{https://proceedings.mlr.press/v176/simhadri22a.html}
+\showURL{%
+\tempurl}
 
 
 \bibitem[Singh et~al\mbox{.}(2021)]%
         {freshdiskann}
 \bibfield{author}{\bibinfo{person}{Aditi Singh}, \bibinfo{person}{Suhas~Jayaram
-  Subramanya}, \bibinfo{person}{Rohan Kadekodi}, {and}
+  Subramanya}, \bibinfo{person}{Ravishankar Krishnaswamy}, {and}
   \bibinfo{person}{Harsha~Vardhan Simhadri}.} \bibinfo{year}{2021}\natexlab{}.
-\newblock \showarticletitle{{FreshDiskANN}: A Fast and Accurate Graph-Based
-  {ANN} Index for Streaming Similarity Search}. In
-  \bibinfo{booktitle}{\emph{arXiv preprint arXiv:2105.09613}}.
+\newblock \bibinfo{title}{{FreshDiskANN}: A Fast and Accurate Graph-Based {ANN}
+  Index for Streaming Similarity Search}.
 \newblock
+\showeprint[arxiv]{2105.09613}
+\href{https://doi.org/10.48550/arXiv.2105.09613}{doi:\nolinkurl{10.48550/arXiv.2105.09613}}
 
 
 \bibitem[Subramanya et~al\mbox{.}(2019)]%
@@ -248,8 +524,240 @@ CXL Consortium \bibinfo{year}{2023}\natexlab{}.
   Kadekodi}.} \bibinfo{year}{2019}\natexlab{}.
 \newblock \showarticletitle{{DiskANN}: Fast Accurate Billion-point Nearest
   Neighbor Search on a Single Node}. In \bibinfo{booktitle}{\emph{Advances in
-  Neural Information Processing Systems}}.
+  Neural Information Processing Systems}}, Vol.~\bibinfo{volume}{32}.
+  \bibinfo{publisher}{Curran Associates, Inc.}, \bibinfo{address}{Red Hook, NY,
+  USA}, \bibinfo{pages}{13748--13758}.
 \newblock
+\urldef\tempurl%
+\url{https://proceedings.neurips.cc/paper/2019/hash/09853c7fb1d3f8ee67a61b6bf4a7f8e6-Abstract.html}
+\showURL{%
+\tempurl}
+
+
+\bibitem[Sun et~al\mbox{.}(2023)]%
+        {demystifycxl}
+\bibfield{author}{\bibinfo{person}{Yan Sun}, \bibinfo{person}{Yifan Yuan},
+  \bibinfo{person}{Zeduo Yu}, \bibinfo{person}{Reese Kuper},
+  \bibinfo{person}{Chihun Song}, \bibinfo{person}{Jinghan Huang},
+  \bibinfo{person}{Houxiang Ji}, \bibinfo{person}{Siddharth Agarwal},
+  \bibinfo{person}{Jiaqi Lou}, \bibinfo{person}{Ipoom Jeong},
+  \bibinfo{person}{Ren Wang}, \bibinfo{person}{Jung~Ho Ahn},
+  \bibinfo{person}{Tianyin Xu}, {and} \bibinfo{person}{Nam~Sung Kim}.}
+  \bibinfo{year}{2023}\natexlab{}.
+\newblock \showarticletitle{Demystifying {CXL} Memory with Genuine {CXL}-Ready
+  Systems and Devices}. In \bibinfo{booktitle}{\emph{56th IEEE/ACM
+  International Symposium on Microarchitecture}}.
+  \bibinfo{publisher}{Association for Computing Machinery},
+  \bibinfo{address}{New York, NY, USA}, \bibinfo{pages}{105--121}.
+\newblock
+\href{https://doi.org/10.1145/3613424.3614256}{doi:\nolinkurl{10.1145/3613424.3614256}}
+
+
+\bibitem[Wang et~al\mbox{.}(2023)]%
+        {canvas}
+\bibfield{author}{\bibinfo{person}{Chenxi Wang}, \bibinfo{person}{Yifan Qiao},
+  \bibinfo{person}{Haoran Ma}, \bibinfo{person}{Shi Liu},
+  \bibinfo{person}{Yiying Zhang}, \bibinfo{person}{Wenguang Chen},
+  \bibinfo{person}{Ravi Netravali}, \bibinfo{person}{Miryung Kim}, {and}
+  \bibinfo{person}{Guoqing~Harry Xu}.} \bibinfo{year}{2023}\natexlab{}.
+\newblock \showarticletitle{Canvas: Isolated and Adaptive Swapping for
+  Multi-Applications on Remote Memory}. In \bibinfo{booktitle}{\emph{20th
+  USENIX Symposium on Networked Systems Design and Implementation}}.
+  \bibinfo{publisher}{USENIX Association}, \bibinfo{address}{USA},
+  \bibinfo{pages}{161--179}.
+\newblock
+\urldef\tempurl%
+\url{https://www.usenix.org/conference/nsdi23/presentation/wang-chenxi}
+\showURL{%
+\tempurl}
+
+
+\bibitem[Wang et~al\mbox{.}(2021)]%
+        {milvus}
+\bibfield{author}{\bibinfo{person}{Jianguo Wang}, \bibinfo{person}{Xiaomeng
+  Yi}, \bibinfo{person}{Rentong Guo}, \bibinfo{person}{Hai Jin},
+  \bibinfo{person}{Peng Xu}, \bibinfo{person}{Shengjun Li},
+  \bibinfo{person}{Xiangyu Wang}, \bibinfo{person}{Xiangzhou Guo},
+  \bibinfo{person}{Chengming Li}, \bibinfo{person}{Xiaohai Xu},
+  \bibinfo{person}{Kun Yu}, \bibinfo{person}{Yuxing Yuan},
+  \bibinfo{person}{Yinghao Zou}, \bibinfo{person}{Jiquan Long},
+  \bibinfo{person}{Yudong Cai}, \bibinfo{person}{Zhenxiang Li},
+  \bibinfo{person}{Zhifeng Zhang}, \bibinfo{person}{Yihua Mo},
+  \bibinfo{person}{Jun Gu}, \bibinfo{person}{Ruiyi Jiang}, \bibinfo{person}{Yi
+  Wei}, {and} \bibinfo{person}{Charles Xie}.} \bibinfo{year}{2021}\natexlab{}.
+\newblock \showarticletitle{Milvus: A Purpose-Built Vector Data Management
+  System}. In \bibinfo{booktitle}{\emph{Proceedings of the 2021 International
+  Conference on Management of Data}}. \bibinfo{publisher}{Association for
+  Computing Machinery}, \bibinfo{address}{New York, NY, USA},
+  \bibinfo{pages}{2614--2627}.
+\newblock
+\href{https://doi.org/10.1145/3448016.3457550}{doi:\nolinkurl{10.1145/3448016.3457550}}
+
+
+\bibitem[Wang et~al\mbox{.}(2024)]%
+        {starling}
+\bibfield{author}{\bibinfo{person}{Mengzhao Wang}, \bibinfo{person}{Weizhi Xu},
+  \bibinfo{person}{Xiaomeng Yi}, \bibinfo{person}{Songlin Wu},
+  \bibinfo{person}{Zhangyang Peng}, \bibinfo{person}{Xiangyu Ke},
+  \bibinfo{person}{Yunjun Gao}, \bibinfo{person}{Xiaoliang Xu},
+  \bibinfo{person}{Rentong Guo}, {and} \bibinfo{person}{Charles Xie}.}
+  \bibinfo{year}{2024}\natexlab{}.
+\newblock \showarticletitle{Starling: An {I/O}-Efficient Disk-Resident Graph
+  Index Framework for High-Dimensional Vector Similarity Search on Data
+  Segment}.
+\newblock \bibinfo{journal}{\emph{Proceedings of the ACM on Management of
+  Data}} \bibinfo{volume}{2}, \bibinfo{number}{1} (\bibinfo{year}{2024}),
+  \bibinfo{pages}{1--27}.
+\newblock
+\href{https://doi.org/10.1145/3639269}{doi:\nolinkurl{10.1145/3639269}}
+
+
+\bibitem[Xiang et~al\mbox{.}(2024)]%
+        {nomad}
+\bibfield{author}{\bibinfo{person}{Lingfeng Xiang}, \bibinfo{person}{Zhen Lin},
+  \bibinfo{person}{Weishu Deng}, \bibinfo{person}{Hui Lu}, \bibinfo{person}{Jia
+  Rao}, \bibinfo{person}{Yifan Yuan}, {and} \bibinfo{person}{Ren Wang}.}
+  \bibinfo{year}{2024}\natexlab{}.
+\newblock \showarticletitle{Nomad: Non-Exclusive Memory Tiering via
+  Transactional Page Migration}. In \bibinfo{booktitle}{\emph{18th USENIX
+  Symposium on Operating Systems Design and Implementation}}.
+  \bibinfo{publisher}{USENIX Association}, \bibinfo{address}{USA},
+  \bibinfo{pages}{19--35}.
+\newblock
+\urldef\tempurl%
+\url{https://www.usenix.org/conference/osdi24/presentation/xiang}
+\showURL{%
+\tempurl}
+
+
+\bibitem[Xu et~al\mbox{.}(2023)]%
+        {spfresh}
+\bibfield{author}{\bibinfo{person}{Yuming Xu}, \bibinfo{person}{Hengyu Liang},
+  \bibinfo{person}{Jin Li}, \bibinfo{person}{Shuotao Xu}, \bibinfo{person}{Qi
+  Chen}, \bibinfo{person}{Qianxi Zhang}, \bibinfo{person}{Cheng Li},
+  \bibinfo{person}{Ziyue Yang}, \bibinfo{person}{Fan Yang},
+  \bibinfo{person}{Yuqing Yang}, \bibinfo{person}{Peng Cheng}, {and}
+  \bibinfo{person}{Mao Yang}.} \bibinfo{year}{2023}\natexlab{}.
+\newblock \showarticletitle{{SPFresh}: Incremental In-Place Update for
+  Billion-Scale Vector Search}. In \bibinfo{booktitle}{\emph{Proceedings of the
+  29th ACM Symposium on Operating Systems Principles}}.
+  \bibinfo{publisher}{Association for Computing Machinery},
+  \bibinfo{address}{New York, NY, USA}, \bibinfo{pages}{545--561}.
+\newblock
+\href{https://doi.org/10.1145/3600006.3613166}{doi:\nolinkurl{10.1145/3600006.3613166}}
+
+
+\bibitem[Yang et~al\mbox{.}(2023)]%
+        {cxlssd}
+\bibfield{author}{\bibinfo{person}{Shao-Peng Yang}, \bibinfo{person}{Minjae
+  Kim}, \bibinfo{person}{Sanghyun Nam}, \bibinfo{person}{Juhyung Park},
+  \bibinfo{person}{Jin yong Choi}, \bibinfo{person}{Eyee~Hyun Nam},
+  \bibinfo{person}{Eunji Lee}, \bibinfo{person}{Sungjin Lee}, {and}
+  \bibinfo{person}{Bryan~S. Kim}.} \bibinfo{year}{2023}\natexlab{}.
+\newblock \showarticletitle{Overcoming the Memory Wall with {CXL}-Enabled
+  {SSD}s}. In \bibinfo{booktitle}{\emph{2023 USENIX Annual Technical
+  Conference}}. \bibinfo{publisher}{USENIX Association},
+  \bibinfo{address}{USA}, \bibinfo{pages}{601--617}.
+\newblock
+\urldef\tempurl%
+\url{https://www.usenix.org/conference/atc23/presentation/yang-shao-peng}
+\showURL{%
+\tempurl}
+
+
+\bibitem[Yu et~al\mbox{.}(2022)]%
+        {orca}
+\bibfield{author}{\bibinfo{person}{Gyeong-In Yu}, \bibinfo{person}{Joo~Seong
+  Jeong}, \bibinfo{person}{Geon-Woo Kim}, \bibinfo{person}{Soojeong Kim}, {and}
+  \bibinfo{person}{Byung-Gon Chun}.} \bibinfo{year}{2022}\natexlab{}.
+\newblock \showarticletitle{Orca: A Distributed Serving System for
+  {Transformer-Based} Generative Models}. In \bibinfo{booktitle}{\emph{16th
+  USENIX Symposium on Operating Systems Design and Implementation}}.
+  \bibinfo{publisher}{USENIX Association}, \bibinfo{address}{USA},
+  \bibinfo{pages}{521--538}.
+\newblock
+\urldef\tempurl%
+\url{https://www.usenix.org/conference/osdi22/presentation/yu}
+\showURL{%
+\tempurl}
+
+
+\bibitem[Zeng et~al\mbox{.}(2025)]%
+        {cmmh}
+\bibfield{author}{\bibinfo{person}{Jianping Zeng}, \bibinfo{person}{Shuyi Pei},
+  \bibinfo{person}{Da Zhang}, \bibinfo{person}{Yuchen Zhou},
+  \bibinfo{person}{Amir Beygi}, \bibinfo{person}{Xuebin Yao},
+  \bibinfo{person}{Ramdas Kachare}, \bibinfo{person}{Tong Zhang},
+  \bibinfo{person}{Zongwang Li}, \bibinfo{person}{Marie Nguyen},
+  \bibinfo{person}{Rekha Pitchumani}, \bibinfo{person}{Yang~Soek Ki}, {and}
+  \bibinfo{person}{Changhee Jung}.} \bibinfo{year}{2025}\natexlab{}.
+\newblock \showarticletitle{Performance Characterizations and Usage Guidelines
+  of Samsung {CMM-H}}.
+\newblock \bibinfo{journal}{\emph{IEEE Micro}} \bibinfo{volume}{45},
+  \bibinfo{number}{5} (\bibinfo{year}{2025}), \bibinfo{pages}{94--102}.
+\newblock
+\href{https://doi.org/10.1109/MM.2025.3591577}{doi:\nolinkurl{10.1109/MM.2025.3591577}}
+
+
+\bibitem[Zhang et~al\mbox{.}(2025)]%
+        {skybyte}
+\bibfield{author}{\bibinfo{person}{Haoyang Zhang}, \bibinfo{person}{Yuqi Xue},
+  \bibinfo{person}{Yirui~Eric Zhou}, \bibinfo{person}{Shaobo Li}, {and}
+  \bibinfo{person}{Jian Huang}.} \bibinfo{year}{2025}\natexlab{}.
+\newblock \showarticletitle{SkyByte: Architecting an Efficient Memory-Semantic
+  {CXL}-based {SSD} with {OS} and Hardware Co-design}. In
+  \bibinfo{booktitle}{\emph{2025 IEEE International Symposium on High
+  Performance Computer Architecture}}. \bibinfo{publisher}{IEEE},
+  \bibinfo{address}{Los Alamitos, CA, USA}, \bibinfo{pages}{577--593}.
+\newblock
+\href{https://doi.org/10.1109/HPCA61900.2025.00051}{doi:\nolinkurl{10.1109/HPCA61900.2025.00051}}
+
+
+\bibitem[Zhang et~al\mbox{.}(2026)]%
+        {fatrq}
+\bibfield{author}{\bibinfo{person}{Tianqi Zhang}, \bibinfo{person}{Flavio
+  Ponzina}, {and} \bibinfo{person}{Tajana Rosing}.}
+  \bibinfo{year}{2026}\natexlab{}.
+\newblock \bibinfo{title}{{FaTRQ}: Tiered Residual Quantization for {LLM}
+  Vector Search in Far-Memory-Aware {ANNS} Systems}.
+\newblock
+\showeprint[arxiv]{2601.09985}
+\href{https://doi.org/10.48550/arXiv.2601.09985}{doi:\nolinkurl{10.48550/arXiv.2601.09985}}
+
+
+\bibitem[Zhong et~al\mbox{.}(2024)]%
+        {memtierscxl}
+\bibfield{author}{\bibinfo{person}{Yuhong Zhong}, \bibinfo{person}{Daniel~S.
+  Berger}, \bibinfo{person}{Carl~A. Waldspurger}, \bibinfo{person}{Ryan Wee},
+  \bibinfo{person}{Ishwar Agarwal}, \bibinfo{person}{Rajat Agarwal},
+  \bibinfo{person}{Frank Hady}, \bibinfo{person}{Karthik Kumar},
+  \bibinfo{person}{Mark~D. Hill}, \bibinfo{person}{Mosharaf Chowdhury}, {and}
+  \bibinfo{person}{Asaf Cidon}.} \bibinfo{year}{2024}\natexlab{}.
+\newblock \showarticletitle{Managing Memory Tiers with {CXL} in Virtualized
+  Environments}. In \bibinfo{booktitle}{\emph{18th USENIX Symposium on
+  Operating Systems Design and Implementation}}. \bibinfo{publisher}{USENIX
+  Association}, \bibinfo{address}{USA}, \bibinfo{pages}{37--56}.
+\newblock
+\urldef\tempurl%
+\url{https://www.usenix.org/conference/osdi24/presentation/zhong-yuhong}
+\showURL{%
+\tempurl}
+
+
+\bibitem[Zhou et~al\mbox{.}(2024)]%
+        {neomem}
+\bibfield{author}{\bibinfo{person}{Zhe Zhou}, \bibinfo{person}{Yiqi Chen},
+  \bibinfo{person}{Tao Zhang}, \bibinfo{person}{Yang Wang},
+  \bibinfo{person}{Ran Shu}, \bibinfo{person}{Shuotao Xu},
+  \bibinfo{person}{Peng Cheng}, \bibinfo{person}{Lei Qu},
+  \bibinfo{person}{Yongqiang Xiong}, \bibinfo{person}{Jie Zhang}, {and}
+  \bibinfo{person}{Guangyu Sun}.} \bibinfo{year}{2024}\natexlab{}.
+\newblock \showarticletitle{{NeoMem}: Hardware/Software Co-Design for
+  {CXL}-Native Memory Tiering}. In \bibinfo{booktitle}{\emph{57th IEEE/ACM
+  International Symposium on Microarchitecture}}. \bibinfo{publisher}{IEEE},
+  \bibinfo{address}{Los Alamitos, CA, USA}, \bibinfo{pages}{1518--1531}.
+\newblock
+\href{https://doi.org/10.1109/MICRO61859.2024.00109}{doi:\nolinkurl{10.1109/MICRO61859.2024.00109}}
 
 
 \end{thebibliography}

@@ -1,6 +1,8 @@
 #pragma once
 #include "dram_window.hpp"
+#include "hide_fill.hpp"
 #include "placement.hpp"
+#include "pq_table.hpp"
 
 #include <algorithm>
 #include <cstdint>
@@ -21,9 +23,8 @@ struct Prefetch {
   size_t budget_per_query = 256 * 1024;
   size_t budget_left = 0;
   uint32_t neighbor_k = 64;
-  uint32_t lookahead_k = 0;  // miss-only: issued pages are pages we will score
-  uint32_t expand_batch = 1; // commit-and-issue this many expands' bundles at once
-  uint32_t issue_ahead = 1;  // how many committed batches to issue before scoring
+  uint32_t expand_batch = 4; // oneshot-fp only: commit this many expands, then issue
+  uint32_t issue_ahead = 1;  // oneshot-fp only: committed waves before drain/score
   bool pin_entry = true;
   size_t async_q_cap = 4096;
   uint32_t pipe_w = 8;  // P3 outstanding staging width
@@ -33,8 +34,12 @@ struct Prefetch {
   bool install_all_fetched = false;  // P3: install every fetched page (hit% / useful BW)
   bool oracle_dram = false;          // score vectors from host mmap (CXL-DRAM-capacity oracle)
   bool freeze_fills = false;         // timed oracle-window pass: no new SSD fills
-  bool score_page = true;            // score every resident ID on a fetched page
-  float min_issue_use = 0.f;         // skip bundle page if want/contained < this; 0=off
+  bool sync_hop = false;             // oneshot-fp only: score each expand before the next
+  bool extent_run = false;           // fill holes in this issue's tight page span
+  bool direct_install = false;       // READ_BATCH into window frames (skip bounce memcpy)
+  HideScore hide_score = HideScore::Window;  // default: install + from_win=100
+  bool pq_nav = false;
+  PqTable* pq = nullptr;
 
   struct Job {
     const uint8_t* ptr = nullptr;
@@ -117,6 +122,14 @@ struct Prefetch {
     if (!pin_entry || entry_pinned) return;
     size_t vb = (size_t)p.hdr->dim * p.hdr->vec_bytes;
     size_t nb = (size_t)p.hdr->R * 4;
+    if (p.diskann_layout && p.vec_stride) {
+      w.pin(p.ssd_base, p.entry(start_id), p.vec_stride);
+      uint32_t lim = 256;
+      for (size_t i = 0; i < entry_ids.size() && i < lim; ++i)
+        w.pin(p.ssd_base, p.entry(entry_ids[i]), p.vec_stride);
+      entry_pinned = true;
+      return;
+    }
     w.pin(p.ssd_base, p.vec(start_id), vb);
     w.pin(p.ssd_base, reinterpret_cast<const uint8_t*>(p.nbrs(start_id)), nb);
     uint32_t vec_pin_lim = 256;
@@ -138,15 +151,26 @@ struct Prefetch {
     for (uint32_t id : entry_ids) {
       if (budget_left < w.page_bytes) break;
       // P1/P2v2: cooperative single-threaded entry warm.
-      w.try_prefetch(p.ssd_base, p.vec(id), &budget_left, vb);
+      if (p.diskann_layout && p.vec_stride)
+        w.try_prefetch(p.ssd_base, p.entry(id), &budget_left, p.vec_stride);
+      else
+        w.try_prefetch(p.ssd_base, p.vec(id), &budget_left, vb);
     }
   }
 
   void on_expand(Placement& p, DramWindow& w, uint32_t node) {
     if (policy == PrefetchPolicy::P0) return;
-    const uint32_t* nbr_ptr = reinterpret_cast<const uint32_t*>(
-        w.lookup_or_promote(p.ssd_base, reinterpret_cast<const uint8_t*>(p.nbrs(node)),
-                            (size_t)p.hdr->R * 4));
+    const uint32_t* nbr_ptr = nullptr;
+    if (p.diskann_layout && p.vec_stride) {
+      const uint8_t* e =
+          w.lookup_or_promote(p.ssd_base, p.entry(node), p.vec_stride);
+      const size_t off = (size_t)p.hdr->dim * p.hdr->vec_bytes + 4;
+      nbr_ptr = reinterpret_cast<const uint32_t*>(e + off);
+    } else {
+      nbr_ptr = reinterpret_cast<const uint32_t*>(
+          w.lookup_or_promote(p.ssd_base, reinterpret_cast<const uint8_t*>(p.nbrs(node)),
+                              (size_t)p.hdr->R * 4));
+    }
     uint32_t lim = neighbor_k < p.hdr->R ? neighbor_k : p.hdr->R;
     uint32_t nbr_local[64];
     if (lim > 64) lim = 64;
@@ -156,7 +180,10 @@ struct Prefetch {
       uint32_t nb = nbr_local[i];
       if (nb >= p.hdr->n) continue;
       if (budget_left < w.page_bytes) return;
-      w.try_prefetch(p.ssd_base, p.vec(nb), &budget_left, vb);
+      if (p.diskann_layout && p.vec_stride)
+        w.try_prefetch(p.ssd_base, p.entry(nb), &budget_left, p.vec_stride);
+      else
+        w.try_prefetch(p.ssd_base, p.vec(nb), &budget_left, vb);
     }
   }
 
@@ -165,45 +192,11 @@ struct Prefetch {
     uint32_t id;
   };
 
-  // Prefetch neighbor vectors of the closest unexpanded candidates first.
-  // exclude_id: skip this node (e.g. current expand) so I/O targets future hops.
-  // P1/P2v2: synchronous try_prefetch (P2v2 uses this only for non-cur lookahead).
-  void prefetch_by_cand_distance(Placement& p, DramWindow& w,
+  // Cand-distance hop lookahead is no longer a Prefetch field (default was off).
+  void prefetch_by_cand_distance(Placement& /*p*/, DramWindow& /*w*/,
                                  const std::vector<CandDist>& unexp,
-                                 const std::unordered_set<uint32_t>& seen,
-                                 uint32_t exclude_id = UINT32_MAX) {
+                                 const std::unordered_set<uint32_t>& /*seen*/,
+                                 uint32_t /*exclude_id*/ = UINT32_MAX) {
     if (policy == PrefetchPolicy::P0 || unexp.empty()) return;
-    std::vector<CandDist> order;
-    order.reserve(unexp.size());
-    for (const auto& c : unexp) {
-      if (c.id == exclude_id) continue;
-      order.push_back(c);
-    }
-    if (order.empty()) return;
-    std::sort(order.begin(), order.end(),
-              [](const CandDist& a, const CandDist& b) { return a.dist < b.dist; });
-    uint32_t lim_nodes = lookahead_k < (uint32_t)order.size() ? lookahead_k
-                                                              : (uint32_t)order.size();
-    size_t vb = (size_t)p.hdr->dim * p.hdr->vec_bytes;
-    for (uint32_t i = 0; i < lim_nodes; ++i) {
-      if (budget_left < w.page_bytes) return;
-      uint32_t node = order[i].id;
-      uint32_t nbr_local[64];
-      uint32_t R = p.hdr->R;
-      if (R > 64) R = 64;
-      {
-        alignas(64) uint8_t nbuf[64 * 4];
-        w.copy_through(p.ssd_base, reinterpret_cast<const uint8_t*>(p.nbrs(node)),
-                       (size_t)R * 4, nbuf);
-        std::memcpy(nbr_local, nbuf, (size_t)R * 4);
-      }
-      uint32_t lim = neighbor_k < R ? neighbor_k : R;
-      for (uint32_t j = 0; j < lim; ++j) {
-        uint32_t nb = nbr_local[j];
-        if (nb >= p.hdr->n || seen.count(nb)) continue;
-        if (budget_left < w.page_bytes) return;
-        w.try_prefetch(p.ssd_base, p.vec(nb), &budget_left, vb);
-      }
-    }
   }
 };

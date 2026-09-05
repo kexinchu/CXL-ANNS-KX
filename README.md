@@ -2,6 +2,23 @@
 
 Research workspace for **graph ANNS on unified CXL–SSD memory** (ASPLOS-oriented).
 
+## Old layout snapshot
+
+The **pagebin + host-graph** stack (claim rows 50.25 / 85.8, `--graph-file`, 267 GiB expand-bundle, host `mbind` window) is frozen at:
+
+**`/root/chukexin/CXL-ANNS-KX_bak`**
+
+Do not restage or dual-stripe that tree’s 420 GiB pagebin. Reproduce old Oracle/hide only from `_bak`.
+
+This directory (`CXL-ANNS-KX`) is the **DiskANN packed-entry** migration:
+
+- One fixed-stride record per node: vector + neighbor IDs together (`STRIDE=2048` on a 32 GiB `/dev/dax0.0`)
+- Full 10M graph+vectors packed as version-2 DiskANN (`diskann_t2i_10m.bin`). Staging onto `/dev/dax0.0` is blocked on this machine: dense writes read back as `0xFF`. Oracle numbers in `docs/notes/2026-09-03-diskann-oracle.md` are MAP_POPULATE of that host file.
+- Host keeps only a **10k-node** navigation graph (`nav_10k.bin`)
+- Old `--graph-file` / `--nbr-bundle` / `--oracle-window` path remains if the image header is version 1
+
+See `docs/superpowers/specs/2026-09-03-cxl-dram-diskann-layout-design.md`.
+
 **One-line thesis:** Full-precision vectors often must live on flash; CXL–SSD gives a unified VA + hot window, but the hard problem is **residency / stall control** (not “mmap is nice”). Naive page caches, blind graph prefetch, and blindly increasing `efSearch` amplify SSD misses; semantic pin / bounded promote / iso-recall search control are the intended remedies.
 
 ## Repository layout

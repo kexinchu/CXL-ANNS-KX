@@ -15,3 +15,7 @@ block,PipeANN_cont,1,2000,100,53.83,0.9280,,PQ-on mode=4 lanes=8
 block,PipeANN_beam_DiskANN-style,1,2200,100,10.23,0.9220,97.721,PQ-on mode=0 W=4
 block_extra,PipeANN_pipe_T8,8,2000,100,336.40,0.9250,22.582,QD extra; not vs serving T=1
 block_extra,PipeANN_cont_T8,8,2000,100,282.61,0.9270,,QD extra lanes=16
+# --- 2026-08-30 hardware boot (6.18-rc5 nvmex+vmem_sw, true-cold) ---
+serving_hw,P0_demand,1,400,100,1.64,0.9440,610.471,nvmex+vmem_sw true-cold
+serving_hw,P3_packed,1,400,100,4.08,0.9440,244.274,nvmex+vmem_sw true-cold
+serving_hw,P3_pagebin,1,400,100,5.35,0.9320,186.204,nvmex+vmem_sw true-cold pagebin 420GiB

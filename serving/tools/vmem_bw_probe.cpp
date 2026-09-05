@@ -8,24 +8,35 @@
 #include <chrono>
 #include <vector>
 
-static uint64_t nvme_read_sectors() {
-  char path[128] = "/sys/block/nvme2n1/stat";
-  FILE* nf = fopen("/sys/class/vmem/vmem0/nvme_dev", "r");
-  if (nf) {
-    char dev[128] = {};
-    if (fscanf(nf, "%127s", dev) == 1) {
-      const char* base = strrchr(dev, '/');
-      base = base ? base + 1 : dev;
-      snprintf(path, sizeof(path), "/sys/block/%s/stat", base);
-    }
-    fclose(nf);
-  }
+static uint64_t one_dev_sectors(const char* name) {
+  char path[160];
+  snprintf(path, sizeof(path), "/sys/block/%s/stat", name);
   FILE* f = fopen(path, "r");
   if (!f) return 0;
   unsigned long long rio = 0, rm = 0, rsect = 0;
   if (fscanf(f, "%llu %llu %llu", &rio, &rm, &rsect) != 3) rsect = 0;
   fclose(f);
   return (uint64_t)rsect;
+}
+
+static uint64_t nvme_read_sectors() {
+  uint64_t total = 0;
+  FILE* nf = fopen("/sys/class/vmem/vmem0/nvme_dev", "r");
+  if (nf) {
+    char line[256] = {};
+    if (fgets(line, sizeof(line), nf)) {
+      char* tok = strtok(line, ", \t\n");
+      while (tok) {
+        const char* base = strrchr(tok, '/');
+        base = base ? base + 1 : tok;
+        if (base[0]) total += one_dev_sectors(base);
+        tok = strtok(nullptr, ", \t\n");
+      }
+    }
+    fclose(nf);
+    if (total) return total;
+  }
+  return one_dev_sectors("nvme2n1");
 }
 
 int main(int argc, char** argv) {

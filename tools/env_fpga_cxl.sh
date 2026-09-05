@@ -1,0 +1,8 @@
+export CXAN_CXL_SSD0=/dev/nvme1n1
+export CXAN_CXL_SSD1=/dev/nvme2n1
+export CXAN_FPGA_BDF=0000:15:00.0
+export CXAN_HOST_BYTES=2147483648
+export CXAN_DRAM_BACKEND=numa
+export CXAN_DRAM_BYTES=2147483648
+export CXAN_VMEM_DEV=/dev/vmem0
+export CXAN_REQUIRE_CXL_DRAM=0

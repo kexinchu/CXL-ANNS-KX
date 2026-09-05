@@ -1,0 +1,16 @@
+mapped vmem /dev/vmem0 off=429496729600 len=9600069632 fd=5 prefetch=1 cache_used=0
+graph-in-dram bytes=1280000000 src=CXAN_HOST_LAYOUT
+vec_stride=800 (packed=800) graph_in_dram=1
+mapped DRAM window anon+mbind node=1 len=1073741824 (fallback; not DAX)
+P3v2 softpin W=16 budget=67108864 install_top=4 fetch_top=0 page_group_b=0 install_all=0 threads=1 per_thread_window=1 cont_batch=0
+query_select nq=20/10000 shuffle_seed=42 flush_window=0 oneshot_fp=1 oracle_dram=0 oracle_window=0 pin_entry=1 host_used=1098156 host_cap=33554432 dram_bytes=1073741824 pin_cap=268435456
+hide_warm_entry ids=8192 pin_bytes=39751680/268435456
+policy=P3 budget=67108864 dram_bytes=1073741824 nq=20 beam=400 k=10 iters=0 oneshot_fp=1 pin_bytes=39751680/268435456
+wall_s=5.680 throughput_QPS=3.52
+cxl_ssd_to_dram_promote_GBps=0.248 promote_bytes=1405960192 target=12.0
+latency_ms mean=283.933 p50=283.112 p90=442.883 p99=594.303
+recall@10=0.9300
+cxl_dram_hit_pct=49.30
+metrics queries=20 dram_hits=166859 ssd_misses=171626 hit_pct=49.30 promote_bytes=1405960192 avg_promote_ns=25367.4 prefetch_pages=343252 evicts=0 dist=132631
+hide from_win=132631 from_bounce=0 from_win_pct=100.00 hide_prec=77.28 crit_wait_ns=4067626461 device_fill_ns=4115438839 overlap=0.72
+CSV,P3,67108864,1073741824,20,400,0,3.52,283.933,283.112,442.883,594.303,0.9300,49.30,166859,171626,100.00,77.28,4067626461,0.72

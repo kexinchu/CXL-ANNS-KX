@@ -50,18 +50,12 @@
       \node[anchor=west,font=\scriptsize] at (3.25,0.45) {bubble (idle queue)};
     \end{scope}
   \end{tikzpicture}}
-  \caption{Pipeline bubbles under three schedulers (schematic). The $y$-axis is
-  in-flight device reads; $D$ is the target queue depth needed to saturate flash
-  internal parallelism. (a) A single query is pointer-chasing, so it cannot fill
-  the pipe (measured device queue depth aqu-sz $\approx 9.8$, utilization
-  $0.53$--$0.92$, $14$--$42\%$ of loop iterations starved). (b) Interleaving a
-  static batch of independent queries raises occupancy (aqu-sz $\approx 13.8$,
-  $+44\%$ QPS) but a per-hop/group barrier drains the tail. (c) Continuous
-  fetch-level batching keeps the device near $D$ (aqu-sz $\approx 14.4$ single
-  core; $319$ at 16 threads) at identical recall ($86.5\%$). Single-core numbers:
-  984{,}133$\times$1024-d embeddings, PipeANN disk index, Dell PM1733a NVMe.}
-  \Description{Three stacked timelines of in-flight device I/O versus time for a
-  single-query pipeline, a static query batch, and continuous fetch-level
-  batching, with idle queue capacity shaded as bubbles.}
+  \caption{Pipeline bubbles under three schedulers (schematic).
+    The $y$-axis is in-flight device reads; $D$ is the target queue depth needed to saturate flash internal parallelism.
+    (a) A single query is pointer-chasing, so it cannot fill the pipe (measured device queue depth aqu-sz $\approx 9.8$, utilization $0.53$--$0.92$, $14$--$42\%$ of loop iterations starved).
+    (b) Interleaving a static batch of independent queries raises occupancy (aqu-sz $\approx 13.8$, $+44\%$ QPS) but a per-hop/group barrier drains the tail.
+    (c) Continuous fetch-level batching keeps the device near $D$ (aqu-sz $\approx 14.4$ single core; $319$ at 16 threads) at identical recall ($86.5\%$).
+    Single-core numbers: 984{,}133$\times$1024-d embeddings, PipeANN disk index, Dell PM1733a NVMe.}
+  \Description{Three stacked timelines of in-flight device I/O versus time for a single-query pipeline, a static query batch, and continuous fetch-level batching, with idle queue capacity shaded as bubbles.}
   \label{fig:pipeline-bubbles}
 \end{figure}

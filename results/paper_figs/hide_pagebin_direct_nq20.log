@@ -1,0 +1,9 @@
+mapped vmem /dev/vmem0 off=450971566080 len=9600069632 fd=5 prefetch=1 cache_used=0
+graph-file /mnt/disk0/chukexin_motivation/serving_t2i_10m/pagebin_graph.bin
+graph-in-dram bytes=1280000000 src=graph-file
+vec_stride=800 (packed=800) graph_in_dram=1
+mapped DRAM window anon+mbind node=1 len=1073741824 (fallback; not DAX)
+P3v2 softpin W=16 budget=67108864 install_top=4 fetch_top=0 page_group_b=0 install_all=0 threads=1 per_thread_window=1 cont_batch=0
+loaded id-map new→old n=10000000 from /mnt/disk0/chukexin_motivation/serving_t2i_10m/new_to_old_pagebin.bin
+query_select nq=20/10000 shuffle_seed=42 flush_window=0 oneshot_fp=1 oracle_dram=0 oracle_window=0 pin_entry=1 host_used=1098156 host_cap=33554432 dram_bytes=1073741824 pin_cap=268435456
+hide_warm_entry ids=8192 pin_bytes=6553600/268435456

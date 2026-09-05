@@ -1,0 +1,44 @@
+\begin{tikzpicture}[
+  x=1cm,y=1cm,
+  box/.style={draw=black!70, rounded corners=1.5pt, thick,
+              align=center, inner sep=3pt, font=\scriptsize},
+  info/.style={box, fill=blue!8},
+  commit/.style={box, draw=red!70!black, fill=red!8, very thick},
+  payload/.style={box, fill=violet!9, draw=violet!70!black},
+  resident/.style={box, fill=green!10, draw=green!55!black},
+  flow/.style={->, thick, draw=black!70},
+  data/.style={->, thick, draw=violet!70!black},
+  label/.style={font=\scriptsize\bfseries, text=black!65}
+]
+  \node[label] at (1.15,4.25) {WHEN};
+  \node[label] at (4.15,4.25) {WHAT};
+  \node[label] at (7.15,4.25) {HOW};
+
+  \node[info,text width=2.05cm] (pq) at (1.15,3.35)
+    {host graph + PQ\\approximate navigation};
+  \node[commit,text width=1.65cm] (commit) at (3.65,3.35)
+    {COMMIT\\$C_L$};
+  \node[payload,text width=2.15cm] (select) at (6.35,3.35)
+    {missing unique pages\\of FP vectors in $C_L$};
+  \draw[flow] (pq)--(commit);
+  \draw[flow] (commit)--(select);
+  \node[font=\tiny,text=black!60,align=center] at (1.15,2.68)
+    {navigation: 0 FP Flash reads};
+
+  \node[payload,text width=2.15cm] (flash) at (1.25,1.55)
+    {Flash SSDs\\full-precision vectors};
+  \node[info,text width=2.05cm] (shape) at (4.15,1.55)
+    {co-use placement\\dedup + dense runs};
+  \node[resident,text width=2.10cm] (window) at (7.05,1.55)
+    {CXL page cache\\$\rightarrow$ host window};
+  \node[resident,text width=1.60cm] (rerank) at (7.05,0.25)
+    {FP rerank\\$\rightarrow$ top-$k$};
+
+  \draw[data] (select.south) -- ++(0,-0.38) -| (shape.north);
+  \draw[data] (flash)--(shape);
+  \draw[data] (shape)--(window);
+  \draw[flow] (window)--(rerank);
+
+  \node[font=\tiny,text=black!60,align=center] at (4.15,0.62)
+    {maximize scored vector slots per page};
+\end{tikzpicture}

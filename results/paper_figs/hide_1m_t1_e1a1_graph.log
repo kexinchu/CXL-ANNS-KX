@@ -1,0 +1,26 @@
+==== T=1 e1a1_graph nq=20 2026-09-04T00:48:47+00:00 ====
+cache_used=419430400 evictions=730521
+mapped vmem /dev/vmem0 off=966367641600 len=2048917504 fd=5 prefetch=1 cache_used=419430400
+nav-graph /root/chukexin/CXL-ANNS-KX/results/paper_figs/nav_1m_10k.bin n0=10000 dim=200 R=32
+diskann graph-file /mnt/disk0/chukexin_motivation/serving_t2i_10m/diskann_t2i_1m.graph.bin bytes=128000000 (host N(u), no SSD ID faults)
+vec_stride=2048 (packed=800) graph_in_dram=1 diskann=1
+mapped HOST DRAM anon+mbind node=1 len=2147483648 (fallback; not DAX)
+P3v2 softpin W=16 budget=67108864 install_top=4 fetch_top=0 page_group_b=0 install_all=0 threads=1 per_thread_window=0 cont_batch=0 score_page=0 expand_batch=1 issue_ahead=1 min_issue_use=0.00 spec_beam_nbrs=0 page_pick=0
+loaded id-map new→old n=1000000 (file=40000000) from /mnt/disk0/chukexin_motivation/serving_t2i_10m/new_to_old_pagebin.bin
+query_select nq=20/10000 shuffle_seed=42 flush_window=0 oneshot_fp=1 oracle_dram=0 oracle_window=0 pin_entry=1 host_used=1098156 host_cap=33554432 host_bytes=2147483648 dram_bytes=2147483648 pin_cap=536870912
+roles host_bytes=2147483648 require_cxl_dram=0 cpu_affinity=1 per_thread_window=0 cxl_dram_dev=-
+hide_warm_entry ids=8192 pin_bytes=16777216/536870912
+policy=P3 budget=67108864 dram_bytes=2147483648 nq=20 beam=400 k=10 iters=0 oneshot_fp=1 pin_bytes=16777216/536870912
+wall_s=0.213 throughput_QPS=94.05
+cxl_ssd_to_dram_promote_GBps=1.515 promote_bytes=322174976 target=12.0
+latency_ms mean=10.630 p50=10.434 p90=14.264 p99=19.423
+recall@10=0.0350
+cxl_dram_hit_pct=17.24
+metrics queries=20 dram_hits=8192 ssd_misses=39336 hit_pct=17.24 promote_bytes=322174976 avg_promote_ns=1958.2 prefetch_pages=78640 evicts=0 dist=48205
+hide from_win=48189 from_cxl_dram=0 from_bounce=16 from_win_pct=99.97 from_cxl_dram_pct=0.00 hide_prec=122.56 crit_wait_ns=8974611 device_fill_ns=17600471 overlap=0.08
+prefetch_use issued=35224 used=35224 page_use_pct=100.00 look_issued=0 look_used=0 look_use_pct=0.00 miss_use_pct=100.00 byte_use_pct=26.72 slot_use_pct=62.21 issue_use_pct=54.54 slots_on_pages=70448 slots_scored=43829 issue_slots=70888 issue_want=38661 scored_vec_B=38548000 nvme_read_B=1998848
+issue_use_hist=[0,.2):0 [.2,.4):0 [.4,.6):32227 [.6,.8):0 [.8,1]:3217
+spec_beam pages=0 ids=0
+nvme_real_GBps=0.009 occ_vs_rnd_peak=0.6% peak_GBps=1.560 page_use=100.00 slot_use=62.21 issue_use=54.54
+CSV,P3,67108864,2147483648,20,400,0,94.05,10.630,10.434,14.264,19.423,0.0350,17.24,8192,39336,99.97,122.56,8974611,0.08
+cache_used_after=419430400 evictions_after=731009

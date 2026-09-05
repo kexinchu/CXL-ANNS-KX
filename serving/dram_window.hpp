@@ -4,6 +4,7 @@
 inline thread_local Metrics* tls_metrics = nullptr;
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <cstring>
 #include <unordered_map>
@@ -30,6 +31,7 @@ struct DramWindow {
   std::unordered_map<uint64_t, size_t> map;  // page_off -> frame idx
   std::vector<uint64_t> frame_key;            // key or UINT64_MAX if free
   std::vector<uint8_t> frame_pinned;          // 1 = never evict (hard pin)
+  std::vector<uint8_t> frame_filling;         // 1 = READ_BATCH dest, not yet mapped
   std::vector<uint16_t> frame_soft_ttl;       // >0 = soft-pin hops remaining
   std::vector<size_t> soft_pin_frames;        // frames with soft_ttl > 0 (for O(#pins) tick)
   std::unordered_set<uint64_t> pinned_pages;
@@ -51,6 +53,7 @@ struct DramWindow {
     map.clear();
     frame_key.assign(n_frames, UINT64_MAX);
     frame_pinned.assign(n_frames, 0);
+    frame_filling.assign(n_frames, 0);
     frame_soft_ttl.assign(n_frames, 0);
     soft_pin_frames.clear();
     soft_pin_frames.reserve(4096);
@@ -76,7 +79,7 @@ struct DramWindow {
   void flush() {
     std::lock_guard<std::mutex> g(mu);
     for (size_t i = 0; i < n_frames; ++i) {
-      if (frame_pinned[i]) continue;
+      if (frame_pinned[i] || frame_filling[i]) continue;
       uint64_t key = frame_key[i];
       if (key != UINT64_MAX) map.erase(key);
       frame_key[i] = UINT64_MAX;
@@ -95,6 +98,7 @@ struct DramWindow {
     map.clear();
     std::fill(frame_key.begin(), frame_key.end(), UINT64_MAX);
     std::fill(frame_pinned.begin(), frame_pinned.end(), 0);
+    std::fill(frame_filling.begin(), frame_filling.end(), 0);
     std::fill(frame_soft_ttl.begin(), frame_soft_ttl.end(), 0);
     soft_pin_frames.clear();
     pinned_pages.clear();
@@ -161,7 +165,7 @@ struct DramWindow {
     for (size_t t = 0; t < n_frames; ++t) {
       size_t i = clock_hand % n_frames;
       clock_hand++;
-      if (frame_pinned[i]) continue;
+      if (frame_pinned[i] || frame_filling[i]) continue;
       if (frame_soft_ttl[i] > 0) continue;
       uint64_t key = frame_key[i];
       if (key == UINT64_MAX) return i;
@@ -175,7 +179,7 @@ struct DramWindow {
     for (size_t t = 0; t < n_frames; ++t) {
       size_t i = clock_hand % n_frames;
       clock_hand++;
-      if (frame_pinned[i]) continue;
+      if (frame_pinned[i] || frame_filling[i]) continue;
       uint64_t key = frame_key[i];
       if (key == UINT64_MAX) return i;
       map.erase(key);
@@ -190,6 +194,49 @@ struct DramWindow {
   // Clock alloc: next free frame, or evict. Do not scan all 256k frames
   // looking for UINT64_MAX — that made every full-window install O(n_frames).
   size_t alloc_frame_unlocked() { return evict_frame_unlocked(); }
+
+  // Reserve a window frame as the READ_BATCH destination. Not resident until commit_fill.
+  bool reserve_fill(uint64_t page_off, uint8_t** dest, size_t* frame_out) {
+    std::lock_guard<std::mutex> g(mu);
+    auto it = map.find(page_off);
+    if (it != map.end()) {
+      if (dest) *dest = nullptr;
+      if (frame_out) *frame_out = SIZE_MAX;
+      return false;
+    }
+    size_t fr = alloc_frame_unlocked();
+    frame_filling[fr] = 1;
+    frame_key[fr] = page_off;
+    uint8_t* d = arena + fr * page_bytes;
+    d[0] = 0;  // prefault so ioctl copy_to_user cannot nest under vmem cache_lock
+    if (dest) *dest = d;
+    if (frame_out) *frame_out = fr;
+    return true;
+  }
+
+  void commit_fill(uint64_t page_off, size_t fr, uint16_t soft_ttl = 0) {
+    std::lock_guard<std::mutex> g(mu);
+    if (fr >= n_frames || !frame_filling[fr]) return;
+    frame_filling[fr] = 0;
+    if (map.count(page_off)) {
+      frame_key[fr] = UINT64_MAX;
+      return;
+    }
+    frame_key[fr] = page_off;
+    map[page_off] = fr;
+    set_soft_ttl_unlocked(fr, soft_ttl);
+    if (met()) {
+      met()->ssd_misses++;
+      met()->promote_bytes += page_bytes;
+    }
+  }
+
+  void abort_fill(size_t fr) {
+    std::lock_guard<std::mutex> g(mu);
+    if (fr >= n_frames || !frame_filling[fr]) return;
+    frame_filling[fr] = 0;
+    frame_key[fr] = UINT64_MAX;
+  }
 
   size_t promote_page_unlocked(const uint8_t* ssd_base, uint64_t page_off, bool pin) {
     auto it = map.find(page_off);
@@ -270,6 +317,20 @@ struct DramWindow {
       if (!map.count(p)) return false;
     }
     return true;
+  }
+
+  // Pointer into a resident single page. Null if missing or the range spans pages.
+  const uint8_t* try_ptr_resident(const uint8_t* ssd_base, const uint8_t* ssd, size_t n) {
+    std::lock_guard<std::mutex> g(mu);
+    if (n == 0) return arena;
+    uint64_t off = (uint64_t)(ssd - ssd_base);
+    uint64_t end = off + n;
+    uint64_t first = off & ~(uint64_t)(page_bytes - 1);
+    uint64_t last = (end - 1) & ~(uint64_t)(page_bytes - 1);
+    if (first != last) return nullptr;
+    auto it = map.find(first);
+    if (it == map.end()) return nullptr;
+    return arena + it->second * page_bytes + (size_t)(off - first);
   }
 
   // One lock: copy if every overlapping page is already in the window. No NAND.

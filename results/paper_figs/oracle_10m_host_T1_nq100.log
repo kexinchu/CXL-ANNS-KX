@@ -1,0 +1,22 @@
+populated host layout /mnt/disk0/chukexin_motivation/serving_t2i_10m/diskann_t2i_10m.bin len=20480004096 (DRAM oracle)
+nav-graph /root/chukexin/CXL-ANNS-KX/results/paper_figs/nav_10k.bin n0=10000 dim=200 R=32
+diskann graph-file /mnt/disk0/chukexin_motivation/serving_t2i_10m/diskann_t2i_10m.graph.bin bytes=1280000000 (host N(u), no SSD ID faults)
+vec_stride=2048 (packed=800) graph_in_dram=1 diskann=1
+oracle DiskANN scores from corpus mmap (/mnt/disk0/chukexin_motivation/serving_t2i_10m/diskann_t2i_10m.bin); dummy window 67108864
+loaded id-map new→old n=10000000 (file=40000000) from /mnt/disk0/chukexin_motivation/serving_t2i_10m/new_to_old_pagebin.bin
+query_select nq=100/10000 shuffle_seed=42 query_ids=- first=9377 last=5700 flush_window=0 oneshot_fp=1 oracle_dram=1 oracle_window=0 pin_entry=1 host_used=1165356 host_cap=33554432 host_bytes=2147483648 dram_bytes=67108864 pin_cap=4194304
+roles host_bytes=2147483648 require_cxl_dram=0 cpu_affinity=1 per_thread_window=0 cxl_dram_dev=-
+policy=P0 budget=67108864 dram_bytes=67108864 nq=100 beam=400 k=10 iters=0 oneshot_fp=1 pin_bytes=528384/4194304
+wall_s=0.763 throughput_QPS=131.00
+cxl_ssd_to_dram_promote_GBps=0.001 promote_bytes=528384 target=12.0
+latency_ms mean=7.632 p50=7.360 p90=10.163 p99=14.970
+recall@10=0.9350
+cxl_dram_hit_pct=49.81
+metrics queries=100 dram_hits=128 ssd_misses=129 hit_pct=49.81 promote_bytes=528384 avg_promote_ns=4223.0 prefetch_pages=0 evicts=0 dist=623037
+hide from_win=623037 from_cxl_dram=623037 from_bounce=0 from_cache=0 from_win_pct=100.00 from_cxl_dram_pct=100.00 hide_prec=0.00 crit_wait_ns=0 device_fill_ns=0 overlap=0.00
+prefetch_use issued=0 used=0 page_use_pct=0.00 look_issued=0 look_used=0 look_use_pct=0.00 miss_use_pct=0.00 byte_use_pct=0.00 slot_use_pct=0.00 issue_use_pct=0.00 slots_on_pages=0 slots_scored=0 issue_slots=0 issue_want=0 scored_vec_B=0 nvme_read_B=0
+issue_use_hist=[0,.2):0 [.2,.4):0 [.4,.6):0 [.6,.8):0 [.8,1]:0
+spec_beam pages=0 ids=0
+page_occ mean=0.00% pages=0 0%=0.00 50%=0.00 100%=0.00 (n0=0 n50=0 n100=0 slots=0 used=0)
+nvme_real_GBps=0.000 occ_vs_rnd_peak=0.0% peak_GBps=1.560 page_use=0.00 slot_use=0.00 issue_use=0.00
+CSV,P0,67108864,67108864,100,400,0,131.00,7.632,7.360,10.163,14.970,0.9350,49.81,128,129,100.00,0.00,0,0.00

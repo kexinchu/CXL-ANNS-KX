@@ -1,10 +1,18 @@
 #!/usr/bin/env bash
+# 恢复的是软件代理，不是 CXL-DRAM。
+# This restores the software memory-semantic proxy (host cache + NVMe), NOT CXL-DRAM.
+# /dev/vmem0 = vmem_sw (host RAM map + cache + NVMe backing); not FPGA BAR / vmem.ko.
 # Restore software CXL-SSD (/dev/vmem0) without switching kernels.
 # Rebuilds vmem_sw for the *running* kernel if vermagic mismatches.
 #
 # Identity (Dell CD8P @ d8): serial 7EU0A01P0XK1, 1920383410176 bytes.
 # Namespace name may drift (was nvme3n1 / nvme3n2; currently nvme1n1).
 # Serving 25M layout requires ram_size_gib=28 (stripe map).
+#
+# WARNING: locked T2I-10M pagebin (CXAN1 @ 420 GiB) lives on d9 SN 2F50A1360XK3.
+# This script binds d8 and will NOT see that image. For pagebin Oracle/hide use
+# tools/run_oracle_host_window.sh (single-disk vmem_sw on d9). Never dual-stripe
+# onto the live pagebin.
 set -euo pipefail
 
 SRC_KO_DIR=${SRC_KO_DIR:-/root/chukexin/mem2nvme/host}

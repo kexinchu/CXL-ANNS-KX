@@ -1,0 +1,24 @@
+mapped vmem /dev/vmem0 off=450971566080 len=9600069632 fd=5 prefetch=1 cache_used=0
+nbr-bundle off=9600069632 stride=28672 bytes=267.03 GiB score_page=0 look_k=0
+graph-file /mnt/disk0/chukexin_motivation/serving_t2i_10m/pagebin_graph.bin
+graph-in-dram bytes=1280000000 src=graph-file
+vec_stride=800 (packed=800) graph_in_dram=1
+mapped DRAM window anon+mbind node=1 len=536870912 (fallback; not DAX)
+P3v2 softpin W=16 budget=67108864 install_top=4 fetch_top=0 page_group_b=0 install_all=0 threads=2 per_thread_window=1 cont_batch=0 score_page=0 expand_batch=8 issue_ahead=2
+loaded id-map new→old n=10000000 from /mnt/disk0/chukexin_motivation/serving_t2i_10m/new_to_old_pagebin.bin
+query_select nq=100/10000 shuffle_seed=42 flush_window=0 oneshot_fp=1 oracle_dram=0 oracle_window=0 pin_entry=1 host_used=1165356 host_cap=33554432 dram_bytes=536870912 pin_cap=268435456
+hide_warm_entry ids=8192 pin_bytes=6553600/268435456
+mapped DRAM window anon+mbind node=1 len=536870912 (fallback; not DAX)
+mapped DRAM window anon+mbind node=1 len=536870912 (fallback; not DAX)
+per-thread windows=2 dram_bytes=536870912 warm_before_timed=1
+policy=P3 budget=67108864 dram_bytes=536870912 nq=100 beam=400 k=10 iters=0 oneshot_fp=1 pin_bytes=6553600/268435456
+wall_s=1.566 throughput_QPS=63.85
+cxl_ssd_to_dram_promote_GBps=1.569 promote_bytes=2458083328 target=12.0
+latency_ms mean=23.489 p50=22.818 p90=29.696 p99=41.563
+recall@10=0.9280
+cxl_dram_hit_pct=13.33
+metrics queries=100 dram_hits=46178 ssd_misses=300316 hit_pct=13.33 promote_bytes=2458083328 avg_promote_ns=1870.6 prefetch_pages=599604 evicts=36341 dist=893181
+hide from_win=893181 from_bounce=0 from_win_pct=100.00 hide_prec=297.92 crit_wait_ns=167599309 device_fill_ns=179867574 overlap=0.11
+prefetch_use issued=290331 used=279958 page_use_pct=96.43 look_issued=0 look_used=0 look_use_pct=0.00 miss_use_pct=96.43 byte_use_pct=60.08 slot_use_pct=100.00 slots_on_pages=652064 slots_scored=652063 scored_vec_B=714464800 nvme_read_B=1171886080
+nvme_real_GBps=0.748 occ_vs_rnd_peak=48.0% peak_GBps=1.560 page_use=96.43 slot_use=100.00
+CSV,P3,67108864,536870912,100,400,0,63.85,23.489,22.818,29.696,41.563,0.9280,13.33,46178,300316,100.00,297.92,167599309,0.11

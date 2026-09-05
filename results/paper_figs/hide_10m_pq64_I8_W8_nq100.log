@@ -1,0 +1,14 @@
+==== hide 10M PQ-64 I=8 W=8 nq=100 2026-09-04T13:24:40+00:00 ====
+cache_used=104857600 evictions=37878423
+mapped vmem /dev/vmem0 off=1181116006400 len=20480004096 fd=5 prefetch=1 cache_used=104857600
+nav-graph /root/chukexin/CXL-ANNS-KX/results/paper_figs/nav_10k.bin n0=10000 dim=200 R=32
+id-slot-map /mnt/disk0/chukexin_motivation/serving_t2i_10m/id_to_slot_10m_extent.bin n=10000000 (physical neighbor pairing)
+diskann graph-file /mnt/disk0/chukexin_motivation/serving_t2i_10m/diskann_t2i_10m.graph.bin bytes=1280000000 (host N(u), no SSD ID faults)
+vec_stride=2048 (packed=800) graph_in_dram=1 diskann=1
+mapped HOST DRAM anon+mbind node=1 len=2147483648 (fallback; not DAX)
+P3v2 softpin W=16 budget=67108864 install_top=4 fetch_top=0 page_group_b=0 install_all=0 threads=8 inflight=8 per_thread_window=0 cont_batch=1 expand_batch=8 issue_ahead=1 slot_map=1 sync_hop=0 extent_run=1
+loaded id-map new→old n=10000000 (file=40000000) from /mnt/disk0/chukexin_motivation/serving_t2i_10m/new_to_old_pagebin.bin
+pq-nav pivots=/mnt/disk0/chukexin_motivation/pipeann_t2i10m/idx_t2i64_pq_pivots.bin codes=/mnt/disk0/chukexin_motivation/pipeann_t2i10m/idx_t2i64_pq_compressed.bin n=10000000 dim=200 chunks=64 permuted=1
+query_select nq=100/10000 shuffle_seed=42 query_ids=- first=9377 last=5700 flush_window=0 oneshot_fp=0 oracle_dram=0 oracle_window=0 pin_entry=1 host_used=1165356 host_cap=33554432 host_bytes=2147483648 dram_bytes=2147483648 pin_cap=67108864
+roles host_bytes=2147483648 require_cxl_dram=0 cpu_affinity=1 per_thread_window=0 cxl_dram_dev=-
+cont_batch_sched=1 pq_endbatch=1 inflight=8 workers=8 interleave=1

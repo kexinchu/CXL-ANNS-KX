@@ -17,7 +17,12 @@ struct Metrics {
   uint64_t promote_used = 0;
   uint64_t hotset_pins = 0;
   uint64_t score_from_window = 0;
+  uint64_t score_from_cxl_dram = 0;
   uint64_t score_from_bounce = 0;
+  uint64_t score_from_cache = 0;  // vmem software cache ioctl, no window install
+  // Set only when the scoring window is the vmem BAR (/dev/vmem*).
+  // Never for anon+mbind HOST DRAM or /dev/dax*.
+  bool window_is_cxl_dram = false;
   uint64_t fetched_pages = 0;
   uint64_t crit_wait_ns = 0;
   uint64_t device_fill_ns = 0;
@@ -36,13 +41,28 @@ struct Metrics {
   uint64_t pf_issue_want_slots = 0;
   // Issued-page u=want/contained: [0,.2) [.2,.4) [.4,.6) [.6,.8) [.8,1]
   uint64_t issue_use_hist[5] = {};
+  uint64_t spec_issue_pages = 0;
+  uint64_t spec_uniq_ids = 0;
+  // Issued 4K page occupancy this run: 2-in-4K → used 0/1/2 = 0%/50%/100%.
+  uint64_t page_occ_n0 = 0, page_occ_n50 = 0, page_occ_n100 = 0;
+  uint64_t page_occ_pages = 0;
+  uint64_t page_occ_used_slots = 0;
+  uint64_t page_occ_slots = 0;
 
-  void reset() { *this = Metrics{}; }
+  void reset() {
+    const bool keep_cxl = window_is_cxl_dram;
+    *this = Metrics{};
+    window_is_cxl_dram = keep_cxl;
+  }
 
   void note_promote_pages(uint64_t n) { promote_pages += n; }
   void note_promote_used(uint64_t n) { promote_used += n; }
-  void note_score_from_window(uint64_t n = 1) { score_from_window += n; }
+  void note_score_from_window(uint64_t n = 1) {
+    score_from_window += n;
+    if (window_is_cxl_dram) score_from_cxl_dram += n;
+  }
   void note_score_from_bounce(uint64_t n = 1) { score_from_bounce += n; }
+  void note_score_from_cache(uint64_t n = 1) { score_from_cache += n; }
   void note_fetched_pages(uint64_t n) { fetched_pages += n; }
 
   void note_pf_issue(const std::vector<uint64_t>& pages, bool lookahead) {
@@ -58,6 +78,18 @@ struct Metrics {
   void note_pf_score_vec(uint64_t vec_bytes) { pf_scored_vec_bytes += vec_bytes; }
   void note_pf_slot_id(uint32_t id) { pf_ids_on_issued.insert(id); }
   void note_pf_scored_id(uint32_t id) { pf_ids_scored.insert(id); }
+  void note_page_occ_slots(uint32_t used, uint32_t slots) {
+    if (!slots) return;
+    page_occ_pages++;
+    page_occ_slots += slots;
+    page_occ_used_slots += used < slots ? used : slots;
+    if (used == 0) page_occ_n0++;
+    else if (used >= slots) page_occ_n100++;
+    else page_occ_n50++;
+  }
+  double page_occ_pct() const {
+    return page_occ_slots ? 100.0 * (double)page_occ_used_slots / (double)page_occ_slots : 0.0;
+  }
 
   uint64_t prefetch_slots_used() const {
     uint64_t n = 0;
@@ -110,6 +142,10 @@ struct Metrics {
     uint64_t tot = score_from_window + score_from_bounce;
     return tot ? 100.0 * (double)score_from_window / (double)tot : 0.0;
   }
+  double score_from_cxl_dram_pct() const {
+    uint64_t tot = score_from_window + score_from_bounce;
+    return tot ? 100.0 * (double)score_from_cxl_dram / (double)tot : 0.0;
+  }
   // Hide precision: scores whose bytes were already in the window / pages fetched.
   double hide_precision_pct() const {
     return fetched_pages ? 100.0 * (double)score_from_window / (double)fetched_pages : 0.0;
@@ -131,7 +167,10 @@ struct Metrics {
     promote_used += o.promote_used;
     hotset_pins += o.hotset_pins;
     score_from_window += o.score_from_window;
+    score_from_cxl_dram += o.score_from_cxl_dram;
     score_from_bounce += o.score_from_bounce;
+    score_from_cache += o.score_from_cache;
+    window_is_cxl_dram = window_is_cxl_dram || o.window_is_cxl_dram;
     fetched_pages += o.fetched_pages;
     crit_wait_ns += o.crit_wait_ns;
     device_fill_ns += o.device_fill_ns;
@@ -146,6 +185,14 @@ struct Metrics {
     pf_issue_slots += o.pf_issue_slots;
     pf_issue_want_slots += o.pf_issue_want_slots;
     for (int i = 0; i < 5; ++i) issue_use_hist[i] += o.issue_use_hist[i];
+    spec_issue_pages += o.spec_issue_pages;
+    spec_uniq_ids += o.spec_uniq_ids;
+    page_occ_n0 += o.page_occ_n0;
+    page_occ_n50 += o.page_occ_n50;
+    page_occ_n100 += o.page_occ_n100;
+    page_occ_pages += o.page_occ_pages;
+    page_occ_used_slots += o.page_occ_used_slots;
+    page_occ_slots += o.page_occ_slots;
   }
 
   void print(FILE* f = stdout) const {
@@ -164,10 +211,12 @@ struct Metrics {
             (unsigned long long)prefetch_pages, (unsigned long long)evicts,
             (unsigned long long)distance_comps);
     fprintf(f,
-            "hide from_win=%llu from_bounce=%llu from_win_pct=%.2f hide_prec=%.2f "
+            "hide from_win=%llu from_cxl_dram=%llu from_bounce=%llu from_cache=%llu "
+            "from_win_pct=%.2f from_cxl_dram_pct=%.2f hide_prec=%.2f "
             "crit_wait_ns=%llu device_fill_ns=%llu overlap=%.2f\n",
-            (unsigned long long)score_from_window, (unsigned long long)score_from_bounce,
-            score_from_window_pct(), hide_precision_pct(),
+            (unsigned long long)score_from_window, (unsigned long long)score_from_cxl_dram,
+            (unsigned long long)score_from_bounce, (unsigned long long)score_from_cache,
+            score_from_window_pct(), score_from_cxl_dram_pct(), hide_precision_pct(),
             (unsigned long long)crit_wait_ns, (unsigned long long)device_fill_ns,
             overlap_ratio());
     const uint64_t lu = prefetch_look_used();
@@ -188,5 +237,17 @@ struct Metrics {
             (unsigned long long)issue_use_hist[0], (unsigned long long)issue_use_hist[1],
             (unsigned long long)issue_use_hist[2], (unsigned long long)issue_use_hist[3],
             (unsigned long long)issue_use_hist[4]);
+    fprintf(f, "spec_beam pages=%llu ids=%llu\n",
+            (unsigned long long)spec_issue_pages, (unsigned long long)spec_uniq_ids);
+    const double p0 = page_occ_pages ? 100.0 * (double)page_occ_n0 / (double)page_occ_pages : 0;
+    const double p50 = page_occ_pages ? 100.0 * (double)page_occ_n50 / (double)page_occ_pages : 0;
+    const double p100 = page_occ_pages ? 100.0 * (double)page_occ_n100 / (double)page_occ_pages : 0;
+    fprintf(f,
+            "page_occ mean=%.2f%% pages=%llu 0%%=%.2f 50%%=%.2f 100%%=%.2f "
+            "(n0=%llu n50=%llu n100=%llu slots=%llu used=%llu)\n",
+            page_occ_pct(), (unsigned long long)page_occ_pages, p0, p50, p100,
+            (unsigned long long)page_occ_n0, (unsigned long long)page_occ_n50,
+            (unsigned long long)page_occ_n100, (unsigned long long)page_occ_slots,
+            (unsigned long long)page_occ_used_slots);
   }
 };

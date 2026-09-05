@@ -5,6 +5,9 @@
 
 本文件记录思考过程、全部真机数据，以及两道对比问题的结论。
 
+组会汇报（2026-08-31，可独立宣讲）：[`2026-08-31-组会汇报.md`](2026-08-31-组会汇报.md)。  
+FPGA 角色（2026-09-02 修订：打分窗留 host，BAR/HPS 停放）：[spec](../superpowers/specs/2026-08-31-fpga-cxl-roles-design.md) · [plan](../superpowers/plans/2026-08-31-fpga-cxl-roles.md)。
+
 ---
 
 ## 0. 冻结合同与测量定义
@@ -686,3 +689,70 @@ T=4 `--issue-ahead 3` / `--expand-batch 16`：**VOID 当新默认**（CLI 仍 8/
 | T=4 hide nq=20 | **79.02** | 未替换 |
 | T=1 oracle-window | **85.8** | 未替换（95.91 不是） |
 | T=4 shard oracle（笔记分母，非 eval.tex） | **136.23** / 0.930 | 保持 |
+
+---
+
+## 17. 双盘 restage + T=4 vs 136（2026-09-01）
+
+现场：kernel `6.18.0-rc5`。单盘 layout 先恢复（`vmem_sw.ko.6.18-single` → `nvme2n1`/`d9`）：pagebin magic `0x314e415843`，host `pagebin_image.bin` header+vec0 对齐。真冷 T=1 nq=20 = **47.77 / 20.9 ms / recall 0.945 / from_win=100**（`hide_layout_restore_T1_nq20.log`）。不替换 50.25。
+
+然后 `REFUSE_DUAL_FORCE=1` restage：pagebin 9.6 GiB + 图序 bundle 267 GiB 经 `/dev/vmem0` 写入双盘 2 MiB 条带（`hide_dual_restage.log`，`DUAL_RESTAGE_OK`）。Victoryang 的 6.18 双盘 `.ko` **没有** `PREFETCH_BATCH`（ioctl `-ENOTTY`）。测量改用树内 `vmem_sw.ko.6.18-dual`（`srcversion=66204DB7…`，`nvme_devs` + batch）。
+
+**新随机峰（真冷 PREFETCH_BATCH，两盘 rios 约 1:1）：**
+
+| pages | nvme GB/s | 日志 |
+|------:|----------:|------|
+| 16k | 1.462–1.473 | 对单盘 1.560 的同口径 |
+| 64k | 1.671 | |
+| 128k | 1.711 | |
+| **256k** | **1.744** | T=4 量级 QD 分母 |
+| seq 16k | 2.037 | |
+
+fio 14.4 **仍不是** occ 分母。256k 峰 1.744 → 12 MB/q 的 cap ≈ 145，刚过 136；16k 同口径双盘 **低于** 单盘 1.560。软件条带没有把随机峰抬到接近 2×。
+
+**Hide（双盘，from_win=100，recall≥0.96，对照 136.23）：**
+
+| 行 | QPS | mean | nvme | occ vs 1.744 | 日志 |
+|----|----:|-----:|-----:|-------------:|------|
+| T=1 8/2 | 44.93 | 22.3 | 0.528 | 30.3% | `hide_dual_T1_nq20.log` |
+| T=4 8/2 | 96.36 | 39.5 | 1.264 | 72.5% | `hide_dual_T4_base_nq20.log` |
+| T=4 ahead=3 | 98.97 | 37.7 | 1.301 | 74.6% | `hide_dual_T4_ahead3_nq20.log` |
+| T=4 ebatch=16 | 100.54 | 37.4 | 1.399 | 80.2% | `hide_dual_T4_ebatch16_nq20.log` |
+| T=4 ebatch16+spec16 | **107.92** | 34.7 | 1.398 | 80.2% | `hide_dual_T4_eb16_spec16_nq20.log` |
+
+T=1 双盘低于单盘 47.77 / claim 50.25 → **双盘只作文 T=4 行**。单盘 T=4 ebatch=16 曾到 113.71，双盘宽管没有超过它。最好双盘 107.92 / 136.23 = **0.79×**。不替换 79.02 / 50.25。
+
+`--spec-beam-nbrs M`（默认 0）已接到 `finish_score`：进 beam 且距序前 M 则异步发 N(u) bundle（`stall_if_full=false`）。T=4 单独 M=8/16/32 = 91/85/82（更差）。ebatch16+M=16 相对双盘 ebatch16 到 107.92，仍远低于 136；page_use 掉、字节涨。**默认保持 0。** CLI 默认仍 ebatch=8 / ahead=2。
+
+---
+
+## FPGA HPS probe (2026-09-01)
+
+`hps_status` = `raw=0xffffffff unsupported`. `vmem.ko` was **not** loaded. `allow_hps_mmio` written back to 0. **HARD STOP**: Task 4–6 live switch is stopped.
+
+## FPGA 三角色（2026-08-31）
+- 原计划：CXL-SSD = d8+d9；CXL-DRAM = BAR0 via `vmem.ko`；Host = 2 GiB searcher
+- **2026-09-02 修订：** 打分窗继续在 host；逻辑继续在 `search_beam`。不下放 FPGA，因此不依赖 HPS。
+
+HPS probe 2026-09-01 was `raw=0xffffffff unsupported`；`vmem.ko` / `--switch` / mmap `resource0` 仍停放。
+
+## Host-window 公平 Oracle（2026-09-02）
+
+规则：T=1 与 T=4 **同一份** host 2 GiB DramWindow（`--dram-backend numa`，`--shared-window`，`--cpu-affinity`，work-steal）。CXL-SSD = 单盘 `vmem_sw` on d9（pagebin `CXAN1` @ 420 GiB）。不计 BAR。脚本：`tools/run_oracle_host_window.sh`。
+
+| T | 窗 | QPS | mean | recall@10 | from_win | NAND | 日志 |
+|--:|----|----:|-----:|----------:|---------:|------|------|
+| 1 | 2 GiB host 共享 | **96.59** | **10.351** | **0.925** | 100 | 0 | `oracle_host2g_T1_nq20.log` |
+| 4 | 2 GiB host 共享 | 132.16 | 26.689 | 0.900 | 100 | 0 | `oracle_host2g_T4_nq20.log` |
+| 4 rerun | 同上 | 128.41 | 27.893 | 0.925 | 100 | 0 | `oracle_host2g_T4_nq20_rerun.log` |
+| 8 | 同上 | 128.22 | 54.943 | 0.900 | 100 | 0 | 首跑（后被复跑覆盖） |
+| 8 复跑 | 同上 | 114–131 | 53–62 | 0.910–0.920 | 100 | 0 | `oracle_host2g_T8_nq20.log` / `_rerun.log` |
+| 16 | 同上 | 125.46 | 110.715 | 0.885 | 100 | 0 | 首跑（后被复跑覆盖） |
+| 16 复跑 | 同上 | 117 | 120 | 0.910–0.920 | 100 | 0 | `oracle_host2g_T16_nq20.log` / `_rerun.log` |
+| 32 | 同上 | 103.46 | 163.500 | 0.930 | 100 | 0 | `oracle_host2g_T32_nq20.log` |
+
+T≥4 共享窗 recall 会抖（0.885–0.930），**T=8/16/32 都不锁成 claim**。QPS 在 T=4 附近封顶（~128–132），再加核 mean 近似线性涨、吞吐掉：T=8 ~114–131 / ~55 ms；T=16 ~117–125 / ~111–120 ms；T=32 **103.46 / 164 ms**。nq=20 时 T=32 有空闲线程，墙钟仍被共享窗锁拉长。`4×` / `8×` / `32×` 96.59 都不是上界。
+
+**不替换：** T=1 hide **50.25** / **49.25**；T=1 oracle 1 GiB **85.8**；T=4 shard 4×512 MiB **136.23**。新行是「同 2 GiB + 加核」的附加对照，不是 85.8 的替代。`4×96.59` 也不是四路上界。
+
+`cxl_dram_hit_pct` 打印名是旧字段（窗口 hit），不是 FPGA CXL-DRAM。真计数：`from_cxl_dram=0`，`mapped HOST DRAM`。

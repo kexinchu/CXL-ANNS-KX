@@ -1,0 +1,62 @@
+<h2>Design 图应该怎样组织？</h2>
+<p class="subtitle">目标：让审稿人一眼读出 D1 Wise Prefetcher 与 D2 Continuous Batching，同时避免 D0 抢走贡献主线。</p>
+
+<div class="cards">
+  <div class="card" data-choice="a" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div style="border:2px solid #64748b;padding:8px;margin:5px;text-align:center">System overview<br><small>Host / CXL-DRAM / CXL-SSD</small></div>
+      <div style="display:flex;gap:8px;margin:5px">
+        <div style="flex:1;border:2px solid #2563eb;padding:12px;text-align:center">Wise<br>Prefetch</div>
+        <div style="flex:1;border:2px solid #059669;padding:12px;text-align:center">Continuous<br>Batching</div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>A · 三张独立图</h3>
+      <p>架构总览、D1 流程、D2 时间线各一张。解释最完整，但占用版面最多，容易让 D0 看起来像第三个贡献。</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="b" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div style="border:2px solid #2563eb;padding:8px;margin:5px">
+        <strong>Fig. 5 · Wise Prefetcher</strong>
+        <div style="display:flex;align-items:center;gap:6px;margin-top:8px;font-size:12px">
+          <span style="border:1px solid #64748b;padding:5px">resident u</span>→
+          <span style="border:1px solid #64748b;padding:5px">mandatory / lookahead</span>→
+          <span style="border:1px solid #64748b;padding:5px">4 KB fill</span>→
+          <span style="border:1px solid #64748b;padding:5px">score</span>
+        </div>
+        <small>D0 placement 作为图内上下层，而非独立模块</small>
+      </div>
+      <div style="border:2px solid #059669;padding:8px;margin:8px 5px 5px">
+        <strong>Fig. 6 · Continuous Batching</strong>
+        <div style="margin-top:8px;font-family:monospace;font-size:12px">Q0: expand → WAIT ─────→ score<br>Q1: &nbsp;&nbsp;&nbsp;&nbsp;expand → fill → score<br>Q2: &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;expand → fill → score</div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>B · 两张机制图（推荐）</h3>
+      <p>Figure 5 把三层 placement 嵌入 wise-prefetch 数据流；Figure 6 专门表现跨查询调度。图和两个 subsection 一一对应。</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="c" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div style="border:2px solid #7c3aed;padding:10px;margin:5px">
+        <strong>Single end-to-end figure</strong>
+        <div style="display:flex;gap:6px;margin-top:8px">
+          <div style="flex:1;border:1px solid #2563eb;padding:18px 4px;text-align:center">D1<br>data flow</div>
+          <div style="flex:1;border:1px solid #059669;padding:18px 4px;text-align:center">D2<br>timeline</div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>C · 一张端到端组合图</h3>
+      <p>版面最省、整体感强，但 mandatory/lookahead、状态机和跨查询唤醒都容易被压缩得过密。</p>
+    </div>
+  </div>
+</div>
+
+<div class="pros-cons">
+  <div class="pros"><h4>推荐 B 的原因</h4><ul><li>两个贡献对应两张图</li><li>D0 仍清楚但不升级为贡献</li><li>便于分别解释空间数据流与时间调度</li></ul></div>
+  <div class="cons"><h4>需要控制</h4><ul><li>Figure 5 不重复 Figure 1</li><li>Figure 6 不重画 Motivation 的失败时间线</li><li>Design 控制在约 2.4–2.6 页</li></ul></div>
+</div>

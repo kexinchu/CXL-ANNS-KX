@@ -1,0 +1,52 @@
+<h2>Figure 6 · Continuous Batching 构图</h2>
+<p class="subtitle">目标不是再次证明 blocking 的坏处，而是展示 FlashANNS 如何在 Q0 等 fill 时持续找到 ready work。</p>
+
+<div class="cards">
+  <div class="card" data-choice="a" onclick="toggleSelect(this)">
+    <div class="card-image" style="font-size:11px;font-family:monospace">
+      <div style="display:grid;grid-template-columns:34px repeat(7,1fr);gap:3px;align-items:center">
+        <b>Q0</b><span style="background:#bfdbfe;padding:7px">EXPAND</span><span style="background:#fecaca;padding:7px;grid-column:span 3">WAIT_FILL</span><span style="background:#bbf7d0;padding:7px">SCORE</span><span style="background:#bfdbfe;padding:7px">EXPAND</span><span></span>
+        <b>Q1</b><span></span><span style="background:#bfdbfe;padding:7px">EXPAND</span><span style="background:#fde68a;padding:7px">ISSUE</span><span style="background:#bbf7d0;padding:7px">SCORE</span><span></span><span style="background:#bfdbfe;padding:7px">EXPAND</span><span></span>
+        <b>Q2</b><span></span><span></span><span style="background:#bfdbfe;padding:7px">EXPAND</span><span style="background:#fde68a;padding:7px">ISSUE</span><span style="background:#bbf7d0;padding:7px">SCORE</span><span></span><span></span>
+      </div>
+      <div style="border-top:2px solid #64748b;margin-top:10px;padding-top:7px;display:flex;gap:6px;align-items:center;justify-content:center;font-family:sans-serif">
+        <span style="border:2px solid #dc2626;padding:5px">mandatory Q</span>→
+        <span style="border:2px solid #7c3aed;padding:5px">shared async fills</span>→
+        <span style="border:2px solid #059669;padding:5px">completion fan-out</span>
+      </div>
+    </div>
+    <div class="card-body"><h3>A · Query swimlanes + shared engine（推荐）</h3><p>直接显示 Q0 等待期间 Q1/Q2 的 expand、issue、score 正在前进；底部一条共享路径解释 dedup、priority 和 wakeup。</p></div>
+  </div>
+
+  <div class="card" data-choice="b" onclick="toggleSelect(this)">
+    <div class="card-image" style="font-size:12px">
+      <div style="display:flex;gap:5px;align-items:center;justify-content:center">
+        <span style="border:2px solid #334155;padding:8px">Query pool</span>→
+        <span style="border:2px solid #2563eb;padding:8px">Ready scheduler</span>→
+        <span style="border:2px solid #dc2626;padding:8px">Mandatory Q</span>→
+        <span style="border:2px solid #7c3aed;padding:8px">Fill engine</span>
+      </div>
+      <div style="display:flex;gap:7px;justify-content:center;margin-top:14px">
+        <span style="border:1px solid #64748b;padding:7px">READY_EXPAND</span>
+        <span>⇄</span><span style="border:1px solid #64748b;padding:7px">WAIT_FILL</span>
+        <span>⇄</span><span style="border:1px solid #64748b;padding:7px">READY_SCORE</span>
+      </div>
+    </div>
+    <div class="card-body"><h3>B · Scheduler component diagram</h3><p>实现组件和接口很清楚，但看不出“continuous”发生在时间上；容易被审稿人理解为普通异步队列。</p></div>
+  </div>
+
+  <div class="card" data-choice="c" onclick="toggleSelect(this)">
+    <div class="card-image" style="font-size:12px">
+      <div style="display:flex;gap:10px">
+        <div style="flex:1;border-right:2px solid #94a3b8;padding-right:8px"><b>(a) Static batch</b><div style="margin-top:10px;background:#fecaca;padding:20px;text-align:center">barrier / drain</div></div>
+        <div style="flex:1"><b>(b) Continuous</b><div style="margin-top:10px;background:#bbf7d0;padding:20px;text-align:center">interleaved queries</div></div>
+      </div>
+    </div>
+    <div class="card-body"><h3>C · Before/after 对照图</h3><p>对比最直观，但重复 Motivation Figure 4 已经展示的 single-walk、blocking 和 static-batch failures，浪费 Design 版面。</p></div>
+  </div>
+</div>
+
+<div class="pros-cons">
+  <div class="pros"><h4>A 中必须出现</h4><ul><li>三个 query lane</li><li>Q0 WAIT_FILL 期间的 Q1/Q2 ready work</li><li>mandatory queue 与 lower-priority lookahead queue</li><li>one completion wakes multiple queries</li></ul></div>
+  <div class="cons"><h4>A 中不要出现</h4><ul><li>失败路径的红色大面积空洞</li><li>未经验证的固定 target QD 数值</li><li>声称单 query 不再等待</li><li>把 batching 画成改变 beam search</li></ul></div>
+</div>
