@@ -2452,7 +2452,7 @@ int main(int argc, char** argv) {
       c->win.init(c->dram, dram_bytes, &c->m);
       c->win.soft_pin_neighbors = page_group_b;
       if (pref.policy == PrefetchPolicy::P3 && !use_shared_pool) {
-        c->pool.start(pref.pipe_w);
+        c->pool.start(per_thread_pool_workers(pref.pipe_w, nthreads, t));
         if (hide_warm_entry && !oracle_dram) {
           hide_warm_entry_ball(pl, c->win, c->pool, &vio, hide_warm_extras, eg.entry_id,
                               hide_warm_bytes);

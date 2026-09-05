@@ -127,6 +127,16 @@ int main() {
   assert(effective_issue_qd(8, 16) == 8);
   assert(effective_issue_qd(0, 0) == 1);
 
+  // A per-thread hub partitions one declared global I/O-worker budget; it
+  // must not replicate the complete pool for every query thread.
+  assert(per_thread_pool_workers(16, 1, 0) == 16);
+  assert(per_thread_pool_workers(16, 8, 0) == 2);
+  assert(per_thread_pool_workers(16, 8, 7) == 2);
+  assert(per_thread_pool_workers(10, 4, 0) == 3);
+  assert(per_thread_pool_workers(10, 4, 1) == 3);
+  assert(per_thread_pool_workers(10, 4, 2) == 2);
+  assert(per_thread_pool_workers(10, 4, 3) == 2);
+
   // A fully resident committed set legitimately creates no new fill token.
   // It must proceed to rank without consuming QD instead of cycling in Hold.
   assert(!issue_consumes_qd(false, true, false));

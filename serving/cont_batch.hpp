@@ -59,6 +59,19 @@ inline uint32_t effective_issue_qd(uint32_t cli, int nthreads) {
   return cli;
 }
 
+// Per-thread hubs partition the declared global PageCopyPool budget.  Giving
+// every hub the full budget multiplies kernel I/O callers by T and makes the
+// non-steal control incomparable with the shared-pool scheduler.
+inline size_t per_thread_pool_workers(size_t total, int nthreads, int thread_id) {
+  if (total == 0) total = 1;
+  if (nthreads <= 1) return total;
+  const size_t nt = (size_t)nthreads;
+  if (total < nt) total = nt;
+  const size_t base = total / nt;
+  const size_t extra = total % nt;
+  return base + ((size_t)thread_id < extra ? 1 : 0);
+}
+
 inline void note_scheduler_inflight(Metrics* metrics, uint32_t inflight) {
   if (metrics) metrics->note_inflight_depth(inflight);
 }
