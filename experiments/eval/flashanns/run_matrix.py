@@ -7,6 +7,7 @@ import hashlib
 import json
 import random
 import shlex
+import uuid
 from pathlib import Path
 from typing import Any
 
@@ -20,7 +21,8 @@ class RunnerError(ValueError):
 def _anchor_l(anchors: dict[str, Any] | None, system: str) -> int:
     if not anchors:
         raise RunnerError("phase requires frozen recall anchors")
-    value = anchors.get(system, anchors.get("L"))
+    selected = anchors.get("primary", anchors)
+    value = selected.get(system, selected.get("L"))
     if isinstance(value, dict):
         value = value.get("L")
     if not isinstance(value, int) or value <= 0:
@@ -66,7 +68,15 @@ def _pipeann_command(dataset_id: str, dataset: dict[str, Any], spec: dict[str, A
     ]
 
 
-def expand_runs(root: Path, dataset_id: str, phase: str, anchors: dict[str, Any] | None = None, out: Path | None = None, system_id: str | None = None) -> list[dict[str, Any]]:
+def expand_runs(
+    root: Path,
+    dataset_id: str,
+    phase: str,
+    anchors: dict[str, Any] | None = None,
+    out: Path | None = None,
+    system_id: str | None = None,
+    level: int | None = None,
+) -> list[dict[str, Any]]:
     root = Path(root)
     datasets, systems, matrix = load_configs(root)
     dataset = datasets[dataset_id]
@@ -86,6 +96,10 @@ def expand_runs(root: Path, dataset_id: str, phase: str, anchors: dict[str, Any]
         if system_id not in system_ids:
             raise RunnerError(f"{system_id}: system is not part of {phase}")
         system_ids = [system_id]
+    if level is not None:
+        if level not in levels:
+            raise RunnerError(f"{level}: not a declared {phase} L")
+        levels = [level]
     runs: list[dict[str, Any]] = []
     for level in levels:
         for repeat in range(int(phase_cfg["repeats"])):
@@ -111,6 +125,34 @@ def expand_runs(root: Path, dataset_id: str, phase: str, anchors: dict[str, Any]
     return runs
 
 
+def validate_live_invocation(
+    runs: list[dict[str, Any]],
+    identity_evidence: dict[str, Any] | None,
+    volatile_evidence: dict[str, Any] | None,
+) -> None:
+    internal = [run for run in runs if not run["external"]]
+    if internal and len(internal) != 1:
+        raise RunnerError(
+            "live invocation must contain exactly one internal run; select --system and --L"
+        )
+    if internal and not (
+        identity_evidence
+        and identity_evidence.get("accepted")
+        and volatile_evidence
+        and volatile_evidence.get("accepted")
+    ):
+        raise RunnerError(
+            "live internal invocation requires accepted identity and volatile evidence"
+        )
+    if internal:
+        try:
+            uuid.UUID(str(volatile_evidence.get("capture_id")))
+        except (AttributeError, TypeError, ValueError):
+            raise RunnerError(
+                "live internal invocation requires a valid volatile capture_id"
+            ) from None
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--dataset", required=True)
@@ -119,12 +161,15 @@ def main() -> int:
     parser.add_argument("--out", type=Path)
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--system")
+    parser.add_argument("--L", dest="level", type=int)
     parser.add_argument("--identity-evidence", type=Path)
     parser.add_argument("--volatile-evidence", type=Path)
     args = parser.parse_args()
     root = Path(__file__).resolve().parents[3]
     anchors = json.loads(args.anchors.read_text()) if args.anchors else None
-    runs = expand_runs(root, args.dataset, args.phase, anchors, args.out, args.system)
+    runs = expand_runs(
+        root, args.dataset, args.phase, anchors, args.out, args.system, args.level
+    )
     if args.dry_run:
         for spec in runs:
             print(spec["run_id"] + "\t" + shlex.join(spec["command"]))
@@ -132,6 +177,7 @@ def main() -> int:
     from experiments.eval.flashanns.run_one import run_spec
     identity = json.loads(args.identity_evidence.read_text()) if args.identity_evidence else None
     volatile = json.loads(args.volatile_evidence.read_text()) if args.volatile_evidence else None
+    validate_live_invocation(runs, identity, volatile)
     for spec in runs:
         run_spec(root, spec, identity, volatile)
     return 0

@@ -1,6 +1,14 @@
+import json
+import tempfile
 import unittest
+from pathlib import Path
 
-from experiments.eval.flashanns.validate_run import RunValidationError, validate_record, validate_same_search
+from experiments.eval.flashanns import validate_run
+
+
+RunValidationError = validate_run.RunValidationError
+validate_record = validate_run.validate_record
+validate_same_search = validate_run.validate_same_search
 
 
 def record(system="flashanns"):
@@ -59,6 +67,55 @@ class ValidateRunTest(unittest.TestCase):
         right["metrics"]["recall@10"] = 0.937
         with self.assertRaisesRegex(RunValidationError, "recall@10"):
             validate_same_search([left, right])
+
+    def test_load_records_recurses_over_run_json_only(self):
+        self.assertTrue(
+            hasattr(validate_run, "load_records"),
+            "validator must load run records from directories",
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            for index, system in enumerate(("demand", "flashanns")):
+                path = root / str(index) / "run.json"
+                path.parent.mkdir()
+                path.write_text(json.dumps(record(system)))
+            (root / "ignore.json").write_text("not a run")
+            loaded = validate_run.load_records([root])
+        self.assertEqual([item["system"] for item in loaded], ["demand", "flashanns"])
+
+    def test_freeze_anchors_selects_nearest_measurement_at_or_above_target(self):
+        self.assertTrue(
+            hasattr(validate_run, "freeze_anchors"),
+            "validator must freeze recall anchors",
+        )
+        rows = []
+        for system, points in {
+            "demand": ((50, 0.88), (100, 0.91), (200, 0.94)),
+            "flashanns": ((50, 0.87), (200, 0.905), (400, 0.93)),
+        }.items():
+            for level, recall in points:
+                item = record(system)
+                item.update(phase="calibration", L=level, nq=500)
+                item["metrics"].update(completed_queries=500, **{"recall@10": recall})
+                item["run_id"] = f"cal-{system}-{level}"
+                rows.append(item)
+
+        frozen = validate_run.freeze_anchors(rows, 0.90, 0.92)
+        self.assertEqual(frozen["primary"]["demand"]["L"], 100)
+        self.assertEqual(frozen["primary"]["flashanns"]["L"], 200)
+        self.assertEqual(frozen["extra"]["demand"]["L"], 200)
+        self.assertEqual(frozen["extra"]["flashanns"]["L"], 400)
+
+    def test_freeze_anchors_rejects_uncovered_target(self):
+        self.assertTrue(
+            hasattr(validate_run, "freeze_anchors"),
+            "validator must freeze recall anchors",
+        )
+        item = record("demand")
+        item.update(phase="calibration", L=50, nq=500)
+        item["metrics"].update(completed_queries=500, **{"recall@10": 0.89})
+        with self.assertRaisesRegex(RunValidationError, "does not cover"):
+            validate_run.freeze_anchors([item], 0.90)
 
 
 if __name__ == "__main__":

@@ -22,6 +22,38 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def claim_volatile_evidence(
+    root: Path, evidence: dict[str, Any], run_id: str
+) -> dict[str, str]:
+    capture_id = str(evidence.get("capture_id", ""))
+    if not capture_id:
+        raise ValueError("volatile evidence lacks capture_id")
+    payload = json.dumps(evidence, sort_keys=True, separators=(",", ":")).encode()
+    claim = {
+        "capture_id": capture_id,
+        "evidence_sha256": hashlib.sha256(payload).hexdigest(),
+        "run_id": run_id,
+    }
+    directory = Path(root) / "results" / "eval" / "flashanns" / "evidence-claims"
+    directory.mkdir(parents=True, exist_ok=True)
+    path = directory / f"{capture_id}.json"
+    try:
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644)
+    except FileExistsError as exc:
+        raise ValueError(f"volatile evidence {capture_id} was already consumed") from exc
+    try:
+        os.write(fd, (json.dumps(claim, indent=2, sort_keys=True) + "\n").encode())
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+    directory_fd = os.open(directory, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
+    try:
+        os.fsync(directory_fd)
+    finally:
+        os.close(directory_fd)
+    return claim
+
+
 def _block_counters(contract: dict[str, Any]) -> dict[str, str | None]:
     result: dict[str, str | None] = {}
     for device in contract["nvme_dev"]:
@@ -77,6 +109,10 @@ def run_spec(
     before = snapshot_and_validate(
         contract, dataset, preflight_state, identity_evidence, volatile_evidence
     )
+    evidence_claim = None
+    if preflight_state == "cold":
+        assert volatile_evidence is not None
+        evidence_claim = claim_volatile_evidence(root, volatile_evidence, spec["run_id"])
     device_before = _block_counters(contract)
 
     run_dir = Path(spec["run_dir"])
@@ -107,5 +143,7 @@ def run_spec(
         "sidecars": _sidecars(run_dir / "trace"),
         "validation": {"status": "pending", "returncode": completed.returncode},
     }
+    if evidence_claim is not None:
+        record["volatile_evidence_claim"] = evidence_claim
     atomic_json_write(run_dir / "run.json", record)
     return record

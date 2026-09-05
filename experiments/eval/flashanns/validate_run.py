@@ -64,20 +64,95 @@ def validate_same_search(records: list[dict[str, Any]]) -> None:
             raise RunValidationError("same-search mismatch: recall@10")
 
 
+def load_records(paths: list[Path]) -> list[dict[str, Any]]:
+    records: list[dict[str, Any]] = []
+    for path in paths:
+        path = Path(path)
+        candidates = sorted(path.rglob("run.json")) if path.is_dir() else [path]
+        if not candidates:
+            raise RunValidationError(f"no run.json records under {path}")
+        for candidate in candidates:
+            records.append(json.loads(candidate.read_text()))
+    return records
+
+
+def _select_anchor(records: list[dict[str, Any]], target: float) -> dict[str, Any]:
+    selected: dict[str, Any] = {}
+    systems = sorted({record["system"] for record in records})
+    for system in systems:
+        eligible = [
+            record
+            for record in records
+            if record["system"] == system and record["metrics"]["recall@10"] >= target
+        ]
+        if not eligible:
+            raise RunValidationError(f"{system} does not cover recall target {target}")
+        chosen = min(
+            eligible,
+            key=lambda record: (record["metrics"]["recall@10"] - target, record["L"]),
+        )
+        selected[system] = {
+            "L": chosen["L"],
+            "recall@10": chosen["metrics"]["recall@10"],
+            "run_id": chosen["run_id"],
+        }
+    return selected
+
+
+def freeze_anchors(
+    records: list[dict[str, Any]],
+    primary_target: float,
+    extra_target: float | None = None,
+) -> dict[str, Any]:
+    if not records:
+        raise RunValidationError("cannot freeze anchors from no records")
+    seen: set[tuple[str, int]] = set()
+    datasets = set()
+    for record in records:
+        validate_record(record)
+        if record["phase"] != "calibration":
+            raise RunValidationError("anchor input contains a non-calibration record")
+        key = (record["system"], record["L"])
+        if key in seen:
+            raise RunValidationError(f"duplicate calibration point: {key[0]} L={key[1]}")
+        seen.add(key)
+        datasets.add(record["dataset"])
+    if len(datasets) != 1:
+        raise RunValidationError("anchor input spans multiple datasets")
+    result: dict[str, Any] = {
+        "accepted": True,
+        "dataset": next(iter(datasets)),
+        "primary_target": primary_target,
+        "primary": _select_anchor(records, primary_target),
+        "runs": [record["run_id"] for record in records],
+    }
+    if extra_target is not None:
+        result["extra_target"] = extra_target
+        result["extra"] = _select_anchor(records, extra_target)
+    return result
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("paths", nargs="+", type=Path)
     parser.add_argument("--compare-same-search", action="store_true")
+    parser.add_argument("--freeze-anchor", type=float)
+    parser.add_argument("--extra-anchor", type=float)
     parser.add_argument("--out", type=Path)
-    args, _ = parser.parse_known_args()
-    records = [json.loads(path.read_text()) for path in args.paths]
-    if args.compare_same_search:
+    args = parser.parse_args()
+    records = load_records(args.paths)
+    output: dict[str, Any] | None = None
+    if args.freeze_anchor is not None:
+        output = freeze_anchors(records, args.freeze_anchor, args.extra_anchor)
+    elif args.compare_same_search:
         validate_same_search(records)
     else:
         for record in records:
             validate_record(record)
     if args.out:
-        args.out.write_text(json.dumps({"accepted": True, "runs": [r["run_id"] for r in records]}, indent=2) + "\n")
+        output = output or {"accepted": True, "runs": [r["run_id"] for r in records]}
+        args.out.parent.mkdir(parents=True, exist_ok=True)
+        args.out.write_text(json.dumps(output, indent=2, sort_keys=True) + "\n")
     return 0
 
 

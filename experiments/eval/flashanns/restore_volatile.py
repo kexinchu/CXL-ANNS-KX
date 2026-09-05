@@ -9,7 +9,9 @@ import mmap
 import os
 import stat
 import subprocess
+import uuid
 from dataclasses import asdict, dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -22,6 +24,13 @@ class Segment:
     logical_offset: int
     source_offset: int
     length: int
+
+
+def new_capture_identity() -> dict[str, str]:
+    return {
+        "capture_id": str(uuid.uuid4()),
+        "captured_at_utc": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+    }
 
 
 def ram_segments(
@@ -112,6 +121,7 @@ def restore_volatile_stripes(
         os.close(sfd)
 
     result: dict[str, Any] = {
+        **new_capture_identity(),
         "accepted": source_hash.hexdigest() == device_hash.hexdigest(),
         "device": str(device),
         "source": str(source),

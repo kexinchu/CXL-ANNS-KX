@@ -1,6 +1,11 @@
 import unittest
+import uuid
+from datetime import datetime
 
-from experiments.eval.flashanns.restore_volatile import ram_segments
+from experiments.eval.flashanns import restore_volatile
+
+
+ram_segments = restore_volatile.ram_segments
 
 
 class RestoreVolatileTest(unittest.TestCase):
@@ -37,6 +42,17 @@ class RestoreVolatileTest(unittest.TestCase):
         for values in bad:
             with self.subTest(values=values), self.assertRaises(ValueError):
                 ram_segments(**values)
+
+    def test_capture_identity_is_unique_and_parseable(self):
+        self.assertTrue(
+            hasattr(restore_volatile, "new_capture_identity"),
+            "RAM restoration must mint a unique capture identity",
+        )
+        first = restore_volatile.new_capture_identity()
+        second = restore_volatile.new_capture_identity()
+        self.assertNotEqual(first["capture_id"], second["capture_id"])
+        uuid.UUID(first["capture_id"])
+        datetime.fromisoformat(first["captured_at_utc"].replace("Z", "+00:00"))
 
 
 if __name__ == "__main__":

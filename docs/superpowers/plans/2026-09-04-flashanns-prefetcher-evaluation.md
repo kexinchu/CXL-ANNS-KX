@@ -1013,9 +1013,28 @@ returned IDs, and recomputed recall must match between Demand and FlashANNS.
 - [ ] **Step 4: Calibrate recall**
 
 ~~~bash
-python3 -m experiments.eval.flashanns.run_matrix --dataset t2i10m --phase calibration --state cold --out results/eval/flashanns/raw/t2i10m/calibration
+# Repeat this single-point command for SYSTEM={demand,flashanns} and
+# L={50,100,200,400,800,1600,2400,3200}. Before every invocation, perform a
+# separate approved cold reload and RAM-only restoration that writes a fresh
+# UUID-tagged VOLATILE_EVIDENCE file.
+python3 -m experiments.eval.flashanns.run_matrix \
+  --dataset t2i10m --phase calibration --system SYSTEM --L L \
+  --identity-evidence results/eval/flashanns/preflight/t2i-full-identity.json \
+  --volatile-evidence VOLATILE_EVIDENCE \
+  --out results/eval/flashanns/raw/t2i10m/calibration
+
+# Validate the internal sweep, but do not publish the final anchor file until
+# the native PipeANN adapter has emitted and validated its calibration records.
+python3 -m experiments.eval.flashanns.validate_run \
+  results/eval/flashanns/raw/t2i10m/calibration
+
+# After PipeANN admission, freeze all three systems together.
 python3 -m experiments.eval.flashanns.validate_run --freeze-anchor 0.90 --extra-anchor 0.92 results/eval/flashanns/raw/t2i10m/calibration --out results/eval/flashanns/calibration/t2i10m.json
 ~~~
+
+The runner rejects a live invocation containing more than one internal run,
+missing identity/volatile evidence, malformed `capture_id`, or a volatile
+capture already claimed by another run.
 
 - [ ] **Step 5: Run Q2, Q3, and Q4 in order**
 

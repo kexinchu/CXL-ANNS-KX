@@ -383,6 +383,9 @@ A run is rejected if any of the following holds:
 - the live cache limit is not exactly 4 GiB;
 - dirty bytes, I/O errors, reset errors, open users, or topology drift appear;
 - a cold run lacks empty-cache evidence or a warm run lacks its cold parent;
+- more than one internal cold run is expanded in one live invocation, a cold
+  run lacks a fresh UUID-tagged RAM-restoration capture, or that capture has
+  already been atomically claimed by another run;
 - fewer than the declared queries complete;
 - sidecar sizes, hashes, result IDs, candidate IDs, recall, or latency
   recomputation disagree;
@@ -398,6 +401,12 @@ A run is rejected if any of the following holds:
 
 Rejected runs remain immutable with machine-readable reasons and are never
 silently overwritten or retried under the same run ID.
+
+Calibration is executed one `(system, L)` point at a time. Every internal
+point consumes a separately reloaded cold state and a newly generated volatile
+RAM-restoration `capture_id`; phase-wide evidence reuse is forbidden. Anchor
+freezing reads validated `run.json` records recursively and selects the nearest
+measured point at or above each declared recall target without extrapolation.
 
 ## 11. Completion Criteria
 
