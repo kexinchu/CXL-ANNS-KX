@@ -4,10 +4,13 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from experiments.eval.flashanns.plot_q2_q4 import render_figures
+from experiments.eval.flashanns.plot_q2_q4 import COLORS, render_figures
 
 
 class PlotTest(unittest.TestCase):
+    def test_oracle_has_no_plot_style(self):
+        self.assertNotIn("oracle", COLORS)
+
     def test_writes_three_one_page_vector_pdfs(self):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)

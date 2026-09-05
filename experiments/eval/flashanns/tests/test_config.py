@@ -31,6 +31,19 @@ class ConfigTest(unittest.TestCase):
         self.assertEqual(self.systems["pipeann"]["kind"], "external-pipeann")
         self.assertEqual(self.systems["pipeann"]["threads"], 8)
 
+    def test_q2_excludes_oracle(self):
+        self.assertEqual(
+            self.matrix["q2"]["systems"],
+            ["demand", "pipeann", "flashanns"],
+        )
+        self.assertNotIn("oracle", self.systems)
+
+    def test_rejects_oracle_system_definition(self):
+        systems = copy.deepcopy(self.systems)
+        systems["oracle"] = {"kind": "internal", "threads": 8, "flags": []}
+        with self.assertRaisesRegex(ConfigError, "oracle system is excluded"):
+            validate_configs(self.datasets, systems, self.matrix)
+
     def test_ready_dataset_requires_every_artifact(self):
         datasets = copy.deepcopy(self.datasets)
         del datasets["t2i10m"]["artifacts"]["ground_truth"]
@@ -51,6 +64,7 @@ class ConfigTest(unittest.TestCase):
             "--score-page",
             "--pipe-drive",
             "--admit-gap",
+            "--oracle-dram",
         ]
         for flag in removed:
             with self.subTest(flag=flag):

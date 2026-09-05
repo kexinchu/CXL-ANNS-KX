@@ -1,8 +1,10 @@
 # FlashANNS Integrated Evaluation Design
 
-**Status:** Approved for implementation-plan drafting
+**Status:** Frozen for execution (Oracle excluded)
 
 **Date:** 2026-09-04
+
+**Last updated:** 2026-09-05
 
 **Scope:** Evaluate the frozen Wise Prefetcher plus continuous pipeline on
 T2I-10M, YFCC-10M, and LAION-10M, then replace the current paper's Q2--Q4
@@ -160,8 +162,22 @@ For every dataset, admission requires:
 3. 10,000 unique query IDs and aligned ground-truth rows;
 4. slot-map permutation and ID-map bounds checks;
 5. deterministic readback of 1,024 packed vector and neighbor records;
-6. a sampled digest match between the staged device image and host image;
-7. a dataset-specific live preflight with the 4 GiB cache contract.
+6. a full host-versus-device image identity proof immediately after staging;
+7. after every cold module reload, restoration and digest verification of only
+   the volatile RAM-tier stripes from the admitted host extent image;
+8. proof that RAM-tier restoration leaves the SSD-backed page cache empty
+   (`cache_used=0`) and does not change the SSD-tier image;
+9. a dataset-specific live preflight with the 4 GiB cache contract.
+
+The accepted full-image identity record may be reused at a measured-run
+preflight only when the device identity, module layout, dataset extent, and
+immutable host-image hash still match. A full device scan immediately before a
+cold measurement is forbidden because it populates the SSD-backed page cache.
+The cold proof instead combines that accepted identity record with the fresh
+RAM-stripe restoration digest and current `cache_used=0`, `dirty_bytes=0`, and
+device-identity evidence. The artifact named `oracle_image` is retained only as
+a host-side vector/record correctness reference; `extent_image` is the staged
+byte-identity reference. Neither makes Oracle an executable system.
 
 Missing upstream artifacts block only that dataset. They are reported as a
 readiness failure and are never replaced with invented paths or synthetic
@@ -178,19 +194,20 @@ The main result compares these systems at the same dataset, queries, final
 |---|---|---|
 | `demand` | same PQ search and committed candidate set, with blocking CXL-SSD materialization | NAND-critical-path baseline |
 | `pipeann` | official block-I/O path on the same machine and recall floor | external block-SSD reference |
-| `oracle` | same PQ search with the full FP corpus resident before timing | no-NAND upper bound |
 | `flashanns` | frozen T=8 Wise Prefetcher plus steal pipeline | proposed complete system |
 
-The three internal systems (`demand`, `oracle`, and `flashanns`) additionally
-share the graph, PQ artifacts, `L`, and candidate set and must prove candidate
-and returned-ID equivalence. PipeANN is matched by query IDs, corpus, metric,
-`k`, CPU budget, and measured recall, but uses its native index/search controls
-and is not claimed to have identical internal candidates.
+The two internal systems (`demand` and `flashanns`) share the graph, PQ
+artifacts, `L`, and candidate set and must prove query IDs, candidate offsets,
+candidate IDs, returned IDs, and recomputed recall are identical. PipeANN is
+matched by query IDs, corpus, metric, `k`, CPU budget, and measured recall, but
+uses its native index/search controls and is not claimed to have identical
+internal candidates.
 
-Throughput comparisons use the same eight-core budget. The Oracle is warmed and
-prefaulted outside the timed interval and must record zero timed NAND bytes.
-Demand may block on NAND but must not receive a larger cache or a different
-query order.
+Throughput comparisons use the same eight-core budget. Demand may block on NAND
+but must not receive a larger cache or a different query order. Oracle is
+excluded from executable configurations, smoke proof, calibration, Q2,
+acceptance, aggregation, and plots. `--oracle-dram` is a removed flag and any
+Oracle run record is rejected.
 
 ### Q3 frozen ablations
 
@@ -308,8 +325,8 @@ hashes, recall, percentiles, and matched-block identity before accepting a run.
 
 Replace `fig:eval-main` with one double-column 2-by-2 figure:
 
-- **(a) QPS:** grouped absolute-QPS marks for demand, PipeANN, Oracle, and
-  FlashANNS across T2I, YFCC, and LAION.
+- **(a) QPS:** grouped absolute-QPS marks for demand, PipeANN, and FlashANNS
+  across T2I, YFCC, and LAION.
 - **(b) Latency:** aligned mean and p99 markers in milliseconds for the same
   validated runs.
 - **(c) Critical wait:** materialization critical-wait milliseconds per query;
@@ -369,7 +386,8 @@ A run is rejected if any of the following holds:
 - fewer than the declared queries complete;
 - sidecar sizes, hashes, result IDs, candidate IDs, recall, or latency
   recomputation disagree;
-- Oracle timed NAND bytes are nonzero;
+- an executable system, command, accepted run, aggregate row, or plot series
+  contains Oracle or `--oracle-dram`;
 - FlashANNS scores from bounce or triggers Flash from an exact-scoring load;
 - the candidate set changes between same-search transfer or scheduling
   controls;
@@ -393,7 +411,8 @@ The work is complete only when:
 5. every Q2 and Q3 block has five accepted 10k-query repetitions;
 6. every Q4 block has five accepted cold/warm pairs;
 7. FlashANNS has zero bounce scores and no score-triggered Flash fills;
-8. Oracle has zero timed NAND bytes;
+8. Oracle is absent from executable configs, accepted records, aggregates, and
+   final figures;
 9. all three final figures and tables regenerate byte-for-byte from validated
    records and expose their run-ID provenance;
 10. `paper/sections/eval.tex` declares the 4 GiB cache, three 10M datasets,

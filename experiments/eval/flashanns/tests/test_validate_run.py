@@ -23,7 +23,7 @@ def record(system="flashanns"):
         "preflight_after": {"cache_limit": 4294967296},
         "device_before": {},
         "device_after": {},
-        "metrics": {"completed_queries": 100, "nvme_read_B": 1, "score_bounce": 0, "score_flash": 0},
+        "metrics": {"completed_queries": 100, "nvme_read_B": 1, "score_bounce": 0, "score_flash": 0, "recall@10": 0.938},
         "sidecars": {"query_ids_sha256": "q", "candidate_offsets_sha256": "o", "candidate_ids_sha256": "c", "result_ids_sha256": "r"},
         "validation": {"status": "pending"},
     }
@@ -43,16 +43,21 @@ class ValidateRunTest(unittest.TestCase):
         for needle in ("completed_queries", "cache_limit", "score_bounce", "score_flash"):
             self.assertIn(needle, text)
 
-    def test_oracle_rejects_nand_bytes(self):
-        bad = record("oracle")
-        with self.assertRaisesRegex(RunValidationError, "Oracle NAND"):
-            validate_record(bad)
+    def test_rejects_oracle_record(self):
+        with self.assertRaisesRegex(RunValidationError, "Oracle system is excluded"):
+            validate_record(record("oracle"))
 
     def test_same_search_requires_all_identity_hashes(self):
         left, right = record("demand"), record("flashanns")
         validate_same_search([left, right])
         right["sidecars"]["candidate_ids_sha256"] = "different"
         with self.assertRaisesRegex(RunValidationError, "candidate_ids_sha256"):
+            validate_same_search([left, right])
+
+    def test_same_search_requires_equal_recall(self):
+        left, right = record("demand"), record("flashanns")
+        right["metrics"]["recall@10"] = 0.937
+        with self.assertRaisesRegex(RunValidationError, "recall@10"):
             validate_same_search([left, right])
 
 

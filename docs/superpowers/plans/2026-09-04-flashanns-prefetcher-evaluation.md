@@ -10,6 +10,18 @@
 
 **Spec:** `docs/superpowers/specs/2026-09-04-flashanns-prefetcher-evaluation-design.md` at or after commit `1dc182c`.
 
+**2026-09-05 execution amendment:** Oracle is not an executable system. Q2 is
+Demand, PipeANN, and FlashANNS; smoke proof is Demand plus FlashANNS. The
+`oracle_image` artifact remains host-side correctness evidence only.
+
+**Current live milestone (2026-09-05):** T2I full host/device identity and the
+two-record Demand/FlashANNS 100-query same-search proof pass. Those smoke QPS
+values are correctness diagnostics only: Demand used the binary's 2 GiB
+host-window default while FlashANNS used the frozen 128 MiB per-thread window.
+Before calibration or Q2, lock Demand to the same declared host-window budget,
+add a config test for that equality, and rerun the two-record smoke from
+separate cold resets. YFCC and LAION remain blocked on dataset admission.
+
 ---
 
 ## Frozen Boundaries
@@ -24,6 +36,8 @@
   consistently by PQ ADC and exact rerank.
 - Removed early-CL, lookahead, Blind, score-page, pipe-drive, admit-gap, and
   speculative-beam controls never enter a command.
+- Oracle and `--oracle-dram` never enter a command, accepted record, aggregate,
+  or plot.
 - All internal measured runs require `cache_limit=4294967296`.
 - A runner never loads/unloads a driver, changes sysfs, stages an image, resets
   a cache, or writes a backing device.
@@ -49,6 +63,7 @@
 | `experiments/eval/flashanns/verify_dataset.py` | Validate source and serving artifacts. |
 | `experiments/eval/flashanns/freeze_artifacts.py` | Stream SHA-256 manifests. |
 | `experiments/eval/flashanns/preflight.py` | Fail-closed read-only live checks. |
+| `experiments/eval/flashanns/restore_volatile.py` | Restore and verify only RAM-tier stripes after a cold module reload. |
 | `experiments/eval/flashanns/run_one.py` | Execute one already-approved run and seal `run.json`. |
 | `experiments/eval/flashanns/run_matrix.py` | Deterministically expand a phase; never reset hardware. |
 | `experiments/eval/flashanns/validate_run.py` | Recompute sidecars, recall, metrics, and proof gates. |
@@ -351,7 +366,8 @@ T2I paths use the existing `serving_t2i_10m` and
 `pipeann_t2i10m` trees. YFCC paths are rooted at
 `/mnt/disk0/chukexin_motivation/serving_yfcc_10m`; LAION paths are rooted at
 `/mnt/disk0/chukexin_motivation/serving_laion_10m`. Mark only T2I ready at
-initial creation.
+initial creation. `oracle_image` is used only by offline host-side
+vector/record integrity checks; it is never passed to a measured command.
 
 - [ ] **Step 4: Define systems without dead flags**
 
@@ -360,7 +376,7 @@ Create these IDs:
 ~~~json
 {
   "demand": {"threads": 8, "flags": ["--no-vmem-prefetch", "--pipe-w", "1", "--no-extent-run", "--no-steal-sched"]},
-  "oracle": {"threads": 8, "flags": ["--oracle-dram"]},
+  "pipeann": {"kind": "external-pipeann", "threads": 8, "flags": []},
   "flashanns": {"threads": 8, "flags": ["--per-thread-window", "--pipe-depth", "2", "--issue-qd", "0", "--steal-sched", "--extent-run"]},
   "serial-t1": {"threads": 1, "flags": ["--no-vmem-prefetch", "--pipe-w", "1", "--no-extent-run"]},
   "batch-t1": {"threads": 1, "flags": ["--pipe-w", "16", "--no-extent-run"]},
@@ -368,6 +384,9 @@ Create these IDs:
   "nosteal-t8": {"threads": 8, "flags": ["--per-thread-window", "--pipe-depth", "2", "--issue-qd", "0", "--no-steal-sched", "--extent-run"]}
 }
 ~~~
+
+Config validation rejects a system ID named `oracle` and treats
+`--oracle-dram` as a removed flag.
 
 The smoke proof must verify the semantic label `demand`; if it still submits
 asynchronous batch I/O, relabel it and do not use it as Demand.
@@ -384,7 +403,7 @@ asynchronous batch I/O, relabel it and do not use it as Demand.
   "extended_L": [2400, 3200],
   "smoke": {"nq": 100, "repeats": 1},
   "calibration": {"nq": 500, "repeats": 1},
-  "q2": {"nq": 10000, "repeats": 5, "systems": ["demand", "pipeann", "oracle", "flashanns"]},
+  "q2": {"nq": 10000, "repeats": 5, "systems": ["demand", "pipeann", "flashanns"]},
   "q3_t1": {"nq": 10000, "repeats": 5, "systems": ["serial-t1", "batch-t1", "extent-t1"]},
   "q3_t8": {"nq": 10000, "repeats": 5, "systems": ["nosteal-t8", "flashanns"]},
   "q4": {"nq": 10000, "repeats": 5, "systems": ["flashanns"], "states": ["cold", "warm"]}
@@ -658,8 +677,10 @@ git commit -m "test: verify evaluation dataset artifacts"
 
 **Files:**
 - Create: `experiments/eval/flashanns/preflight.py`
+- Create: `experiments/eval/flashanns/restore_volatile.py`
 - Create: `experiments/eval/flashanns/live-contract.json`
 - Create: `experiments/eval/flashanns/tests/test_preflight.py`
+- Create: `experiments/eval/flashanns/tests/test_restore_volatile.py`
 
 - [ ] **Step 1: Write fake-sysfs failures**
 
@@ -675,6 +696,7 @@ open users
 bad image magic
 sampled staged-image mismatch
 cold cache_used != 0
+cold run without accepted full-image and RAM-stripe restoration evidence
 warm run without accepted cold-parent evidence
 ~~~
 
@@ -709,20 +731,33 @@ validate(record: dict, contract: dict, dataset: dict, state: str) -> None
 sampled_layout_digest(path: Path, base_offset: int, length: int,
                       pages: int, seed: int) -> str
   Hash page number plus 4096 bytes for deterministic random pages.
+full_layout_digest(path: Path, base_offset: int, length: int,
+                   block_bytes: int = 67108864) -> str
+  Stream the complete declared host or device interval and return SHA-256.
 snapshot_and_validate(contract: dict, dataset: dict, state: str,
-                      identity_evidence: dict | None = None) -> dict
-  Perform snapshot, identity comparison, state checks, and sampled digest match.
+                      identity_evidence: dict | None = None,
+                      volatile_evidence: dict | None = None) -> dict
+  Perform snapshot, identity comparison, and state checks. For a cold run,
+  accept only a matching full-stage identity record plus fresh volatile
+  RAM-stripe restoration evidence, so validation does not warm the SSD cache.
+ram_segments(offset: int, length: int, ram_size: int, ssd_size: int,
+             stripe_size: int) -> list[Segment]
+  Reproduce vmem_sw_layout_map() and return only dataset intersections in RAM.
+restore_volatile_stripes(...)
+  Write and reread only those intersections; require equal SHA-256 and
+  cache_used=dirty_bytes=io_errors=0.
 atomic_json_write(path: Path, value: dict) -> None
   Write sorted JSON to a sibling .tmp, fsync, and rename.
 ~~~
 
-Open the device `O_RDONLY` only. The CLI writes a snapshot only after every
-gate passes.
+Preflight opens the device `O_RDONLY` only. The restoration CLI opens it for
+write only with explicit `--write`, after the caller has established an empty
+cache and an idle device, and touches only computed RAM-tier intersections.
 
 - [ ] **Step 4: Run tests and preserve the live failure**
 
 ~~~bash
-python3 -m unittest experiments.eval.flashanns.tests.test_preflight -v
+python3 -m unittest experiments.eval.flashanns.tests.test_preflight experiments.eval.flashanns.tests.test_restore_volatile -v
 python3 -m experiments.eval.flashanns.preflight --dataset t2i10m --state cold --out results/eval/flashanns/preflight/t2i-attempt.json
 ~~~
 
@@ -732,7 +767,7 @@ driver or cache in response.
 - [ ] **Step 5: Commit code and contract, not failed output**
 
 ~~~bash
-git add experiments/eval/flashanns/preflight.py experiments/eval/flashanns/live-contract.json experiments/eval/flashanns/tests/test_preflight.py
+git add experiments/eval/flashanns/preflight.py experiments/eval/flashanns/restore_volatile.py experiments/eval/flashanns/live-contract.json experiments/eval/flashanns/tests/test_preflight.py experiments/eval/flashanns/tests/test_restore_volatile.py
 git commit -m "test: add 4 GiB live preflight"
 ~~~
 
@@ -750,10 +785,12 @@ git commit -m "test: add 4 GiB live preflight"
 
 - [ ] **Step 1: Write dry-run tests**
 
-Assert T2I smoke expands all internal proof systems, every command contains the
-dataset metric, 4 GiB identity contract, correct thread count, trace directory,
-and no removed flags. Assert system shuffling is deterministic per
-`(dataset, phase, L, repeat, state)`.
+Assert T2I smoke expands exactly `demand` and `flashanns`; every command uses
+`/dev/vmem0`, contains the dataset metric, 4 GiB identity contract, correct
+thread count and trace directory, and contains neither Oracle nor removed
+flags. Assert Q2 expands exactly 15 runs at one frozen `L` (three systems times
+five repeats) and system shuffling is deterministic per `(dataset, phase, L,
+repeat, state)`.
 
 - [ ] **Step 2: Define required run fields**
 
@@ -804,6 +841,10 @@ atomic_json_write(run_dir / "run.json", record)
 ~~~
 
 The runner refuses an existing run ID and refuses reused cold-reset evidence.
+`--system` selects one admitted system so matched systems can consume separate
+cold resets. `--identity-evidence` and `--volatile-evidence` pass the two
+accepted preflight records into `run_one.py`; a cold execution without either
+record fails before creating a run directory.
 
 - [ ] **Step 5: Implement validation**
 
@@ -812,8 +853,9 @@ deltas, and all schema fields. For same-search blocks, require identical metric,
 artifact manifest, query IDs, `L`, candidate offsets, candidate IDs, returned
 IDs, and recall.
 
-Reject Oracle NAND bytes, FlashANNS bounce scores, score-triggered Flash,
-incomplete queries, or a non-4-GiB preflight.
+Reject every Oracle run record, FlashANNS bounce scores, score-triggered Flash,
+incomplete queries, or a non-4-GiB preflight. Aggregation rejects Oracle even
+if a stale record is marked accepted, and plotting defines no Oracle series.
 
 - [ ] **Step 6: Run tests and dry-run**
 
@@ -931,19 +973,40 @@ cache_used=0
 dirty_bytes=0
 io_errors=0
 expected two NVMe devices/BDFs
-T2I extent image sampled digest matches the host image
+accepted full T2I host/device extent-image identity from initial staging
+all T2I RAM-tier stripes restored from the admitted host extent image after the current reload
+fresh RAM-tier stripe digest matches; SSD-tier identity evidence is unchanged
 ~~~
 
-Do not perform the recovery, cache change, staging, or reset inside this plan.
+The current hybrid layout has a 28 GiB volatile RAM tier interleaved with SSD
+in 2 MiB stripes. Every module reload therefore requires restoring only the
+RAM-tier intersections of the active dataset extent before a run; never rewrite
+the already-staged SSD-tier stripes. For T2I's current interval this restoration
+is 152 MiB. The restoration proof must still show `cache_used=0`. Do not perform
+recovery, cache change, staging, or reset inside the runner.
 
 - [ ] **Step 3: Run the 100-query proof**
 
 After approved state preparation:
 
 ~~~bash
-python3 -m experiments.eval.flashanns.run_matrix --dataset t2i10m --phase smoke --state proof --out results/eval/flashanns/raw/t2i10m/proof
-python3 -m experiments.eval.flashanns.validate_run --compare-same-search results/eval/flashanns/raw/t2i10m/proof --out results/eval/flashanns/readiness/t2i-proof.json
+python3 -m experiments.eval.flashanns.run_matrix --dataset t2i10m --phase smoke --system demand \
+  --identity-evidence results/eval/flashanns/preflight/t2i-full-identity.json \
+  --volatile-evidence results/eval/flashanns/preflight/t2i-ram-restore-demand.json \
+  --out results/eval/flashanns/raw/t2i10m/proof
+# Perform a separate approved cold reload and RAM-only restoration here.
+python3 -m experiments.eval.flashanns.run_matrix --dataset t2i10m --phase smoke --system flashanns \
+  --identity-evidence results/eval/flashanns/preflight/t2i-full-identity.json \
+  --volatile-evidence results/eval/flashanns/preflight/t2i-ram-restore-flashanns.json \
+  --out results/eval/flashanns/raw/t2i10m/proof
+python3 -m experiments.eval.flashanns.validate_run --compare-same-search \
+  results/eval/flashanns/raw/t2i10m/proof/t2i10m-smoke-L400-r0-proof-demand/run.json \
+  results/eval/flashanns/raw/t2i10m/proof/t2i10m-smoke-L400-r0-proof-flashanns/run.json \
+  --out results/eval/flashanns/readiness/t2i-proof.json
 ~~~
+
+This proof has exactly two records. Query IDs, candidate offsets, candidate IDs,
+returned IDs, and recomputed recall must match between Demand and FlashANNS.
 
 - [ ] **Step 4: Calibrate recall**
 
@@ -961,7 +1024,8 @@ python3 -m experiments.eval.flashanns.run_matrix --dataset t2i10m --phase q3_t8 
 python3 -m experiments.eval.flashanns.run_matrix --dataset t2i10m --phase q4 --paired-cold-warm --anchors results/eval/flashanns/calibration/t2i10m.json
 ~~~
 
-Each cold invocation consumes its own approved reset snapshot.
+Each cold invocation consumes its own approved reset snapshot and fresh
+RAM-tier-only restoration proof.
 
 - [ ] **Step 6: Seal and render provisional figures**
 
@@ -1051,16 +1115,32 @@ cache_used=0
 dirty_bytes=0
 io_errors=0
 expected two NVMe devices/BDFs
-YFCC extent image sampled digest matches the admitted host image
+accepted full YFCC host/device extent-image identity from initial staging
+all YFCC RAM-tier stripes restored from the admitted host extent image after the current reload
+fresh RAM-tier stripe digest matches; SSD-tier identity evidence is unchanged
 ~~~
 
-Do not perform staging, the cache-limit change, or reset in the runner.
+Derive the exact RAM-tier intersections from the frozen 2 MiB hybrid-layout
+mapping and restore only those bytes after every reload. Require
+`cache_used=0` after restoration. Do not perform staging, the cache-limit
+change, restoration, or reset in the runner.
 
 - [ ] **Step 2: Run and validate the 100-query L2 proof**
 
 ~~~bash
-python3 -m experiments.eval.flashanns.run_matrix --dataset yfcc10m --phase smoke --state proof --out results/eval/flashanns/raw/yfcc10m/proof
-python3 -m experiments.eval.flashanns.validate_run --compare-same-search results/eval/flashanns/raw/yfcc10m/proof --out results/eval/flashanns/readiness/yfcc-proof.json
+python3 -m experiments.eval.flashanns.run_matrix --dataset yfcc10m --phase smoke --system demand \
+  --identity-evidence results/eval/flashanns/preflight/yfcc-full-identity.json \
+  --volatile-evidence results/eval/flashanns/preflight/yfcc-ram-restore-demand.json \
+  --out results/eval/flashanns/raw/yfcc10m/proof
+# Perform a separate approved cold reload and RAM-only restoration here.
+python3 -m experiments.eval.flashanns.run_matrix --dataset yfcc10m --phase smoke --system flashanns \
+  --identity-evidence results/eval/flashanns/preflight/yfcc-full-identity.json \
+  --volatile-evidence results/eval/flashanns/preflight/yfcc-ram-restore-flashanns.json \
+  --out results/eval/flashanns/raw/yfcc10m/proof
+python3 -m experiments.eval.flashanns.validate_run --compare-same-search \
+  results/eval/flashanns/raw/yfcc10m/proof/yfcc10m-smoke-L400-r0-proof-demand/run.json \
+  results/eval/flashanns/raw/yfcc10m/proof/yfcc10m-smoke-L400-r0-proof-flashanns/run.json \
+  --out results/eval/flashanns/readiness/yfcc-proof.json
 ~~~
 
 Require `metric=l2` in every command and record, identical same-search
@@ -1084,8 +1164,9 @@ python3 -m experiments.eval.flashanns.run_matrix --dataset yfcc10m --phase q3_t8
 python3 -m experiments.eval.flashanns.run_matrix --dataset yfcc10m --phase q4 --paired-cold-warm --anchors results/eval/flashanns/calibration/yfcc10m.json
 ~~~
 
-Each cold invocation consumes a distinct approved reset snapshot. Require five
-accepted repetitions for every Q2/Q3 point and five accepted cold/warm pairs.
+Each cold invocation consumes a distinct approved reset snapshot and fresh
+RAM-tier-only restoration proof. Require five accepted repetitions for every
+Q2/Q3 point and five accepted cold/warm pairs.
 
 - [ ] **Step 5: Seal and render provisional figures**
 
@@ -1165,16 +1246,32 @@ cache_used=0
 dirty_bytes=0
 io_errors=0
 expected two NVMe devices/BDFs
-LAION extent image sampled digest matches the admitted host image
+accepted full LAION host/device extent-image identity from initial staging
+all LAION RAM-tier stripes restored from the admitted host extent image after the current reload
+fresh RAM-tier stripe digest matches; SSD-tier identity evidence is unchanged
 ~~~
 
-Do not perform staging, the cache-limit change, or reset in the runner.
+Derive the exact RAM-tier intersections from the frozen 2 MiB hybrid-layout
+mapping and restore only those bytes after every reload. Require
+`cache_used=0` after restoration. Do not perform staging, the cache-limit
+change, restoration, or reset in the runner.
 
 - [ ] **Step 2: Run and validate the 100-query MIPS proof**
 
 ~~~bash
-python3 -m experiments.eval.flashanns.run_matrix --dataset laion10m --phase smoke --state proof --out results/eval/flashanns/raw/laion10m/proof
-python3 -m experiments.eval.flashanns.validate_run --compare-same-search results/eval/flashanns/raw/laion10m/proof --out results/eval/flashanns/readiness/laion-proof.json
+python3 -m experiments.eval.flashanns.run_matrix --dataset laion10m --phase smoke --system demand \
+  --identity-evidence results/eval/flashanns/preflight/laion-full-identity.json \
+  --volatile-evidence results/eval/flashanns/preflight/laion-ram-restore-demand.json \
+  --out results/eval/flashanns/raw/laion10m/proof
+# Perform a separate approved cold reload and RAM-only restoration here.
+python3 -m experiments.eval.flashanns.run_matrix --dataset laion10m --phase smoke --system flashanns \
+  --identity-evidence results/eval/flashanns/preflight/laion-full-identity.json \
+  --volatile-evidence results/eval/flashanns/preflight/laion-ram-restore-flashanns.json \
+  --out results/eval/flashanns/raw/laion10m/proof
+python3 -m experiments.eval.flashanns.validate_run --compare-same-search \
+  results/eval/flashanns/raw/laion10m/proof/laion10m-smoke-L400-r0-proof-demand/run.json \
+  results/eval/flashanns/raw/laion10m/proof/laion10m-smoke-L400-r0-proof-flashanns/run.json \
+  --out results/eval/flashanns/readiness/laion-proof.json
 ~~~
 
 Require `metric=mips` in every command and record, identical same-search
@@ -1198,8 +1295,9 @@ python3 -m experiments.eval.flashanns.run_matrix --dataset laion10m --phase q3_t
 python3 -m experiments.eval.flashanns.run_matrix --dataset laion10m --phase q4 --paired-cold-warm --anchors results/eval/flashanns/calibration/laion10m.json
 ~~~
 
-Each cold invocation consumes a distinct approved reset snapshot. Require five
-accepted repetitions for every Q2/Q3 point and five accepted cold/warm pairs.
+Each cold invocation consumes a distinct approved reset snapshot and fresh
+RAM-tier-only restoration proof. Require five accepted repetitions for every
+Q2/Q3 point and five accepted cold/warm pairs.
 
 - [ ] **Step 5: Seal and render provisional figures**
 

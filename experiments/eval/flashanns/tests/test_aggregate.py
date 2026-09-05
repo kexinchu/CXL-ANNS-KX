@@ -42,6 +42,13 @@ class AggregateTest(unittest.TestCase):
         with self.assertRaisesRegex(AggregationError, "accepted"):
             aggregate_records(records)
 
+    def test_rejects_oracle_records(self):
+        records = make_records()
+        for record in records:
+            record["system"] = "oracle"
+        with self.assertRaisesRegex(AggregationError, "Oracle system is excluded"):
+            aggregate_records(records)
+
     def test_q4_requires_five_cold_warm_pairs(self):
         rows = aggregate_records(make_records("q4", ("cold", "warm")))
         self.assertEqual(len(rows), 2)

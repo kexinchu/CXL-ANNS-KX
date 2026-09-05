@@ -9,11 +9,6 @@
     "threads": 8,
     "flags": []
   },
-  "oracle": {
-    "kind": "internal",
-    "threads": 8,
-    "flags": ["--oracle-dram"]
-  },
   "flashanns": {
     "kind": "internal",
     "threads": 8,

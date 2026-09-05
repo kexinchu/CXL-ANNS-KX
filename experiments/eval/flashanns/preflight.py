@@ -20,7 +20,10 @@ class PreflightError(ValueError):
     """The live state does not satisfy the frozen evaluation contract."""
 
 
-INTEGER_FIELDS = ("backing_count", "cache_limit", "cache_used", "dirty_bytes", "io_errors", "evictions")
+INTEGER_FIELDS = (
+    "backing_count", "cache_limit", "cache_used", "dirty_bytes", "io_errors",
+    "evictions", "ram_size", "ssd_size", "stripe_size",
+)
 TEXT_FIELDS = ("backend", "nvme_dev", "target_bdf")
 
 
@@ -108,6 +111,63 @@ def sampled_layout_digest(path: Path, base_offset: int, length: int, pages: int,
     return digest.hexdigest()
 
 
+def full_layout_digest(path: Path, base_offset: int, length: int, block_bytes: int = 64 << 20) -> str:
+    if base_offset < 0 or length <= 0 or block_bytes <= 0:
+        raise PreflightError("invalid full-layout range")
+    page = mmap.PAGESIZE
+    map_base = base_offset - base_offset % page
+    delta = base_offset - map_base
+    digest = hashlib.sha256()
+    try:
+        fd = os.open(Path(path), os.O_RDONLY)
+        try:
+            with mmap.mmap(
+                fd,
+                delta + length,
+                flags=mmap.MAP_SHARED,
+                prot=mmap.PROT_READ,
+                offset=map_base,
+            ) as image:
+                for start in range(delta, delta + length, block_bytes):
+                    digest.update(image[start : min(start + block_bytes, delta + length)])
+        finally:
+            os.close(fd)
+    except OSError as exc:
+        raise PreflightError(f"{Path(path).name}: {exc}") from exc
+    return digest.hexdigest()
+
+
+def full_identity_record(contract: dict[str, Any], dataset: dict[str, Any]) -> dict[str, Any]:
+    device = Path(contract["device"])
+    sysfs = Path(contract["sysfs"])
+    staging = dataset["staging"]
+    host_image = Path(dataset["artifacts"][staging["host_artifact"]])
+    before = snapshot(sysfs, device, dataset, read_device=False)
+    if not before.get("device_exists"):
+        raise PreflightError("device is missing")
+    if before.get("open_users"):
+        raise PreflightError(f"open_users is nonempty: {before['open_users']!r}")
+    host_full = full_layout_digest(host_image, 0, int(staging["length"]))
+    device_full = full_layout_digest(device, int(staging["offset"]), int(staging["length"]))
+    record = snapshot(sysfs, device, dataset, read_device=True)
+    record["host_digest"] = sampled_layout_digest(
+        host_image, 0, int(staging["length"]), int(contract["sample_pages"]), int(contract["sample_seed"])
+    )
+    record["device_digest"] = sampled_layout_digest(
+        device, int(staging["offset"]), int(staging["length"]), int(contract["sample_pages"]), int(contract["sample_seed"])
+    )
+    record["identity_scope"] = "full"
+    record["full_host_sha256"] = host_full
+    record["full_device_sha256"] = device_full
+    record["cold_parent_accepted"] = False
+    record["identity_evidence_reused"] = False
+    record["volatile_evidence_reused"] = False
+    validate(record, contract, dataset, "post")
+    if host_full != device_full:
+        raise PreflightError("full staged-image digest mismatch")
+    return record
+
+
 def validate(record: dict[str, Any], contract: dict[str, Any], dataset: dict[str, Any], state: str) -> None:
     errors: list[str] = []
     if not record.get("device_exists"):
@@ -141,15 +201,72 @@ def snapshot_and_validate(
     dataset: dict[str, Any],
     state: str,
     identity_evidence: dict[str, Any] | None = None,
+    volatile_evidence: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     staging = dataset.get("staging", {})
-    record = snapshot(Path(contract["sysfs"]), Path(contract["device"]), dataset)
+    reuse_identity = bool(identity_evidence and identity_evidence.get("accepted"))
+    record = snapshot(
+        Path(contract["sysfs"]),
+        Path(contract["device"]),
+        dataset,
+        read_device=not reuse_identity,
+    )
     host_image = Path(dataset["artifacts"][staging["host_artifact"]])
     record["host_digest"] = sampled_layout_digest(
         host_image, 0, int(staging["length"]), int(contract["sample_pages"]), int(contract["sample_seed"])
     )
     record["device_digest"] = None
-    if record["device_exists"]:
+    record["identity_evidence_reused"] = reuse_identity
+    record["volatile_evidence_reused"] = False
+    if state == "cold" and not reuse_identity:
+        raise PreflightError("cold state requires accepted full-stage identity evidence")
+    if reuse_identity:
+        assert identity_evidence is not None
+        mismatches = [
+            field
+            for field in ("backend", "backing_count", "nvme_dev", "target_bdf")
+            if identity_evidence.get(field) != record.get(field)
+        ]
+        if mismatches:
+            raise PreflightError(
+                "identity evidence differs from current state: " + ", ".join(mismatches)
+            )
+        if identity_evidence.get("host_digest") != record["host_digest"]:
+            raise PreflightError("identity evidence host digest is stale")
+        if state == "cold" and (
+            identity_evidence.get("identity_scope") != "full"
+            or identity_evidence.get("full_host_sha256") != identity_evidence.get("full_device_sha256")
+            or len(identity_evidence.get("full_host_sha256", "")) != 64
+        ):
+            raise PreflightError("cold state requires accepted full-stage identity evidence")
+        record["image_magic"] = identity_evidence.get("image_magic")
+        record["device_digest"] = identity_evidence.get("device_digest")
+        if state == "cold":
+            if not volatile_evidence or not volatile_evidence.get("accepted"):
+                raise PreflightError("cold state requires accepted volatile RAM-stripe evidence")
+            expected_layout = {
+                name: record.get(name) for name in ("ram_size", "ssd_size", "stripe_size")
+            }
+            volatile_errors = []
+            if volatile_evidence.get("layout") != expected_layout:
+                volatile_errors.append("layout")
+            if volatile_evidence.get("source") != str(host_image):
+                volatile_errors.append("source")
+            if volatile_evidence.get("staging_offset") != int(staging["offset"]):
+                volatile_errors.append("staging_offset")
+            if volatile_evidence.get("staging_length") != int(staging["length"]):
+                volatile_errors.append("staging_length")
+            if volatile_evidence.get("source_ram_sha256") != volatile_evidence.get("device_ram_sha256"):
+                volatile_errors.append("RAM digest")
+            for name in ("cache_used", "dirty_bytes", "io_errors"):
+                if volatile_evidence.get(name) != 0:
+                    volatile_errors.append(name)
+            if volatile_errors:
+                raise PreflightError(
+                    "volatile RAM-stripe evidence mismatch: " + ", ".join(volatile_errors)
+                )
+            record["volatile_evidence_reused"] = True
+    elif record["device_exists"]:
         record["device_digest"] = sampled_layout_digest(
             Path(contract["device"]),
             int(staging["offset"]),
@@ -157,7 +274,9 @@ def snapshot_and_validate(
             int(contract["sample_pages"]),
             int(contract["sample_seed"]),
         )
-    record["cold_parent_accepted"] = bool(identity_evidence and identity_evidence.get("accepted"))
+    record["cold_parent_accepted"] = bool(
+        identity_evidence and identity_evidence.get("cold_parent_accepted")
+    )
     validate(record, contract, dataset, state)
     return record
 
@@ -192,12 +311,23 @@ def main() -> int:
     parser.add_argument("--state", choices=("cold", "warm", "post"), required=True)
     parser.add_argument("--out", required=True, type=Path)
     parser.add_argument("--identity-evidence", type=Path)
+    parser.add_argument("--volatile-evidence", type=Path)
+    parser.add_argument("--full-identity", action="store_true")
     args = parser.parse_args()
     root = Path(__file__).resolve().parents[3]
     datasets, _, _ = load_configs(root)
     contract = json.loads((Path(__file__).with_name("live-contract.json")).read_text())
-    evidence = json.loads(args.identity_evidence.read_text()) if args.identity_evidence else None
-    record = snapshot_and_validate(contract, datasets[args.dataset], args.state, evidence)
+    if args.full_identity:
+        if args.state != "post" or args.identity_evidence or args.volatile_evidence:
+            raise PreflightError("--full-identity requires --state post and no reused evidence")
+        record = full_identity_record(contract, datasets[args.dataset])
+    else:
+        evidence = json.loads(args.identity_evidence.read_text()) if args.identity_evidence else None
+        volatile = json.loads(args.volatile_evidence.read_text()) if args.volatile_evidence else None
+        record = snapshot_and_validate(contract, datasets[args.dataset], args.state, evidence, volatile)
+    record["accepted"] = True
+    record["dataset"] = args.dataset
+    record["state"] = args.state
     atomic_json_write(args.out, record)
     return 0
 

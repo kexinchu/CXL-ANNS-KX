@@ -9,7 +9,7 @@ from typing import Any
 
 
 COLORS = {
-    "demand": "#7f7f7f", "pipeann": "#e69f00", "oracle": "#009e73", "flashanns": "#0072b2",
+    "demand": "#7f7f7f", "pipeann": "#e69f00", "flashanns": "#0072b2",
     "serial-t1": "#7f7f7f", "batch-t1": "#56b4e9", "extent-t1": "#0072b2", "nosteal-t8": "#d55e00",
 }
 

@@ -26,14 +26,16 @@ def validate_record(record: dict[str, Any]) -> None:
         raise RunValidationError("; ".join(errors))
     if record["validation"].get("status") not in ("pending", "accepted", "rejected"):
         errors.append("invalid validation.status")
+    if record["system"] == "oracle":
+        errors.append("Oracle system is excluded from the executable evaluation contract")
     for where in ("preflight_before", "preflight_after"):
         if record[where].get("cache_limit") != 4294967296:
             errors.append(f"{where}.cache_limit is not 4294967296")
     metrics = record["metrics"]
     if metrics.get("completed_queries") != record["nq"]:
         errors.append("completed_queries differs from nq")
-    if record["system"] == "oracle" and metrics.get("nvme_read_B", 0) != 0:
-        errors.append("Oracle NAND bytes are nonzero")
+    if not isinstance(metrics.get("recall@10"), (int, float)):
+        errors.append("missing numeric recall@10")
     if record["system"] == "flashanns" and metrics.get("score_bounce", 0) != 0:
         errors.append("score_bounce is nonzero")
     if record["system"] == "flashanns" and metrics.get("score_flash", 0) != 0:
@@ -58,6 +60,8 @@ def validate_same_search(records: list[dict[str, Any]]) -> None:
         for field in SAME_SEARCH_FIELDS:
             if record["sidecars"][field] != first["sidecars"][field]:
                 raise RunValidationError(f"same-search mismatch: {field}")
+        if record["metrics"]["recall@10"] != first["metrics"]["recall@10"]:
+            raise RunValidationError("same-search mismatch: recall@10")
 
 
 def main() -> int:

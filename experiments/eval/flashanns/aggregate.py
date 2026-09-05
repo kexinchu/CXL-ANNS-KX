@@ -32,6 +32,8 @@ def aggregate_records(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
     if not records:
         raise AggregationError("no records")
     for record in records:
+        if record.get("system") == "oracle":
+            raise AggregationError("Oracle system is excluded from aggregation")
         if record.get("validation", {}).get("status") != "accepted":
             raise AggregationError(f"run {record.get('run_id')} is not accepted")
     cold_ids = {r["run_id"] for r in records if r["phase"] == "q4" and r["state"] == "cold"}

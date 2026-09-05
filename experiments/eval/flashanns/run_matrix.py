@@ -30,11 +30,13 @@ def _anchor_l(anchors: dict[str, Any] | None, system: str) -> int:
 
 def _internal_command(root: Path, dataset: dict[str, Any], system: dict[str, Any], spec: dict[str, Any]) -> list[str]:
     a, staging = dataset["artifacts"], dataset["staging"]
-    command = [str(root / "serving" / "search_beam")]
-    if "--oracle-dram" in system["flags"]:
-        command += ["--image", a["oracle_image"]]
-    else:
-        command += ["--vmem-dev", "/dev/vmem0", "--vmem-offset", str(staging["offset"]), "--vmem-len", str(staging["length"]), "--id-slot-map", a["slot_map"]]
+    command = [
+        str(root / "serving" / "search_beam"),
+        "--vmem-dev", "/dev/vmem0",
+        "--vmem-offset", str(staging["offset"]),
+        "--vmem-len", str(staging["length"]),
+        "--id-slot-map", a["slot_map"],
+    ]
     command += [
         "--diskann-layout", "--pq-nav", "--pq-pivots", a["pq64_pivots"],
         "--pq-compressed", a["pq64_codes"], "--metric", dataset["metric"],
@@ -64,7 +66,7 @@ def _pipeann_command(dataset_id: str, dataset: dict[str, Any], spec: dict[str, A
     ]
 
 
-def expand_runs(root: Path, dataset_id: str, phase: str, anchors: dict[str, Any] | None = None, out: Path | None = None) -> list[dict[str, Any]]:
+def expand_runs(root: Path, dataset_id: str, phase: str, anchors: dict[str, Any] | None = None, out: Path | None = None, system_id: str | None = None) -> list[dict[str, Any]]:
     root = Path(root)
     datasets, systems, matrix = load_configs(root)
     dataset = datasets[dataset_id]
@@ -80,6 +82,10 @@ def expand_runs(root: Path, dataset_id: str, phase: str, anchors: dict[str, Any]
         levels = sorted({_anchor_l(anchors, system) for system in system_ids})
     else:
         raise RunnerError(f"unknown phase {phase}")
+    if system_id is not None:
+        if system_id not in system_ids:
+            raise RunnerError(f"{system_id}: system is not part of {phase}")
+        system_ids = [system_id]
     runs: list[dict[str, Any]] = []
     for level in levels:
         for repeat in range(int(phase_cfg["repeats"])):
@@ -112,17 +118,22 @@ def main() -> int:
     parser.add_argument("--anchors", type=Path)
     parser.add_argument("--out", type=Path)
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--system")
+    parser.add_argument("--identity-evidence", type=Path)
+    parser.add_argument("--volatile-evidence", type=Path)
     args = parser.parse_args()
     root = Path(__file__).resolve().parents[3]
     anchors = json.loads(args.anchors.read_text()) if args.anchors else None
-    runs = expand_runs(root, args.dataset, args.phase, anchors, args.out)
+    runs = expand_runs(root, args.dataset, args.phase, anchors, args.out, args.system)
     if args.dry_run:
         for spec in runs:
             print(spec["run_id"] + "\t" + shlex.join(spec["command"]))
         return 0
     from experiments.eval.flashanns.run_one import run_spec
+    identity = json.loads(args.identity_evidence.read_text()) if args.identity_evidence else None
+    volatile = json.loads(args.volatile_evidence.read_text()) if args.volatile_evidence else None
     for spec in runs:
-        run_spec(root, spec)
+        run_spec(root, spec, identity, volatile)
     return 0
 
 

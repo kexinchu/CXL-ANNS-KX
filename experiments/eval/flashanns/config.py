@@ -37,8 +37,9 @@ REMOVED_FLAGS = {
     "--score-page",
     "--pipe-drive",
     "--admit-gap",
+    "--oracle-dram",
 }
-Q2_SYSTEMS = ["demand", "pipeann", "oracle", "flashanns"]
+Q2_SYSTEMS = ["demand", "pipeann", "flashanns"]
 
 
 def _read_json(path: Path) -> dict[str, Any]:
@@ -56,6 +57,8 @@ def validate_configs(
 ) -> None:
     if set(datasets) != DATASET_IDS:
         raise ConfigError(f"datasets must be exactly {sorted(DATASET_IDS)}")
+    if "oracle" in systems:
+        raise ConfigError("oracle system is excluded from the executable evaluation contract")
 
     for dataset_id, dataset in datasets.items():
         metric = dataset.get("metric")

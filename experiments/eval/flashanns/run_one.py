@@ -62,14 +62,21 @@ def _sidecars(trace_dir: Path) -> dict[str, Any]:
     return result
 
 
-def run_spec(root: Path, spec: dict[str, Any], identity_evidence: dict[str, Any] | None = None) -> dict[str, Any]:
+def run_spec(
+    root: Path,
+    spec: dict[str, Any],
+    identity_evidence: dict[str, Any] | None = None,
+    volatile_evidence: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     root = Path(root)
     datasets, _, _ = load_configs(root)
     dataset = datasets[spec["dataset"]]
     contract_path = root / "experiments" / "eval" / "flashanns" / "live-contract.json"
     contract = json.loads(contract_path.read_text())
     preflight_state = "cold" if spec["state"] == "proof" else spec["state"]
-    before = snapshot_and_validate(contract, dataset, preflight_state, identity_evidence)
+    before = snapshot_and_validate(
+        contract, dataset, preflight_state, identity_evidence, volatile_evidence
+    )
     device_before = _block_counters(contract)
 
     run_dir = Path(spec["run_dir"])
