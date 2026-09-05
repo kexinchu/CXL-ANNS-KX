@@ -127,6 +127,13 @@ int main() {
   assert(effective_issue_qd(8, 16) == 8);
   assert(effective_issue_qd(0, 0) == 1);
 
+  // A fully resident committed set legitimately creates no new fill token.
+  // It must proceed to rank without consuming QD instead of cycling in Hold.
+  assert(!issue_consumes_qd(false, true, false));
+  assert(!issue_consumes_qd(true, true, false));
+  assert(issue_consumes_qd(false, false, true));
+  assert(!issue_consumes_qd(false, false, false));
+
   // A committed query whose pages were evicted after its I/O drained must
   // refill instead of spinning forever in Wait/Pump.
   assert(should_refill_missing(CbSt::Wait, false, false));

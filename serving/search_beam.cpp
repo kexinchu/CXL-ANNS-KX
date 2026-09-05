@@ -2778,15 +2778,17 @@ int main(int argc, char** argv) {
               return false;
             nand_inflight.fetch_add(1, std::memory_order_relaxed);
             q.nand_held = true;
+            const size_t toks_before = q.fill_toks.size();
             pqq_issue(q, pl, hub, /*stall=*/false);
-            if (q.need.empty()) {
+            const bool covered = pqq_covering(hub.pipe, q.need);
+            const bool token_added = q.fill_toks.size() > toks_before;
+            if (!issue_consumes_qd(q.need.empty(), covered, token_added)) {
               nand_inflight.fetch_sub(1, std::memory_order_relaxed);
               q.nand_held = false;
-              return true;
-            }
-            if (q.fill_toks.empty()) {
-              nand_inflight.fetch_sub(1, std::memory_order_relaxed);
-              q.nand_held = false;
+              if (q.need.empty() || covered) {
+                q.st = CbSt::Ready;
+                return true;
+              }
               q.st = CbSt::Hold;
               return false;
             }

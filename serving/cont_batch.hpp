@@ -32,6 +32,12 @@ inline bool issue_qd_ok(uint32_t inflight, uint32_t qd) {
   return qd == 0 || inflight < qd;
 }
 
+// QD tracks an actually submitted NAND wave, not a query that reached Issue.
+// A resident committed set is already rankable and legitimately adds no token.
+inline bool issue_consumes_qd(bool need_empty, bool covered, bool token_added) {
+  return !need_empty && !covered && token_added;
+}
+
 // A Wait query can lose coverage after its completed pages are evicted. Once
 // its local I/O drains, it must refill the same committed pages to make
 // forward progress; this does not admit or expand a new query.
