@@ -323,7 +323,7 @@ def run_spec(
     record["metrics"].update(block_counter_deltas(device_before, device_after))
     if resource_log.is_file():
         record["metrics"].update(parse_resource_usage(resource_log.read_text(errors="replace")))
-    for key in ("threads", "arrival_rate", "cache_gib", "required_cache_limit", "cold_parent_run_id"):
+    for key in ("threads", "arrival_rate", "cache_gib", "required_cache_limit", "cold_parent_run_id", "campaign_tag"):
         if key in spec:
             record[key] = spec[key]
     if evidence_claim is not None:

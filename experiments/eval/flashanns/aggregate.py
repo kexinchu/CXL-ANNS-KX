@@ -96,7 +96,7 @@ def aggregate_records(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
     for key, group in sorted(groups.items()):
         if len(group) != 5 or {r["repeat"] for r in group} != set(range(5)):
             raise AggregationError(f"{key}: require exactly five repeats")
-        for identity in ("artifact_manifest_sha256",):
+        for identity in ("artifact_manifest_sha256", "binary_sha256"):
             if len({r[identity] for r in group}) != 1:
                 raise AggregationError(f"{key}: {identity} mismatch")
         trace_identities = ("query_ids_sha256", "result_ids_sha256") if group[0].get("external") else ("query_ids_sha256", "candidate_ids_sha256")

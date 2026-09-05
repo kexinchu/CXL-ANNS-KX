@@ -307,6 +307,15 @@ class RunnerTest(unittest.TestCase):
         self.assertEqual(len(cached), 1)
         self.assertEqual((cached[0]["repeat"], cached[0]["cache_gib"]), (3, 2))
 
+    def test_campaign_tag_makes_rerun_ids_unambiguous(self):
+        run = expand_runs(
+            ROOT, "t2i10m", "q3_t1", anchors={"L": 400},
+            system_id="serial-t1", level=400, repeat_id=0,
+            run_tag="b8725b",
+        )[0]
+        self.assertTrue(run["run_id"].endswith("-b8725b"))
+        self.assertEqual(run["campaign_tag"], "b8725b")
+
     def test_calibration_defaults_to_base_levels_and_allows_conditional_extension(self):
         base = expand_runs(ROOT, "t2i10m", "calibration")
         self.assertEqual({run["L"] for run in base}, {50, 100, 200, 400, 800, 1600})

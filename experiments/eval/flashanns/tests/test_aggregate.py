@@ -15,6 +15,7 @@ def make_records(phase="q2", states=("cold",), **dimensions):
                     "L": 400, "repeat": repeat, "validation": {"status": "accepted"},
                     **dimensions,
                     "artifact_manifest_sha256": "artifact",
+                    "binary_sha256": "binary",
                     "sidecars": {"query_ids_sha256": "q", "candidate_ids_sha256": "c"},
                     "cold_parent_run_id": cold_id if state == "warm" else None,
                     "metrics": {"qps": 100 + repeat, "latency_p99_ms": 10 + repeat},
@@ -41,6 +42,12 @@ class AggregateTest(unittest.TestCase):
         records = make_records()
         records[-1]["validation"]["status"] = "rejected"
         with self.assertRaisesRegex(AggregationError, "accepted"):
+            aggregate_records(records)
+
+    def test_rejects_binary_drift_within_five_repeats(self):
+        records = make_records("q3_t1")
+        records[4]["binary_sha256"] = "different-binary"
+        with self.assertRaisesRegex(AggregationError, "binary_sha256"):
             aggregate_records(records)
 
     def test_rejects_oracle_records(self):

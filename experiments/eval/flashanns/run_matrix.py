@@ -6,6 +6,7 @@ import argparse
 import hashlib
 import json
 import random
+import re
 import shlex
 import uuid
 from pathlib import Path
@@ -99,10 +100,13 @@ def expand_runs(
     cache_gib_value: int | None = None,
     state_value: str | None = None,
     arrival_rate_value: float | None = None,
+    run_tag: str | None = None,
 ) -> list[dict[str, Any]]:
     root = Path(root)
     datasets, systems, matrix = load_configs(root)
     dataset = datasets[dataset_id]
+    if run_tag is not None and not re.fullmatch(r"[a-z0-9][a-z0-9_-]*", run_tag):
+        raise RunnerError("run tag must use lowercase letters, digits, underscore, or hyphen")
     if not dataset.get("ready"):
         raise RunnerError(f"{dataset_id}: dataset is not admitted")
     out = Path(out or root / "results" / "eval" / "flashanns" / "raw" / dataset_id / phase)
@@ -177,7 +181,8 @@ def expand_runs(
                     if arrival_rate is not None:
                         rate_suffix = f"-R{arrival_rate:g}".replace(".", "p")
                     suffix = (f"-T{threads}" if threads is not None else "") + (f"-C{cache_gib}G" if cache_gib is not None else "") + rate_suffix
-                    run_id = f"{dataset_id}-{phase}-L{level}-r{repeat}-{state}-{system_id}{suffix}"
+                    tag_suffix = f"-{run_tag}" if run_tag else ""
+                    run_id = f"{dataset_id}-{phase}-L{level}-r{repeat}-{state}-{system_id}{suffix}{tag_suffix}"
                     spec: dict[str, Any] = {
                         "run_id": run_id, "dataset": dataset_id, "metric": dataset["metric"], "phase": phase,
                         "system": system_id, "state": state, "L": level, "k": matrix["k"], "nq": phase_cfg["nq"],
@@ -191,6 +196,8 @@ def expand_runs(
                         spec["required_cache_limit"] = cache_gib * 1024**3
                     if arrival_rate is not None:
                         spec["arrival_rate"] = arrival_rate
+                    if run_tag is not None:
+                        spec["campaign_tag"] = run_tag
                     if state == "warm":
                         spec["cold_parent_run_id"] = f"{dataset_id}-{phase}-L{level}-r{repeat}-cold-{system_id}{suffix}"
                     spec["iters"] = level if matrix["internal_iters"] == "L" else None
@@ -246,6 +253,7 @@ def main() -> int:
     parser.add_argument("--cache-gib", dest="cache_gib_value", type=int)
     parser.add_argument("--state", dest="state_value")
     parser.add_argument("--arrival-rate", dest="arrival_rate_value", type=float)
+    parser.add_argument("--run-tag")
     parser.add_argument("--identity-evidence", type=Path)
     parser.add_argument("--volatile-evidence", type=Path)
     args = parser.parse_args()
@@ -255,6 +263,7 @@ def main() -> int:
         root, args.dataset, args.phase, anchors, args.out, args.system, args.level,
         args.repeat_id, args.threads_value, args.cache_gib_value, args.state_value,
         args.arrival_rate_value,
+        args.run_tag,
     )
     if args.dry_run:
         for spec in runs:
