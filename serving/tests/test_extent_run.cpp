@@ -62,6 +62,17 @@ int main() {
   pipe.pool = &pool;
   pipe.win = &win;
   pipe.pl = &placement;
+
+  // Token state follows the physical copy wave.  A ready wave is complete
+  // even before its owning query reaches rerank/finish.
+  prime_slot(pipe.slot[2], 2 * pb, source.data() + 2 * pb, false);
+  pipe.slot[2].tok = 77;
+  assert(pipe.token_pending(77));
+  pipe.slot[2].ready[0].store(1, std::memory_order_release);
+  assert(!pipe.token_pending(77));
+  pipe.slot[2].clear();
+  assert(!pipe.token_pending(77));
+
   prime_slot(pipe.slot[0], 0, source.data(), true);
   prime_slot(pipe.slot[1], pb, source.data() + pb, false);
   bool displaced = false;

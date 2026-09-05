@@ -385,6 +385,22 @@ struct HidePipe {
     return false;
   }
 
+  // QD follows the physical copy wave, not the lifetime of the query that
+  // issued it.  A slot may not have been pumped yet, so inspect the worker
+  // ready flags rather than relying only on ready_n.
+  bool token_pending(uint64_t tok) const {
+    if (!tok) return false;
+    for (int s = 0; s < kSlots; ++s) {
+      if (!slot[s].active || slot[s].tok != tok) continue;
+      if (!slot[s].ready) return true;
+      for (size_t i = 0; i < slot[s].pages.size(); ++i) {
+        if (!slot[s].ready[i].load(std::memory_order_acquire)) return true;
+      }
+      return false;
+    }
+    return false;
+  }
+
   bool covers(uint64_t p) const {
     if (use_window()) return win->is_resident(pl->ssd_base, pl->ssd_base + p, 1);
     return page_ready(p);

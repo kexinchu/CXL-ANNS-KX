@@ -38,6 +38,14 @@ inline bool issue_consumes_qd(bool need_empty, bool covered, bool token_added) {
   return !need_empty && !covered && token_added;
 }
 
+inline bool should_release_qd(bool held, bool wave_pending) {
+  return held && !wave_pending;
+}
+
+inline bool should_wait_for_detached_qd(Pipe2Act act, size_t detached_count) {
+  return act == Pipe2Act::Done && detached_count != 0;
+}
+
 // A Wait query can lose coverage after its completed pages are evicted. Once
 // its local I/O drains, it must refill the same committed pages to make
 // forward progress; this does not admit or expand a new query.
@@ -215,5 +223,10 @@ struct PrefetchHub {
       if (pipe.slot[s].active) return true;
     }
     return false;
+  }
+
+  bool token_pending(uint64_t tok) {
+    std::lock_guard<std::mutex> g(mu);
+    return pipe.token_pending(tok);
   }
 };

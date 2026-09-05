@@ -134,6 +134,19 @@ int main() {
   assert(issue_consumes_qd(false, false, true));
   assert(!issue_consumes_qd(false, false, false));
 
+  // QD describes a physical NAND wave, not the lifetime of its query.  Once
+  // the wave has completed, a query that is still waiting for full coverage
+  // must release the permit so a refill can make forward progress.
+  assert(should_release_qd(/*held=*/true, /*wave_pending=*/false));
+  assert(!should_release_qd(/*held=*/true, /*wave_pending=*/true));
+  assert(!should_release_qd(/*held=*/false, /*wave_pending=*/false));
+
+  // A worker must keep pumping a detached physical wave before exiting;
+  // otherwise its unreleased global QD permit can starve surviving workers.
+  assert(should_wait_for_detached_qd(Pipe2Act::Done, 1));
+  assert(!should_wait_for_detached_qd(Pipe2Act::Done, 0));
+  assert(!should_wait_for_detached_qd(Pipe2Act::Pump, 1));
+
   // A committed query whose pages were evicted after its I/O drained must
   // refill instead of spinning forever in Wait/Pump.
   assert(should_refill_missing(CbSt::Wait, false, false));

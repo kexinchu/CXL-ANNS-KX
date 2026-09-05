@@ -1444,6 +1444,7 @@ struct PqQ {
   std::vector<uint64_t> fill_toks;
   std::vector<uint32_t> trace_candidates;
   bool nand_held = false;
+  uint64_t nand_tok = 0;
   std::vector<uint8_t> fp_done;
   uint32_t fp_n = 0;
   std::chrono::steady_clock::time_point t0;
@@ -2745,6 +2746,7 @@ int main(int argc, char** argv) {
           hub.pipe.direct_install = lp.direct_install;
           hub.pipe.score = lp.hide_score;
           std::vector<PqQ> slots((size_t)D);
+          std::vector<uint64_t> detached_qd_tokens;
           uint32_t next_qi = (uint32_t)t;
           auto finish_local = [&](PqQ& q) {
             auto ids = pqq_finish(q, k);
@@ -2767,8 +2769,13 @@ int main(int argc, char** argv) {
                                  std::move(ids));
             }
             if (q.nand_held) {
-              nand_inflight.fetch_sub(1, std::memory_order_relaxed);
+              if (hub.token_pending(q.nand_tok)) {
+                detached_qd_tokens.push_back(q.nand_tok);
+              } else {
+                nand_inflight.fetch_sub(1, std::memory_order_relaxed);
+              }
               q.nand_held = false;
+              q.nand_tok = 0;
             }
             q = PqQ{};
             q.st = CbSt::Empty;
@@ -2782,9 +2789,11 @@ int main(int argc, char** argv) {
             pqq_issue(q, pl, hub, /*stall=*/false);
             const bool covered = pqq_covering(hub.pipe, q.need);
             const bool token_added = q.fill_toks.size() > toks_before;
+            if (token_added) q.nand_tok = q.fill_toks.back();
             if (!issue_consumes_qd(q.need.empty(), covered, token_added)) {
               nand_inflight.fetch_sub(1, std::memory_order_relaxed);
               q.nand_held = false;
+              q.nand_tok = 0;
               if (q.need.empty() || covered) {
                 q.st = CbSt::Ready;
                 return true;
@@ -2803,6 +2812,22 @@ int main(int argc, char** argv) {
             }
             for (;;) {
               hub.pump();
+              for (auto it = detached_qd_tokens.begin(); it != detached_qd_tokens.end();) {
+                if (hub.token_pending(*it)) {
+                  ++it;
+                } else {
+                  nand_inflight.fetch_sub(1, std::memory_order_relaxed);
+                  it = detached_qd_tokens.erase(it);
+                }
+              }
+              for (PqQ& pending : slots) {
+                if (should_release_qd(pending.nand_held,
+                                      hub.token_pending(pending.nand_tok))) {
+                  nand_inflight.fetch_sub(1, std::memory_order_relaxed);
+                  pending.nand_held = false;
+                  pending.nand_tok = 0;
+                }
+              }
               CbSt stbuf[8];
               bool cov[8] = {};
               for (int i = 0; i < D; ++i) {
@@ -2815,12 +2840,15 @@ int main(int argc, char** argv) {
               note_scheduler_inflight(tls_metrics, inflight_now);
               const bool qd_ok = issue_qd_ok(inflight_now, issue_qd);
               auto dec = steal_decide(stbuf, cov, D, has_more, qd_ok);
+              if (should_wait_for_detached_qd(dec.act, detached_qd_tokens.size())) {
+                std::this_thread::yield();
+                continue;
+              }
               if (dec.act == Pipe2Act::Done) break;
               PqQ& q = slots[(size_t)dec.slot];
               if (dec.act == Pipe2Act::Pump) {
                 if (should_refill_missing(q.st, cov[(size_t)dec.slot], hub.any_inflight())) {
-                  uint64_t tok = hub.submit(q.need);
-                  if (tok) q.fill_toks.push_back(tok);
+                  q.st = CbSt::Hold;
                 }
                 std::this_thread::yield();
                 continue;
