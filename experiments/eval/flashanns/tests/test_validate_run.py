@@ -83,6 +83,21 @@ class ValidateRunTest(unittest.TestCase):
             loaded = validate_run.load_records([root])
         self.assertEqual([item["system"] for item in loaded], ["demand", "flashanns"])
 
+    def test_load_records_reparses_internal_stdout_observation_fields(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "run"
+            root.mkdir()
+            item = record()
+            item["command"] = ["/repo/serving/search_beam"]
+            item["metrics"]["mean"] = 64.16
+            (root / "run.json").write_text(json.dumps(item))
+            (root / "stdout.log").write_text(
+                "latency_ms mean=33.700 p50=30.000 p90=40.000 p95=45.000 p99=50.000\n"
+                "recall@10=0.938\npage_occ mean=64.160% pages=10\n"
+            )
+            loaded = validate_run.load_records([root])
+        self.assertEqual(loaded[0]["metrics"]["mean_latency_ms"], 33.7)
+
     def test_freeze_anchors_selects_nearest_measurement_at_or_above_target(self):
         self.assertTrue(
             hasattr(validate_run, "freeze_anchors"),

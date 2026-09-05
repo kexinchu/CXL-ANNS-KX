@@ -66,6 +66,8 @@ def validate_same_search(records: list[dict[str, Any]]) -> None:
 
 
 def load_records(paths: list[Path]) -> list[dict[str, Any]]:
+    from experiments.eval.flashanns.run_one import _parse_metrics
+
     records: list[dict[str, Any]] = []
     for path in paths:
         path = Path(path)
@@ -73,7 +75,14 @@ def load_records(paths: list[Path]) -> list[dict[str, Any]]:
         if not candidates:
             raise RunValidationError(f"no run.json records under {path}")
         for candidate in candidates:
-            records.append(json.loads(candidate.read_text()))
+            record = json.loads(candidate.read_text())
+            log = candidate.with_name("stdout.log")
+            command = record.get("command") or []
+            if log.is_file() and command and Path(command[0]).name == "search_beam":
+                record["metrics"] = _parse_metrics(
+                    log, int(record["nq"]), int(record["validation"].get("returncode", 0))
+                )
+            records.append(record)
     return records
 
 

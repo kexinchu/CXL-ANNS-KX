@@ -71,6 +71,17 @@ def _parse_metrics(log: Path, nq: int, returncode: int) -> dict[str, Any]:
     metrics: dict[str, Any] = {"completed_queries": nq if returncode == 0 else 0}
     for key, raw in re.findall(r"\b([A-Za-z][A-Za-z0-9_@]*)=(-?[0-9]+(?:\.[0-9]+)?)", text):
         metrics[key] = float(raw) if "." in raw else int(raw)
+    latency = re.search(
+        r"^latency_ms\s+mean=([0-9.]+)\s+p50=([0-9.]+)\s+p90=([0-9.]+)\s+p95=([0-9.]+)\s+p99=([0-9.]+)$",
+        text,
+        re.MULTILINE,
+    )
+    if latency:
+        for key, raw in zip(
+            ("mean_latency_ms", "latency_p50_ms", "latency_p90_ms", "latency_p95_ms", "latency_p99_ms"),
+            latency.groups(),
+        ):
+            metrics[key] = float(raw)
     metrics.setdefault("score_bounce", metrics.get("from_bounce", 0))
     metrics.setdefault("score_flash", metrics.get("score_flash", 0))
     metrics.setdefault("nvme_read_B", metrics.get("nvme_read_B", 0))

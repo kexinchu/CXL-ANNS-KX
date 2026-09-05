@@ -35,7 +35,7 @@ def _canonical_metrics(record: dict[str, Any]) -> dict[str, float]:
         "mean_inflight": "inflight_depth_mean",
     }
     for canonical, raw in aliases.items():
-        if raw in metrics:
+        if canonical not in metrics and raw in metrics:
             metrics[canonical] = metrics[raw]
     nq = float(record.get("nq") or metrics.get("nq") or 1)
     if "crit_wait_ns" in metrics:

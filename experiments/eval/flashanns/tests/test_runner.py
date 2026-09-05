@@ -21,6 +21,18 @@ class RunnerTest(unittest.TestCase):
         for token in ("p50=", "p95=", "p99="):
             self.assertIn(token, source)
 
+    def test_log_parser_does_not_confuse_latency_and_page_occupancy_mean(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            log = Path(tmp) / "stdout.log"
+            log.write_text(
+                "latency_ms mean=33.700 p50=30.000 p90=40.000 p95=45.000 p99=50.000\n"
+                "page_occ mean=64.160% pages=10\n"
+            )
+            metrics = run_one._parse_metrics(log, 10, 0)
+        self.assertEqual(metrics["mean_latency_ms"], 33.7)
+        self.assertEqual(metrics["latency_p95_ms"], 45.0)
+        self.assertEqual(metrics["mean"], 64.16)
+
     def test_smoke_expands_all_internal_proof_systems(self):
         runs = expand_runs(ROOT, "t2i10m", "smoke")
         self.assertEqual({run["system"] for run in runs}, {"demand", "flashanns"})
