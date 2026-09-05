@@ -11,6 +11,7 @@ from experiments.eval.flashanns.verify_dataset import (
     validate_l2_topk_equivalence,
     validate_permutation,
     validate_query_ids,
+    verify_dataset,
     verify_packed_readback,
 )
 
@@ -24,6 +25,19 @@ def write_matrix(path: Path, rows, code: str) -> None:
 
 
 class VerifyDatasetTest(unittest.TestCase):
+    def test_source_count_may_exceed_declared_execution_prefix(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            base, queries = root / "base.fbin", root / "queries.fbin"
+            write_matrix(base, [[float(i)] for i in range(5)], "f")
+            write_matrix(queries, [[1.0], [2.0]], "f")
+            proof = verify_dataset({
+                "count": 3, "source_count": 5, "dimension": 1,
+                "source_dtype": "float32", "execution_dtype": "float32",
+                "artifacts": {"source_base": str(base), "source_queries": str(queries)},
+            }, full=False)
+            self.assertEqual(proof["source"], (5, 1))
+
     def test_headers_require_exact_length(self):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)

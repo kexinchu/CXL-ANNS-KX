@@ -276,7 +276,8 @@ def verify_dataset(dataset: dict[str, Any], full: bool) -> dict[str, Any]:
     execution_size = 1 if dataset["execution_dtype"] == "uint8" else 4
     source = read_bin_header(Path(artifacts["source_base"]), source_size)
     queries = read_bin_header(Path(artifacts["source_queries"]), source_size)
-    if source != (dataset["count"], dataset["dimension"]):
+    source_count = int(dataset.get("source_count", dataset["count"]))
+    if source != (source_count, dataset["dimension"]):
         raise DatasetError("source_base: header differs from dataset")
     if queries[1] != dataset["dimension"]:
         raise DatasetError("source_queries: dimension differs from dataset")
@@ -284,8 +285,8 @@ def verify_dataset(dataset: dict[str, Any], full: bool) -> dict[str, Any]:
     if full:
         if not dataset.get("ready"):
             raise DatasetError("dataset is not marked ready")
-        if read_bin_header(Path(artifacts["execution_base"]), execution_size) != source:
-            raise DatasetError("execution_base: header differs from source")
+        if read_bin_header(Path(artifacts["execution_base"]), execution_size) != (dataset["count"], dataset["dimension"]):
+            raise DatasetError("execution_base: header differs from execution subset")
         if read_bin_header(Path(artifacts["query_subset"]), 4) != (10000, dataset["dimension"]):
             raise DatasetError("query_subset: expected 10000 rows")
         if read_bin_header(Path(artifacts["ground_truth"]), 4) != (10000, 10):

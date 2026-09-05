@@ -58,6 +58,7 @@
   "laion10m": {
     "ready": false,
     "count": 10000000,
+    "source_count": 25000000,
     "dimension": 512,
     "source_dtype": "float32",
     "execution_dtype": "float32",
