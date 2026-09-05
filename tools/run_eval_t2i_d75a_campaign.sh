@@ -3,8 +3,8 @@
 set -euo pipefail
 
 ROOT=/root/chukexin/CXL-ANNS-KX/.worktrees/eval-flashanns-10m
-TAG=42c8
-EXPECTED_BINARY=42c849109aa0
+TAG=505b
+EXPECTED_BINARY=505b9ca4e514
 IDENTITY=$ROOT/results/eval/flashanns/preflight/t2i-full-identity.json
 RECALL_ANCHORS=$ROOT/results/eval/flashanns/calibration/t2i10m.json
 BASE=$ROOT/results/eval/flashanns
@@ -163,4 +163,4 @@ for arrival_rate in "${rates[@]}"; do
   done
 done
 
-echo "T2I_42C8_CAMPAIGN_COMPLETE"
+echo "T2I_505B_CAMPAIGN_COMPLETE"
