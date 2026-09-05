@@ -16,6 +16,27 @@ ROOT = Path(__file__).resolve().parents[4]
 
 
 class RunnerTest(unittest.TestCase):
+    def test_block_counter_deltas_report_reads_bytes_and_busy_time(self):
+        before = {"nvme1n1": "10 2 100 8 0 0 0 0 0 20 30"}
+        after = {"nvme1n1": "15 3 140 12 0 0 0 0 0 27 42"}
+        delta = run_one.block_counter_deltas(before, after)
+        self.assertEqual(delta["nand_read_commands"], 5)
+        self.assertEqual(delta["nand_read_bytes"], 40 * 512)
+        self.assertEqual(delta["nand_read_time_ms"], 4)
+        self.assertEqual(delta["nand_busy_time_ms"], 7)
+
+    def test_resource_parser_extracts_cpu_and_peak_rss(self):
+        text = (
+            "\tUser time (seconds): 2.50\n"
+            "\tSystem time (seconds): 0.50\n"
+            "\tPercent of CPU this job got: 300%\n"
+            "\tMaximum resident set size (kbytes): 123456\n"
+        )
+        self.assertEqual(run_one.parse_resource_usage(text), {
+            "cpu_user_s": 2.5, "cpu_system_s": 0.5,
+            "cpu_utilization_pct": 300.0, "peak_rss_kib": 123456,
+        })
+
     def test_warm_evidence_marks_the_exact_cold_parent(self):
         evidence = run_one.make_warm_evidence({"cache_used": 7}, "cold-run")
         self.assertTrue(evidence["accepted"])

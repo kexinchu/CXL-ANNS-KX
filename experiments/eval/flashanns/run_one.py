@@ -66,6 +66,46 @@ def _block_counters(contract: dict[str, Any]) -> dict[str, str | None]:
     return result
 
 
+def block_counter_deltas(
+    before: dict[str, str | None], after: dict[str, str | None]
+) -> dict[str, int]:
+    totals = {
+        "nand_read_commands": 0,
+        "nand_read_bytes": 0,
+        "nand_read_time_ms": 0,
+        "nand_busy_time_ms": 0,
+    }
+    if set(before) != set(after):
+        return {}
+    for device in before:
+        if before[device] is None or after[device] is None:
+            return {}
+        left = [int(value) for value in str(before[device]).split()]
+        right = [int(value) for value in str(after[device]).split()]
+        if len(left) < 10 or len(right) < 10 or any(r < l for l, r in zip(left, right)):
+            return {}
+        totals["nand_read_commands"] += right[0] - left[0]
+        totals["nand_read_bytes"] += (right[2] - left[2]) * 512
+        totals["nand_read_time_ms"] += right[3] - left[3]
+        totals["nand_busy_time_ms"] += right[9] - left[9]
+    return totals
+
+
+def parse_resource_usage(text: str) -> dict[str, float | int]:
+    patterns = {
+        "cpu_user_s": r"^\s*User time \(seconds\):\s*([0-9.]+)$",
+        "cpu_system_s": r"^\s*System time \(seconds\):\s*([0-9.]+)$",
+        "cpu_utilization_pct": r"^\s*Percent of CPU this job got:\s*([0-9.]+)%$",
+        "peak_rss_kib": r"^\s*Maximum resident set size \(kbytes\):\s*([0-9]+)$",
+    }
+    result: dict[str, float | int] = {}
+    for key, pattern in patterns.items():
+        match = re.search(pattern, text, re.MULTILINE)
+        if match:
+            result[key] = int(match.group(1)) if key == "peak_rss_kib" else float(match.group(1))
+    return result
+
+
 def _parse_metrics(log: Path, nq: int, returncode: int) -> dict[str, Any]:
     text = log.read_text(errors="replace")
     metrics: dict[str, Any] = {"completed_queries": nq if returncode == 0 else 0}
@@ -145,8 +185,12 @@ def run_spec(
     except FileExistsError as exc:
         raise ValueError(f"refusing existing run ID {spec['run_id']}") from exc
     log = run_dir / "stdout.log"
+    resource_log = run_dir / "resource.txt"
+    timed_command = spec["command"]
+    if Path("/usr/bin/time").is_file():
+        timed_command = ["/usr/bin/time", "-v", "-o", str(resource_log), "--", *spec["command"]]
     with log.open("w") as stream:
-        completed = subprocess.run(spec["command"], stdout=stream, stderr=subprocess.STDOUT, text=True, check=False)
+        completed = subprocess.run(timed_command, stdout=stream, stderr=subprocess.STDOUT, text=True, check=False)
         stream.flush()
         os.fsync(stream.fileno())
     after = snapshot_and_validate(contract, dataset, "post", identity_evidence)
@@ -166,6 +210,9 @@ def run_spec(
         "sidecars": _sidecars(run_dir / "trace"),
         "validation": {"status": "pending", "returncode": completed.returncode},
     }
+    record["metrics"].update(block_counter_deltas(device_before, device_after))
+    if resource_log.is_file():
+        record["metrics"].update(parse_resource_usage(resource_log.read_text(errors="replace")))
     for key in ("threads", "arrival_rate", "cache_gib", "required_cache_limit", "cold_parent_run_id"):
         if key in spec:
             record[key] = spec[key]

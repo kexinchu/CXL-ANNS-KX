@@ -84,9 +84,12 @@ def load_records(paths: list[Path]) -> list[dict[str, Any]]:
             log = candidate.with_name("stdout.log")
             command = record.get("command") or []
             if log.is_file() and command and Path(command[0]).name == "search_beam":
-                record["metrics"] = _parse_metrics(
-                    log, int(record["nq"]), int(record["validation"].get("returncode", 0))
-                )
+                record["metrics"] = {
+                    **record.get("metrics", {}),
+                    **_parse_metrics(
+                        log, int(record["nq"]), int(record["validation"].get("returncode", 0))
+                    ),
+                }
             records.append(record)
     return records
 
