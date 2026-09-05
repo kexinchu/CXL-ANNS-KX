@@ -106,6 +106,7 @@ class AggregateTest(unittest.TestCase):
                 "p50": 3,
                 "p95": 7,
                 "p99": 9,
+                "dist": 999_999,
                 "crit_wait_ns": 200_000_000,
                 "nvme_read_B": 104_857_600,
             }
@@ -118,6 +119,7 @@ class AggregateTest(unittest.TestCase):
         self.assertEqual(row["latency_p99_ms_median"], 9)
         self.assertEqual(row["critical_wait_ms_median"], 2)
         self.assertEqual(row["nand_mib_per_query_median"], 1)
+        self.assertEqual(row["committed_candidates_median"], 400)
 
 
 if __name__ == "__main__":

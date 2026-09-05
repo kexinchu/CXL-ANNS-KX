@@ -42,8 +42,9 @@ def _canonical_metrics(record: dict[str, Any]) -> dict[str, float]:
         metrics["critical_wait_ms"] = metrics["crit_wait_ns"] / nq / 1_000_000.0
     if "nvme_read_B" in metrics:
         metrics["nand_mib_per_query"] = metrics["nvme_read_B"] / nq / 1_048_576.0
-    if "dist" in metrics:
-        metrics["committed_candidates"] = metrics["dist"] / nq
+    # The committed full-precision set is the frozen C_L. ``dist`` counts all
+    # PQ navigation distance evaluations and is not a candidate-set size.
+    metrics["committed_candidates"] = float(record["L"])
     if "requested_pages" in metrics:
         metrics["unique_pages"] = metrics["requested_pages"] / nq
     if "issued_pages" in metrics:
