@@ -24,6 +24,15 @@ a 100-query correctness and execution-path gate only, not a five-repeat Q2
 paper point. T2I calibration is next; YFCC and LAION remain blocked on dataset
 admission.
 
+**Calibration blocker (2026-09-05):** Demand `L={50,100,200,400}` completed
+500-query cold points and reaches recall@10 0.9326 at `L=400`. Demand `L=800`
+remained in `pqq_beam` for more than 14 minutes with four workers at full CPU
+because the frozen command uses `--iters 0` (no expansion cap); it was stopped
+and rejected before any larger or FlashANNs point started. Device state remained
+clean. Freeze an explicit common expansion/hop budget or narrow the executable
+`L` range before resuming. Machine-readable evidence is
+`results/eval/flashanns/readiness/t2i-calibration-blocker-20260905.json`.
+
 ---
 
 ## Frozen Boundaries

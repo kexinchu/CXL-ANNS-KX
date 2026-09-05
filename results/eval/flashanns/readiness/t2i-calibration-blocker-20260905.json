@@ -1,0 +1,40 @@
+{
+  "captured_at_utc": "2026-09-05T03:31:02Z",
+  "commit": "c5e8ec300de23011f0e7750f72cfb95c66d8070f",
+  "dataset": "t2i10m",
+  "ready": false,
+  "stage": "internal recall calibration",
+  "accepted_demand_points": [
+    {"L": 50, "p99_ms": 98.466, "qps": 576.6, "recall@10": 0.6562, "run_id": "t2i10m-calibration-L50-r0-cold-demand", "wall_s": 0.867},
+    {"L": 100, "p99_ms": 140.714, "qps": 375.9, "recall@10": 0.7844, "run_id": "t2i10m-calibration-L100-r0-cold-demand", "wall_s": 1.33},
+    {"L": 200, "p99_ms": 233.828, "qps": 237.81, "recall@10": 0.8756, "run_id": "t2i10m-calibration-L200-r0-cold-demand", "wall_s": 2.103},
+    {"L": 400, "p99_ms": 487.738, "qps": 125.08, "recall@10": 0.9326, "run_id": "t2i10m-calibration-L400-r0-cold-demand", "wall_s": 3.998}
+  ],
+  "blocked_point": {
+    "L": 800,
+    "completed_queries": 0,
+    "observed_wall_s_lower_bound": 840,
+    "returncode": -2,
+    "run_id": "t2i10m-calibration-L800-r0-cold-demand",
+    "validator_errors": [
+      "completed_queries differs from nq",
+      "missing numeric recall@10",
+      "missing query/candidate/result sidecars"
+    ]
+  },
+  "evidence": {
+    "command_iters": 0,
+    "device_after": {"cache_limit": 4294967296, "cache_used": 1354596352, "dirty_bytes": 0, "evictions": 0, "io_errors": 0},
+    "running_threads_observed": 4,
+    "running_threads_cpu_pct_each": 100,
+    "source_loop": "serving/search_beam.cpp:pqq_beam",
+    "termination_condition": "iters=0 disables the expansion cap; the loop stops only when no unexpanded candidate remains"
+  },
+  "impact": [
+    "Demand L=800 is rejected and cannot be used for calibration",
+    "Demand L=1600 and conditional L=2400/3200 were not started",
+    "FlashANNs calibration and anchor freezing are paused",
+    "No Q2 run or figure update is admissible"
+  ],
+  "decision_required": "Freeze an explicit finite expansion/hop budget shared by Demand and FlashANNs, or retain iters=0 and restrict the declared L range to executable points."
+}
