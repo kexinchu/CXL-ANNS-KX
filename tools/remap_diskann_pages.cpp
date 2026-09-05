@@ -81,6 +81,16 @@ int main(int argc, char** argv) {
   }
   const uint32_t n = hdr->n;
   const size_t stride = (size_t)(hdr->len_vectors / hdr->n);
+  if (!stride || stride > 4096 || 4096 % stride != 0) {
+    std::fprintf(stderr, "record stride=%zu does not tile a 4 KiB page\n", stride);
+    return 2;
+  }
+  const uint32_t slots_per_page = (uint32_t)(4096 / stride);
+  if (slots_per_page > 2) {
+    std::fprintf(stderr, "unsupported records-per-page=%u (expected 1 or 2)\n",
+                 slots_per_page);
+    return 2;
+  }
   const uint64_t off_v = hdr->off_vectors;
   const size_t vb = (size_t)hdr->dim * hdr->vec_bytes;
   const uint8_t* base = static_cast<const uint8_t*>(mp);
@@ -116,7 +126,7 @@ int main(int argc, char** argv) {
 
   if (extent) {
     if (int rc = load_map(map_in)) return rc;
-    const uint32_t n_pages = (n + 1) / 2;
+    const uint32_t n_pages = (n + slots_per_page - 1) / slots_per_page;
     const uint32_t stripe_pages = 512;  // 2 MiB / 4 KiB
     for (uint32_t id = 0; id < n; ++id) {
       if (id_to_slot[id] >= n) {
@@ -127,15 +137,17 @@ int main(int argc, char** argv) {
     uint64_t n_pairs = 0;
     std::vector<uint8_t> slot_used((size_t)n, 0);
     for (uint32_t id = 0; id < n; ++id) slot_used[id_to_slot[id]] = 1;
-    for (uint32_t s = 0; s + 1 < n; s += 2)
-      if (slot_used[s] && slot_used[s + 1]) n_pairs++;
+    if (slots_per_page == 2) {
+      for (uint32_t s = 0; s + 1 < n; s += 2)
+        if (slot_used[s] && slot_used[s + 1]) n_pairs++;
+    }
 
     auto pages_of = [&](const uint32_t* ids, uint32_t m, uint32_t* out) -> uint32_t {
       uint32_t k = 0;
       for (uint32_t i = 0; i < m; ++i) {
         const uint32_t id = ids[i];
         if (id >= n) continue;
-        out[k++] = id_to_slot[id] / 2u;
+        out[k++] = id_to_slot[id] / slots_per_page;
       }
       std::sort(out, out + k);
       return (uint32_t)(std::unique(out, out + k) - out);
@@ -198,7 +210,8 @@ int main(int argc, char** argv) {
     std::vector<uint32_t> new_slot((size_t)n, UINT32_MAX);
     for (uint32_t id = 0; id < n; ++id) {
       const uint32_t s = id_to_slot[id];
-      new_slot[id] = old_to_new[s / 2u] * 2u + (s & 1u);
+      new_slot[id] = old_to_new[s / slots_per_page] * slots_per_page +
+                     (s % slots_per_page);
     }
     id_to_slot.swap(new_slot);
 
@@ -236,7 +249,7 @@ int main(int argc, char** argv) {
     paired = n_pairs;
     std::fprintf(stdout, "extent kept_pairs=%llu pages=%u stripe_pages=%u\n",
                  (unsigned long long)paired, n_pages, stripe_pages);
-  } else if (cooccur) {
+  } else if (slots_per_page > 1 && cooccur) {
     // Weight (v,w) by how often they co-appear in the same N(u) (or expand trace).
     std::unordered_map<uint64_t, uint32_t> wt;
     wt.reserve((size_t)n * 8);
@@ -337,7 +350,7 @@ int main(int argc, char** argv) {
     }
     std::fprintf(stdout, "cooccur leftover_neighbor_pairs=%llu total_paired=%llu\n",
                  (unsigned long long)nbr_fill, (unsigned long long)paired);
-  } else if (coexpand) {
+  } else if (slots_per_page > 1 && coexpand) {
     // Pair two unused members of the same N(u) so one expand issues 1 page not 2.
     for (uint32_t u = 0; u < n; ++u) {
       const uint32_t deg = nnbrs(u);
@@ -357,7 +370,7 @@ int main(int argc, char** argv) {
         pending = UINT32_MAX;
       }
     }
-  } else {
+  } else if (slots_per_page > 1) {
     // First unused neighbor in DiskANN order (usually the strongest edge).
     for (uint32_t u = 0; u < n; ++u) {
       if (used[u]) continue;
@@ -410,13 +423,13 @@ int main(int argc, char** argv) {
       for (uint32_t j = 0; j < deg && j < hdr->R; ++j) {
         const uint32_t v = nb[j];
         if (v >= n || v == u) continue;
-        pg[id_to_slot[v] / 2u]++;
+        pg[id_to_slot[v] / slots_per_page]++;
       }
       if (pg.empty()) continue;
       uint32_t two = 0, used_slots = 0;
       for (const auto& kv : pg) {
-        used_slots += kv.second > 2 ? 2 : kv.second;
-        if (kv.second >= 2) two++;
+        used_slots += kv.second > slots_per_page ? slots_per_page : kv.second;
+        if (slots_per_page == 2 && kv.second >= 2) two++;
       }
       std::vector<uint32_t> pids;
       pids.reserve(pg.size());
@@ -430,7 +443,7 @@ int main(int argc, char** argv) {
       }
       pages_sum += (double)pg.size();
       two_sum += (double)two;
-      occ_sum += (double)used_slots / (2.0 * (double)pg.size());
+      occ_sum += (double)used_slots / ((double)slots_per_page * (double)pg.size());
       stripe_sum += (double)stripes.size();
       adj_sum += pids.size() > 1 ? (double)adj / (double)(pids.size() - 1) : 0;
       span_sum += (double)(pids.back() - pids.front() + 1);
@@ -445,8 +458,8 @@ int main(int argc, char** argv) {
     }
   }
 
-  uint64_t nbr_pages = paired;
-  uint64_t tot_pages = ((uint64_t)n + 1) / 2;
+  uint64_t nbr_pages = slots_per_page == 2 ? paired : 0;
+  uint64_t tot_pages = ((uint64_t)n + slots_per_page - 1) / slots_per_page;
   std::fprintf(stdout,
                "mode=%s n=%u paired=%llu leftover=%zu nbr_page_pct=%.2f%% "
                "pages=%llu stride=%zu\n",
