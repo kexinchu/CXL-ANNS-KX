@@ -39,6 +39,12 @@
     "execution_dtype": "float32",
     "metric": "l2",
     "pipeann_index_prefix": "/mnt/disk0/chukexin_motivation/serving_yfcc_10m/pipeann_disk",
+    "staging": {
+      "offset": 1181116006400,
+      "length": 20480004096,
+      "host_artifact": "extent_image",
+      "magic": 211766302787
+    },
     "artifacts": {
       "source_base": "/mnt/disk0/chukexin_motivation/data/yfcc10m/base.10M.u8bin",
       "source_queries": "/mnt/disk0/chukexin_motivation/data/yfcc10m/query.public.100K.u8bin",
@@ -66,6 +72,12 @@
     "execution_dtype": "float32",
     "metric": "mips",
     "pipeann_index_prefix": "/mnt/disk0/chukexin_motivation/serving_laion_10m/pipeann_disk",
+    "staging": {
+      "offset": 1181116006400,
+      "length": 40960004096,
+      "host_artifact": "extent_image",
+      "magic": 211766302787
+    },
     "artifacts": {
       "source_base": "/mnt/disk0/chukexin_motivation/diskann_data_laion25m/base.bin",
       "source_queries": "/mnt/disk0/chukexin_motivation/diskann_data_laion25m/query.bin",

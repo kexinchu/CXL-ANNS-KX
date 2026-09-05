@@ -68,6 +68,20 @@ def validate_configs(
             raise ConfigError(f"{dataset_id}: count must be 10000000")
         if not isinstance(dataset.get("pipeann_index_prefix"), str) or not dataset["pipeann_index_prefix"]:
             raise ConfigError(f"{dataset_id}: pipeann_index_prefix must be a nonempty path")
+        staging = dataset.get("staging")
+        if not isinstance(staging, dict):
+            raise ConfigError(f"{dataset_id}: staging must be an object")
+        if staging.get("offset") != 1100 * 1024**3:
+            raise ConfigError(f"{dataset_id}: staging offset must be the shared 1100 GiB aperture")
+        payload = int(dataset.get("dimension", 0)) * 4 + 4 + 32 * 4
+        stride = 2048 if payload <= 2048 else 4096
+        expected_length = 4096 + int(dataset["count"]) * stride
+        if staging.get("length") != expected_length:
+            raise ConfigError(
+                f"{dataset_id}: staging length must be {expected_length} for stride {stride}"
+            )
+        if staging.get("host_artifact") != "extent_image" or staging.get("magic") != 0x314E415843:
+            raise ConfigError(f"{dataset_id}: staging artifact or magic differs from the contract")
         artifacts = dataset.get("artifacts")
         if not isinstance(artifacts, dict):
             raise ConfigError(f"{dataset_id}: artifacts must be an object")

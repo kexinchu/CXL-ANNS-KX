@@ -30,6 +30,11 @@ class ConfigTest(unittest.TestCase):
                 dataset["pipeann_index_prefix"],
                 f"{dataset_id} must declare its native PipeANN index prefix",
             )
+            self.assertEqual(dataset["staging"]["offset"], 1100 * 1024**3)
+            self.assertEqual(dataset["staging"]["host_artifact"], "extent_image")
+            self.assertEqual(dataset["staging"]["magic"], 0x314E415843)
+        self.assertEqual(self.datasets["yfcc10m"]["staging"]["length"], 4096 + 10_000_000 * 2048)
+        self.assertEqual(self.datasets["laion10m"]["staging"]["length"], 4096 + 10_000_000 * 4096)
 
     def test_frozen_flashanns_shape(self):
         flashanns = self.systems["flashanns"]
@@ -106,6 +111,12 @@ class ConfigTest(unittest.TestCase):
         datasets = copy.deepcopy(self.datasets)
         datasets["yfcc10m"]["metric"] = "cosine"
         with self.assertRaisesRegex(ConfigError, "metric"):
+            validate_configs(datasets, self.systems, self.matrix)
+
+    def test_rejects_staging_length_that_differs_from_fixed_stride_image(self):
+        datasets = copy.deepcopy(self.datasets)
+        datasets["laion10m"]["staging"]["length"] -= 4096
+        with self.assertRaisesRegex(ConfigError, "staging length"):
             validate_configs(datasets, self.systems, self.matrix)
 
     def test_rejects_removed_live_flags(self):
