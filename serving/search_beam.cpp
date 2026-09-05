@@ -170,7 +170,7 @@ static uint64_t nvme_read_sectors() {
 static void* map_vmem_ro(const char* dev, off_t offset, size_t len, int* out_fd = nullptr) {
   int fd = open(dev, O_RDWR);
   if (fd < 0) die("open vmem");
-  void* p = mmap(nullptr, len, PROT_READ | PROT_WRITE, MAP_SHARED, fd, offset);
+  void* p = mmap(nullptr, len, PROT_READ, MAP_SHARED, fd, offset);
   if (p == MAP_FAILED) die("mmap vmem");
   if (out_fd)
     *out_fd = fd;
