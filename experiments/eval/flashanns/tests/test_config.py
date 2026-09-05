@@ -79,6 +79,12 @@ class ConfigTest(unittest.TestCase):
         with self.assertRaisesRegex(ConfigError, "q2.*8 threads"):
             validate_configs(self.datasets, systems, self.matrix)
 
+    def test_rejects_mismatched_internal_q2_window_budget(self):
+        systems = copy.deepcopy(self.systems)
+        systems["demand"]["per_thread_window"] = 2 * 1024**3
+        with self.assertRaisesRegex(ConfigError, "q2 internal.*window"):
+            validate_configs(self.datasets, systems, self.matrix)
+
     def test_rejects_non_four_gib_cache(self):
         matrix = copy.deepcopy(self.matrix)
         matrix["cache_limit"] = 100 * 1024**2

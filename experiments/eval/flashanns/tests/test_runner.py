@@ -44,6 +44,25 @@ class RunnerTest(unittest.TestCase):
         self.assertTrue(pipeann["command"][0].endswith("search_disk_index"))
         self.assertNotIn("search_beam", " ".join(pipeann["command"]))
 
+    def test_q2_internal_commands_use_the_same_128_mib_window(self):
+        runs = expand_runs(ROOT, "t2i10m", "q2", anchors={"L": 400})
+        internal = {
+            run["system"]: run["command"]
+            for run in runs
+            if run["system"] in {"demand", "flashanns"}
+        }
+        self.assertEqual(set(internal), {"demand", "flashanns"})
+        for system, command in internal.items():
+            with self.subTest(system=system):
+                self.assertIn("--dram-bytes", command)
+                self.assertIn("--host-bytes", command)
+                self.assertEqual(
+                    command[command.index("--dram-bytes") + 1], "134217728"
+                )
+                self.assertEqual(
+                    command[command.index("--host-bytes") + 1], "134217728"
+                )
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -2,6 +2,7 @@
   "demand": {
     "kind": "internal",
     "threads": 8,
+    "per_thread_window": 134217728,
     "flags": ["--no-vmem-prefetch", "--pipe-w", "1", "--no-extent-run", "--no-steal-sched"]
   },
   "pipeann": {

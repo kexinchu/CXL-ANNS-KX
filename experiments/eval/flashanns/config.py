@@ -117,6 +117,13 @@ def validate_configs(
     for system_id in matrix["q2"]["systems"]:
         if systems[system_id].get("threads") != 8:
             raise ConfigError(f"q2 system {system_id} must use 8 threads")
+        if (
+            systems[system_id].get("kind") == "internal"
+            and systems[system_id].get("per_thread_window") != 128 * 1024**2
+        ):
+            raise ConfigError(
+                f"q2 internal system {system_id} window must be 134217728"
+            )
 
     flashanns = systems.get("flashanns", {})
     expected_flashanns = {

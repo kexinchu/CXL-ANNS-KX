@@ -14,13 +14,12 @@
 Demand, PipeANN, and FlashANNS; smoke proof is Demand plus FlashANNS. The
 `oracle_image` artifact remains host-side correctness evidence only.
 
-**Current live milestone (2026-09-05):** T2I full host/device identity and the
-two-record Demand/FlashANNS 100-query same-search proof pass. Those smoke QPS
-values are correctness diagnostics only: Demand used the binary's 2 GiB
-host-window default while FlashANNS used the frozen 128 MiB per-thread window.
-Before calibration or Q2, lock Demand to the same declared host-window budget,
-add a config test for that equality, and rerun the two-record smoke from
-separate cold resets. YFCC and LAION remain blocked on dataset admission.
+**Current live milestone (2026-09-05):** T2I full host/device identity passes.
+The first two-record Demand/FlashANNS same-search proof used mismatched host
+windows and is diagnostic only. Demand is now locked to the same frozen 128 MiB
+per-thread window as FlashANNS; the two-record smoke must be rerun from separate
+cold resets before calibration or Q2. YFCC and LAION remain blocked on dataset
+admission.
 
 ---
 
@@ -375,7 +374,7 @@ Create these IDs:
 
 ~~~json
 {
-  "demand": {"threads": 8, "flags": ["--no-vmem-prefetch", "--pipe-w", "1", "--no-extent-run", "--no-steal-sched"]},
+  "demand": {"threads": 8, "per_thread_window": 134217728, "flags": ["--no-vmem-prefetch", "--pipe-w", "1", "--no-extent-run", "--no-steal-sched"]},
   "pipeann": {"kind": "external-pipeann", "threads": 8, "flags": []},
   "flashanns": {"threads": 8, "flags": ["--per-thread-window", "--pipe-depth", "2", "--issue-qd", "0", "--steal-sched", "--extent-run"]},
   "serial-t1": {"threads": 1, "flags": ["--no-vmem-prefetch", "--pipe-w", "1", "--no-extent-run"]},
