@@ -3,7 +3,7 @@ CXXFLAGS ?= -O0 -g -std=c++17 -I../..
 
 .PHONY: test clean
 
-test: test_metrics test_placement test_hot_set test_diskann_entry test_nav_graph test_score_cache test_distance_metric test_pq_table test_eval_trace test_extent_run test_cont_batch test_dram_window test_page_copy_pool test_vmem_read_only
+test: test_metrics test_placement test_hot_set test_diskann_entry test_nav_graph test_score_cache test_distance_metric test_pq_table test_eval_trace test_extent_run test_cont_batch test_open_loop test_dram_window test_page_copy_pool test_vmem_read_only
 	./test_metrics
 	./test_placement
 	./test_hot_set
@@ -15,6 +15,7 @@ test: test_metrics test_placement test_hot_set test_diskann_entry test_nav_graph
 	./test_eval_trace
 	./test_extent_run
 	./test_cont_batch
+	./test_open_loop
 	./test_dram_window
 	./test_page_copy_pool
 	./test_vmem_read_only
@@ -52,6 +53,9 @@ test_extent_run: test_extent_run.cpp ../../serving/hide_fill.hpp
 test_cont_batch: test_cont_batch.cpp ../../serving/cont_batch.hpp
 	$(CXX) $(CXXFLAGS) -pthread -o $@ test_cont_batch.cpp
 
+test_open_loop: test_open_loop.cpp ../../serving/open_loop.hpp
+	$(CXX) $(CXXFLAGS) -pthread -o $@ test_open_loop.cpp
+
 test_dram_window: test_dram_window.cpp ../../serving/dram_window.hpp
 	$(CXX) $(CXXFLAGS) -o $@ test_dram_window.cpp
 
@@ -62,4 +66,4 @@ test_vmem_read_only: test_vmem_read_only.cpp ../../serving/search_beam.cpp
 	$(CXX) $(CXXFLAGS) -mavx2 -mfma -pthread -o $@ test_vmem_read_only.cpp -lnuma
 
 clean:
-	rm -f test_metrics test_placement test_hot_set test_diskann_entry test_nav_graph test_score_cache test_distance_metric test_pq_table test_eval_trace test_extent_run test_cont_batch test_dram_window test_page_copy_pool test_vmem_read_only
+	rm -f test_metrics test_placement test_hot_set test_diskann_entry test_nav_graph test_score_cache test_distance_metric test_pq_table test_eval_trace test_extent_run test_cont_batch test_open_loop test_dram_window test_page_copy_pool test_vmem_read_only

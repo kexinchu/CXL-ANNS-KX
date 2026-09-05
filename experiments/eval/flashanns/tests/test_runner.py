@@ -72,6 +72,20 @@ class RunnerTest(unittest.TestCase):
         self.assertEqual(metrics["latency_p95_ms"], 45.0)
         self.assertEqual(metrics["mean"], 64.16)
 
+    def test_log_parser_keeps_open_loop_queue_metrics(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            log = Path(tmp) / "stdout.log"
+            log.write_text(
+                "arrival_mode=open-loop-periodic offered_QPS=500.000 latency_includes_queue=1\n"
+                "latency_ms mean=7.000 p50=6.000 p90=9.000 p95=10.000 p99=12.000\n"
+                "queue_wait_ms_mean=1.250 queue_wait_ms_p95=3.500\n"
+            )
+            metrics = run_one._parse_metrics(log, 10, 0)
+        self.assertEqual(metrics["offered_QPS"], 500.0)
+        self.assertEqual(metrics["queue_wait_ms_mean"], 1.25)
+        self.assertEqual(metrics["queue_wait_ms_p95"], 3.5)
+        self.assertEqual(metrics["latency_p99_ms"], 12.0)
+
     def test_smoke_expands_all_internal_proof_systems(self):
         runs = expand_runs(ROOT, "t2i10m", "smoke")
         self.assertEqual({run["system"] for run in runs}, {"demand", "flashanns"})
@@ -131,6 +145,33 @@ class RunnerTest(unittest.TestCase):
             self.assertEqual(
                 int(command[command.index("--threads") + 1]), run["threads"]
             )
+
+    def test_q3_load_expands_frozen_open_loop_rates(self):
+        anchors = {
+            "primary": {
+                "pipeann": {"L": 400},
+                "flashanns": {"L": 400},
+            },
+            "arrival_rates": [250, 500],
+        }
+        runs = expand_runs(ROOT, "t2i10m", "q3_load", anchors=anchors)
+        self.assertEqual(len(runs), 3 * 2 * 5)
+        self.assertEqual({run["arrival_rate"] for run in runs}, {250.0, 500.0})
+        for run in runs:
+            self.assertIn("--arrival-rate", run["command"])
+            self.assertEqual(
+                float(run["command"][run["command"].index("--arrival-rate") + 1]),
+                run["arrival_rate"],
+            )
+        pipeann = next(run for run in runs if run["system"] == "pipeann")
+        self.assertTrue(pipeann["command"][0].endswith("tools/pipeann_open_loop"))
+
+        one = expand_runs(
+            ROOT, "t2i10m", "q3_load", anchors=anchors,
+            system_id="flashanns", arrival_rate_value=500,
+        )
+        self.assertEqual(len(one), 5)
+        self.assertEqual({run["arrival_rate"] for run in one}, {500.0})
 
     def test_ablation_systems_share_flashanns_recall_anchor(self):
         anchors = {"primary": {"flashanns": {"L": 400}}}

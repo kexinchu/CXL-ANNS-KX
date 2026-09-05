@@ -23,6 +23,7 @@
 #include "serving/hide_fill.hpp"
 #include "serving/cont_batch.hpp"
 #include "serving/nav_graph.hpp"
+#include "serving/open_loop.hpp"
 
 #include <algorithm>
 #include <atomic>
@@ -1461,13 +1462,16 @@ static void pqq_insert(PqQ& q, PqTable& pq, uint32_t L, uint32_t id) {
 }
 
 static void pqq_init(PqQ& q, Placement& pl, DramWindow& win, Prefetch& pref, const EntryGraph& eg,
-                     const float* qf, uint32_t qi, uint32_t L) {
+                     const float* qf, uint32_t qi, uint32_t L,
+                     std::chrono::steady_clock::time_point request_t0 = {}) {
   PqTable* pq = pref.pq;
   q = PqQ{};
   q.qi = qi;
   q.qf = qf;
   q.metric = pref.metric;
-  q.t0 = std::chrono::steady_clock::now();
+  q.t0 = request_t0 == std::chrono::steady_clock::time_point{}
+             ? std::chrono::steady_clock::now()
+             : request_t0;
   q.cand.reserve(L + pl.hdr->R + 8);
   q.lut.resize((size_t)pq->nchunks * PqTable::kCentroids);
   pq->fill_lut(qf, q.lut.data(), q.metric);
@@ -1629,6 +1633,7 @@ int main(int argc, char** argv) {
   const char* graph_file = nullptr;
   const char* dump_scored = nullptr;
   int nthreads = 1;
+  double arrival_rate = 0.0;      // requests/s; 0 preserves closed-loop execution
   int cont_inflight = 0;
   bool cont_batch_mode = false;
   bool cont_workers_set = false;
@@ -1767,6 +1772,7 @@ int main(int argc, char** argv) {
       if (cont_inflight > 0) cont_batch_mode = true;
     }
     else if (a == "--threads") nthreads = atoi(need(a.c_str()));
+    else if (a == "--arrival-rate") arrival_rate = strtod(need(a.c_str()), nullptr);
     else if (a == "--per-thread-window") per_thread_window = true;
     else if (a == "--shared-window") per_thread_window = false;
     else if (a == "--pipe-depth") pipe_depth = atoi(need(a.c_str()));
@@ -1781,6 +1787,10 @@ int main(int argc, char** argv) {
     }
   }
   if (oneshot_fp) rerank = false;
+  if (!std::isfinite(arrival_rate) || arrival_rate < 0.0) {
+    fprintf(stderr, "--arrival-rate must be finite and non-negative\n");
+    return 2;
+  }
   DistanceMetric metric;
   try {
     metric = parse_distance_metric(metric_s);
@@ -2289,6 +2299,18 @@ int main(int argc, char** argv) {
 
   std::vector<double> lat_ms;
   lat_ms.reserve(nq);
+  std::vector<double> queue_wait_ms(nq, 0.0);
+  OpenLoopSchedule arrivals(arrival_rate);
+  OpenLoopSchedule::TimePoint arrival_epoch{};
+  bool arrivals_active = false;
+  auto wait_for_request = [&](uint32_t qi) {
+    if (!arrivals_active || !arrivals.enabled())
+      return std::chrono::steady_clock::now();
+    const auto due = arrivals.wait(arrival_epoch, qi);
+    const auto started = std::chrono::steady_clock::now();
+    queue_wait_ms[qi] = OpenLoopSchedule::queue_wait_ms(due, started);
+    return due;
+  };
   double recall_sum = 0;
   uint32_t recall_n = 0;
   std::unique_ptr<EvalTrace> eval_trace;
@@ -2327,6 +2349,7 @@ int main(int argc, char** argv) {
   }
 
   auto run_one_q = [&](uint32_t qi, Prefetch& lp, DramWindow& w, PageCopyPool* pool) {
+    const auto request_t0 = wait_for_request(qi);
     if (flush_window) w.flush();
     const float* qf = qbuf.data() + (size_t)qi * qdim;
     std::vector<uint8_t> qpq(hdr->pq_bytes);
@@ -2339,7 +2362,9 @@ int main(int argc, char** argv) {
         qpq[i] = (uint8_t)v;
       }
     }
-    auto tq0 = std::chrono::steady_clock::now();
+    auto tq0 = arrivals_active && arrivals.enabled()
+                   ? request_t0
+                   : std::chrono::steady_clock::now();
     EntryGraph qeg = eg;
     if (nav.loaded()) qeg.entry_id = nav.search_entry(qf, nav_l);
     std::vector<uint32_t> committed;
@@ -2469,6 +2494,11 @@ int main(int argc, char** argv) {
   if (cpu_affinity) aff_cpus = list_cpu_ids();
   if (cpu_affinity && nthreads <= 1 && !aff_cpus.empty()) bind_worker_cpu(aff_cpus[0]);
   auto t0 = std::chrono::steady_clock::now();
+  arrival_epoch = t0;
+  arrivals_active = true;
+  printf("arrival_mode=%s offered_QPS=%.3f latency_includes_queue=%d\n",
+         arrivals.enabled() ? "open-loop-periodic" : "closed-loop", arrivals.rate(),
+         (int)arrivals.enabled());
   const int cb_inflight = cont_inflight > 0 ? cont_inflight : nthreads;
   const int cb_workers = nthreads > 0 ? nthreads : 1;
   const bool run_cb_sched = cont_batch_mode && cb_inflight > 0 && cb_workers > 0 &&
@@ -2531,12 +2561,22 @@ int main(int argc, char** argv) {
           }
         }
         if (slot < 0) break;
-        uint32_t qi = next_q.fetch_add(1, std::memory_order_relaxed);
+        uint32_t qi = next_q.load(std::memory_order_relaxed);
+        OpenLoopSchedule::TimePoint request_t0{};
+        if (arrivals.enabled()) {
+          request_t0 = arrivals.scheduled(arrival_epoch, qi);
+          const auto started = std::chrono::steady_clock::now();
+          if (started < request_t0) break;
+          queue_wait_ms[qi] = OpenLoopSchedule::queue_wait_ms(request_t0, started);
+        } else {
+          request_t0 = std::chrono::steady_clock::now();
+        }
+        qi = next_q.fetch_add(1, std::memory_order_relaxed);
         if (qi >= nq) break;
         EntryGraph qeg = eg;
         const float* qf = qbuf.data() + (size_t)qi * qdim;
         if (nav.loaded()) qeg.entry_id = nav.search_entry(qf, nav_l);
-        pqq_init(slots[(size_t)slot], pl, win, pref, qeg, qf, qi, L);
+        pqq_init(slots[(size_t)slot], pl, win, pref, qeg, qf, qi, L, request_t0);
       }
     };
     auto pick_pq = [&]() -> int {
@@ -2582,7 +2622,14 @@ int main(int argc, char** argv) {
                   hub.submit(slots[(size_t)i].need);
               }
             }
-            std::this_thread::yield();
+            if (arrivals.enabled() && next_q.load(std::memory_order_relaxed) < nq) {
+              const auto due = arrivals.scheduled(
+                  arrival_epoch, next_q.load(std::memory_order_relaxed));
+              const auto cap = std::chrono::steady_clock::now() + std::chrono::microseconds(100);
+              std::this_thread::sleep_until(due < cap ? due : cap);
+            } else {
+              std::this_thread::yield();
+            }
             continue;
           }
           PqQ& q = slots[(size_t)idx];
@@ -2777,11 +2824,12 @@ int main(int argc, char** argv) {
                   std::lock_guard<std::mutex> g(admit_mu);
                   qi = next_q.fetch_add(1, std::memory_order_relaxed);
                   if (qi >= nq) continue;
+                  const auto request_t0 = wait_for_request(qi);
                   if (flush_window) tw->flush();
                   const float* qf = qbuf.data() + (size_t)qi * qdim;
                   EntryGraph qeg = eg;
                   if (nav.loaded()) qeg.entry_id = nav.search_entry(qf, nav_l);
-                  pqq_init(q, pl, *tw, lp, qeg, qf, qi, L);
+                  pqq_init(q, pl, *tw, lp, qeg, qf, qi, L, request_t0);
                 }
                 pqq_beam(q, pl, *lp.pq, L, iters, Rlim, &hub);
                 if (!try_issue(q)) q.st = CbSt::Hold;
@@ -2823,11 +2871,12 @@ int main(int argc, char** argv) {
               if (dec.act == Pipe2Act::Fill) {
                 uint32_t qi = next_qi;
                 next_qi += (uint32_t)nthreads;
+                const auto request_t0 = wait_for_request(qi);
                 if (flush_window) tw->flush();
                 const float* qf = qbuf.data() + (size_t)qi * qdim;
                 EntryGraph qeg = eg;
                 if (nav.loaded()) qeg.entry_id = nav.search_entry(qf, nav_l);
-                pqq_init(q, pl, *tw, lp, qeg, qf, qi, L);
+                pqq_init(q, pl, *tw, lp, qeg, qf, qi, L, request_t0);
                 pqq_beam(q, pl, *lp.pq, L, iters, Rlim, &hub);
                 pqq_issue(q, pl, hub, /*stall=*/true);
                 continue;
@@ -2895,6 +2944,7 @@ int main(int argc, char** argv) {
     }
   }
   auto t1 = std::chrono::steady_clock::now();
+  arrivals_active = false;
   if (nthreads > 1) {
     for (auto& c : thr_ctx) {
       metrics.add_from(c->m);
@@ -2924,6 +2974,10 @@ int main(int argc, char** argv) {
   double p90 = percentile(lat_ms, 0.90);
   double p95 = percentile(lat_ms, 0.95);
   double p99 = percentile(lat_ms, 0.99);
+  double mean_queue_wait = 0;
+  for (double x : queue_wait_ms) mean_queue_wait += x;
+  mean_queue_wait /= queue_wait_ms.empty() ? 1 : queue_wait_ms.size();
+  double p95_queue_wait = percentile(queue_wait_ms, 0.95);
   double recall = recall_n ? recall_sum / recall_n : -1.0;
   double hit_pct = 0;
   uint64_t acc = metrics.dram_hits + metrics.ssd_misses;
@@ -2939,6 +2993,8 @@ int main(int argc, char** argv) {
          (unsigned long long)metrics.promote_bytes);
   printf("latency_ms mean=%.3f p50=%.3f p90=%.3f p95=%.3f p99=%.3f\n",
          mean_lat, p50, p90, p95, p99);
+  printf("queue_wait_ms_mean=%.3f queue_wait_ms_p95=%.3f\n", mean_queue_wait,
+         p95_queue_wait);
   if (recall_n) printf("recall@%u=%.4f\n", k, recall);
   printf("cxl_dram_hit_pct=%.2f\n", hit_pct);
   {

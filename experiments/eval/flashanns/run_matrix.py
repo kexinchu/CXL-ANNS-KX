@@ -56,22 +56,32 @@ def _internal_command(root: Path, dataset: dict[str, Any], system: dict[str, Any
         "--expand-batch", "8", "--issue-ahead", "1", "--eval-trace-dir", str(Path(spec["run_dir"]) / "trace"),
     ]
     command += list(system["flags"])
+    if "arrival_rate" in spec:
+        command += ["--arrival-rate", str(spec["arrival_rate"])]
     if system.get("per_thread_window"):
         command += ["--dram-bytes", str(system["per_thread_window"]), "--host-bytes", str(system["per_thread_window"])]
     return command
 
 
-def _pipeann_command(dataset_id: str, dataset: dict[str, Any], spec: dict[str, Any]) -> list[str]:
+def _pipeann_command(root: Path, dataset_id: str, dataset: dict[str, Any], spec: dict[str, Any]) -> list[str]:
     if dataset_id != "t2i10m":
         raise RunnerError(f"{dataset_id}: external PipeANN index is not admitted")
     base = "/mnt/disk0/chukexin_motivation"
-    return [
-        f"{base}/DiskANN_cpp/build/apps/search_disk_index", "--data_type", "float",
+    binary = (
+        str(root / "tools" / "pipeann_open_loop")
+        if "arrival_rate" in spec
+        else f"{base}/DiskANN_cpp/build/apps/search_disk_index"
+    )
+    command = [
+        binary, "--data_type", "float",
         "--dist_fn", dataset["metric"], "--index_path_prefix", f"{base}/pipeann_t2i10m/idx_t2i_disk",
         "--result_path", str(Path(spec["run_dir"]) / "pipeann-result"), "--query_file", dataset["artifacts"]["query_subset"],
         "--gt_file", dataset["artifacts"]["ground_truth"], "-K", str(spec["k"]), "-L", str(spec["L"]),
         "-W", "8", "-T", "8",
     ]
+    if "arrival_rate" in spec:
+        command += ["--arrival-rate", str(spec["arrival_rate"])]
+    return command
 
 
 def expand_runs(
@@ -86,6 +96,7 @@ def expand_runs(
     threads_value: int | None = None,
     cache_gib_value: int | None = None,
     state_value: str | None = None,
+    arrival_rate_value: float | None = None,
 ) -> list[dict[str, Any]]:
     root = Path(root)
     datasets, systems, matrix = load_configs(root)
@@ -116,6 +127,22 @@ def expand_runs(
     runs: list[dict[str, Any]] = []
     thread_values = phase_cfg.get("threads", [None])
     cache_values = phase_cfg.get("cache_gib", [None])
+    arrival_values: list[float | None] = [None]
+    if phase == "q3_load":
+        raw_rates = anchors.get("arrival_rates") if anchors else None
+        if not isinstance(raw_rates, list) or not raw_rates or any(
+            not isinstance(rate, (int, float)) or rate <= 0 for rate in raw_rates
+        ):
+            raise RunnerError("q3_load requires positive frozen arrival_rates")
+        arrival_values = sorted({float(rate) for rate in raw_rates})
+        if arrival_rate_value is not None:
+            if float(arrival_rate_value) not in arrival_values:
+                raise RunnerError(
+                    f"arrival rate {arrival_rate_value} is not declared for q3_load"
+                )
+            arrival_values = [float(arrival_rate_value)]
+    elif arrival_rate_value is not None:
+        raise RunnerError("--arrival-rate is only valid for q3_load")
     if repeat_id is not None and repeat_id not in range(int(phase_cfg["repeats"])):
         raise RunnerError(f"repeat {repeat_id} is not declared for {phase}")
     if threads_value is not None:
@@ -140,10 +167,14 @@ def expand_runs(
             for state in states:
               for threads in thread_values:
                for cache_gib in cache_values:
-                for system_id in ordered:
+                for arrival_rate in arrival_values:
+                 for system_id in ordered:
                     if phase not in ("smoke", "calibration", "q2") and _anchor_l(anchors, system_id) != level:
                         continue
-                    suffix = (f"-T{threads}" if threads is not None else "") + (f"-C{cache_gib}G" if cache_gib is not None else "")
+                    rate_suffix = ""
+                    if arrival_rate is not None:
+                        rate_suffix = f"-R{arrival_rate:g}".replace(".", "p")
+                    suffix = (f"-T{threads}" if threads is not None else "") + (f"-C{cache_gib}G" if cache_gib is not None else "") + rate_suffix
                     run_id = f"{dataset_id}-{phase}-L{level}-r{repeat}-{state}-{system_id}{suffix}"
                     spec: dict[str, Any] = {
                         "run_id": run_id, "dataset": dataset_id, "metric": dataset["metric"], "phase": phase,
@@ -156,10 +187,12 @@ def expand_runs(
                     if cache_gib is not None:
                         spec["cache_gib"] = cache_gib
                         spec["required_cache_limit"] = cache_gib * 1024**3
+                    if arrival_rate is not None:
+                        spec["arrival_rate"] = arrival_rate
                     if state == "warm":
                         spec["cold_parent_run_id"] = f"{dataset_id}-{phase}-L{level}-r{repeat}-cold-{system_id}{suffix}"
                     spec["iters"] = level if matrix["internal_iters"] == "L" else None
-                    spec["command"] = _pipeann_command(dataset_id, dataset, spec) if spec["external"] else _internal_command(root, dataset, systems[system_id], spec)
+                    spec["command"] = _pipeann_command(root, dataset_id, dataset, spec) if spec["external"] else _internal_command(root, dataset, systems[system_id], spec)
                     bad = set(spec["command"]) & REMOVED_FLAGS
                     if bad:
                         raise RunnerError(f"removed flags in {run_id}: {sorted(bad)}")
@@ -210,6 +243,7 @@ def main() -> int:
     parser.add_argument("--threads", dest="threads_value", type=int)
     parser.add_argument("--cache-gib", dest="cache_gib_value", type=int)
     parser.add_argument("--state", dest="state_value")
+    parser.add_argument("--arrival-rate", dest="arrival_rate_value", type=float)
     parser.add_argument("--identity-evidence", type=Path)
     parser.add_argument("--volatile-evidence", type=Path)
     args = parser.parse_args()
@@ -218,6 +252,7 @@ def main() -> int:
     runs = expand_runs(
         root, args.dataset, args.phase, anchors, args.out, args.system, args.level,
         args.repeat_id, args.threads_value, args.cache_gib_value, args.state_value,
+        args.arrival_rate_value,
     )
     if args.dry_run:
         for spec in runs:
