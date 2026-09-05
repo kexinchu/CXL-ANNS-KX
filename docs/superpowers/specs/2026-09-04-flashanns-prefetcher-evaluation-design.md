@@ -41,6 +41,8 @@ host PQ-64 navigation
   -> translate candidate IDs to missing vector pages
   -> issue 32-page READ_BATCH waves through one shared PageCopyPool
   -> copy completed pages into per-thread host scoring windows
+  -> if eviction removes committed pages after local I/O drains, reissue only
+     that missing committed-page subset
   -> steal scheduler: issue held work while QD permits, otherwise fill,
      rank a covered query, or pump completions
   -> exact full-precision rerank from resident window bytes
@@ -63,12 +65,16 @@ final k = 10
 query shuffle seed = 42
 ```
 
-The page-formation, I/O, completion, pipeline, and scheduling behavior is
-frozen. The evaluation may add observation-only tracing, sidecars, counters,
-runners, validators, plotting code, and one dataset-semantic distance adapter:
+The candidate formation, normal I/O order, completion, pipeline, and scheduling
+behavior is frozen. The evaluation may add observation-only tracing, sidecars,
+counters, runners, validators, plotting code, one dataset-semantic distance
+adapter, and the approved capacity-liveness correction:
 
 - T2I and LAION use MIPS;
 - YFCC uses its official Euclidean/L2 metric;
+- a `Wait` query that is uncovered after its local I/O has drained reissues
+  only missing pages from its already committed `C_L`; it does not expand the
+  search, admit a query, or alter the candidate set;
 - the runtime accepts only `mips` or `l2` and applies that choice consistently
   to PQ lookup-table construction and final full-precision reranking.
 
@@ -79,9 +85,11 @@ lookahead, Blind, admit-gap, pipe-drive, score-page, and speculative beam
 expansion must not be reintroduced as evaluation variants.
 
 Any runtime change must pass a source-diff audit against `15e6632`: only
-observation hooks and the approved distance dispatch may touch frozen
-functions. Candidate-list management and every page/scheduler statement remain
-byte-for-byte unchanged.
+observation hooks, the approved distance dispatch, and the approved idle-miss
+recovery may touch frozen functions. Candidate-list management and normal-path
+page/scheduler decisions remain unchanged. Recovery transfers are recorded as
+additional issue events and are permitted only after the original I/O for that
+committed query has drained.
 
 ## 3. Memory and Resource Contract
 
@@ -196,6 +204,12 @@ The main result compares these systems at the same dataset, queries, final
 | `pipeann` | official block-I/O path on the same machine and recall floor | external block-SSD reference |
 | `flashanns` | frozen T=8 Wise Prefetcher plus steal pipeline | proposed complete system |
 
+Demand is forced to `pipe_depth=1`, `--no-vmem-prefetch`, and
+`--no-steal-sched`; it must not enter the two-deep asynchronous scheduler.
+FlashANNS retains `pipe_depth=2` and the steal scheduler. Both use the frozen
+`refill_committed_pages_when_idle` recovery rule so a finite scoring window
+cannot turn page eviction into an infinite Wait/Pump loop.
+
 The two internal systems (`demand` and `flashanns`) share the graph, PQ
 artifacts, `L`, and candidate set and must prove query IDs, candidate offsets,
 candidate IDs, returned IDs, and recomputed recall are identical. PipeANN is
@@ -248,6 +262,14 @@ For both internal systems, the per-query expansion budget is explicitly
 bounded as `iters=L`. Demand and FlashANNS therefore receive the same beam and
 expansion limits at every matched point. Historical `iters=0` calibration rows
 are diagnostic only and must not be combined with the bounded sweep.
+
+The 2026-09-05 bounded T2I diagnostic exposed a capacity-liveness defect at
+`L=800`: after 128 MiB scoring-window eviction, queries could remain uncovered
+with every local fill slot inactive. Demand spun in `wait_covering`; FlashANNS
+spun in the steal scheduler's Pump action. A 256 MiB diagnostic completed only
+because it had zero evictions, so increasing the window is not an accepted
+fix. The approved recovery above is required before calibration restarts from
+`L=50`.
 
 The predeclared extension `L = 2400, 3200` is allowed only if the base sweep
 does not reach an anchor. The selected `L` is frozen by the validator before

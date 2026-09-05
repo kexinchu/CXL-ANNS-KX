@@ -143,6 +143,20 @@ class RunnerTest(unittest.TestCase):
                 command = run["command"]
                 self.assertEqual(command[command.index("--iters") + 1], "800")
 
+    def test_demand_uses_blocking_single_depth_materialization(self):
+        run = expand_runs(
+            ROOT,
+            "t2i10m",
+            "calibration",
+            system_id="demand",
+            level=800,
+        )[0]
+        command = run["command"]
+        self.assertIn("--no-vmem-prefetch", command)
+        self.assertIn("--no-steal-sched", command)
+        self.assertIn("--pipe-depth", command)
+        self.assertEqual(command[command.index("--pipe-depth") + 1], "1")
+
     def test_live_internal_invocation_requires_exactly_one_run_and_evidence(self):
         self.assertTrue(
             hasattr(run_matrix, "validate_live_invocation"),

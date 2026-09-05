@@ -84,6 +84,10 @@ def validate_configs(
         raise ConfigError("k must be 10")
     if matrix.get("internal_iters") != "L":
         raise ConfigError("internal_iters must be L")
+    if matrix.get("window_miss_recovery") != "refill_committed_pages_when_idle":
+        raise ConfigError(
+            "window_miss_recovery must be refill_committed_pages_when_idle"
+        )
     if matrix.get("base_L") != [50, 100, 200, 400, 800, 1600]:
         raise ConfigError("base_L sweep differs from the frozen contract")
     if matrix.get("extended_L") != [2400, 3200]:
@@ -137,6 +141,8 @@ def validate_configs(
     for key, expected in expected_flashanns.items():
         if flashanns.get(key) != expected:
             raise ConfigError(f"flashanns {key} must be {expected}")
+    if systems.get("demand", {}).get("pipe_depth") != 1:
+        raise ConfigError("demand pipe_depth must be 1")
     if systems.get("pipeann", {}).get("kind") != "external-pipeann":
         raise ConfigError("pipeann must use the external-pipeann adapter")
 

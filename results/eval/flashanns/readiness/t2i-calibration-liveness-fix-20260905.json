@@ -1,0 +1,41 @@
+{
+  "captured_at_utc": "2026-09-05T04:36:31Z",
+  "dataset": "t2i10m",
+  "formal_measurement": false,
+  "stage": "internal recall calibration liveness diagnostic",
+  "status": "resolved_for_rerun",
+  "fix": {
+    "demand_pipe_depth": 1,
+    "window_miss_recovery": "refill_committed_pages_when_idle"
+  },
+  "diagnostics": {
+    "demand": {
+      "L": 800,
+      "completed_queries": 500,
+      "evicts": 92875,
+      "pipe_depth": 1,
+      "qps": 329.60,
+      "recall@10": 0.9610,
+      "trace": "/tmp/demand-l800-pipe1-fix-trace"
+    },
+    "flashanns": {
+      "L": 800,
+      "completed_queries": 500,
+      "evicts": 92095,
+      "from_bounce": 0,
+      "issue_commands": 506,
+      "pipe_depth": 2,
+      "qps": 375.26,
+      "recall@10": 0.9610,
+      "trace": "/tmp/flashanns-l800-refill-fix-trace"
+    }
+  },
+  "semantic_equivalence": {
+    "candidate_ids_sha256": "2d43a6c265dd044778abf494d5edec80e88307aa0b1fc254b5f70c3b92867a0d",
+    "candidate_offsets_sha256": "27f043b315211aacd3eb352b878bd8becb94268de0f3dd9fb383fb2c1fcef436",
+    "query_ids_sha256": "3c77fb59f7f32a0ffbfb1bba30f10e528232d9020a99a44fcb85552f74dfe576",
+    "result_ids_sha256": "35ebc18c0f7349bc21a166167cfa2e2bdc8ec8f65e33a811a83263cda8b6dc9c",
+    "same_for_demand_and_flashanns": true
+  },
+  "next_action": "restart formal sequential calibration from T2I Demand L=50 with fresh cold-state evidence per run"
+}

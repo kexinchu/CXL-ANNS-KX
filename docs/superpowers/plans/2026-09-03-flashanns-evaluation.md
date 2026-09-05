@@ -28,6 +28,11 @@ TikZ/LaTeX placeholders, acmart, `latexmk`, sysfs/NVMe counters, `perf`, SHA-256
   `L`, hop budget, CPU allocation, and complete-entry format per dataset.
 - The internal hop/expansion budget is bounded as `iters=L`; unbounded
   `iters=0` rows are diagnostic only.
+- Demand is the blocking internal baseline and is forced to `pipe_depth=1`;
+  FlashANNS retains the frozen depth-2 steal scheduler.
+- A committed query that loses scoring-window coverage after its local I/O
+  drains reissues only its missing committed pages. This liveness recovery may
+  not expand or change `C_L`, admit another query, or change the normal path.
 - Main latency mode admits one query at a time; main throughput mode uses a
   frozen concurrency selected by the predeclared concurrency sweep.
 - Collect mean, p50, p95, p99, and maximum latency in every measured run.
@@ -136,6 +141,8 @@ and schema rejection for a record missing its cold-reset evidence.
 
 - [ ] Encode the fixed `L={50,100,200,400,800,1600}` sweep and conditional
   extension `{2400,3200}`, `k=10`, seed 42, 10k final queries, and five repeats.
+- [ ] Freeze `window_miss_recovery=refill_committed_pages_when_idle` and reject
+  any matrix that omits or changes that policy.
 - [ ] Encode FlashANNS, Demand, and the official external PipeANN harness as
   separate adapters with a common identity envelope; fail closed if Oracle is
   configured.

@@ -21,6 +21,10 @@ class ConfigTest(unittest.TestCase):
         self.assertFalse(self.datasets["yfcc10m"]["ready"])
         self.assertFalse(self.datasets["laion10m"]["ready"])
         self.assertEqual(self.matrix["cache_limit"], 4 * 1024**3)
+        self.assertEqual(
+            self.matrix["window_miss_recovery"],
+            "refill_committed_pages_when_idle",
+        )
 
     def test_frozen_flashanns_shape(self):
         flashanns = self.systems["flashanns"]
@@ -30,6 +34,17 @@ class ConfigTest(unittest.TestCase):
         self.assertEqual(flashanns["per_thread_window"], 128 * 1024**2)
         self.assertEqual(self.systems["pipeann"]["kind"], "external-pipeann")
         self.assertEqual(self.systems["pipeann"]["threads"], 8)
+
+    def test_demand_is_the_blocking_single_depth_baseline(self):
+        demand = self.systems["demand"]
+        self.assertEqual(demand["pipe_depth"], 1)
+        self.assertIn("--no-vmem-prefetch", demand["flags"])
+        self.assertIn("--no-steal-sched", demand["flags"])
+
+        systems = copy.deepcopy(self.systems)
+        systems["demand"]["pipe_depth"] = 2
+        with self.assertRaisesRegex(ConfigError, "demand pipe_depth.*1"):
+            validate_configs(self.datasets, systems, self.matrix)
 
     def test_q2_excludes_oracle(self):
         self.assertEqual(
@@ -104,6 +119,12 @@ class ConfigTest(unittest.TestCase):
         matrix = copy.deepcopy(self.matrix)
         matrix["internal_iters"] = "unbounded"
         with self.assertRaisesRegex(ConfigError, "internal_iters.*L"):
+            validate_configs(self.datasets, self.systems, matrix)
+
+    def test_rejects_changed_window_miss_recovery(self):
+        matrix = copy.deepcopy(self.matrix)
+        matrix["window_miss_recovery"] = "spin"
+        with self.assertRaisesRegex(ConfigError, "window_miss_recovery"):
             validate_configs(self.datasets, self.systems, matrix)
 
     def test_rejects_non_four_gib_cache(self):

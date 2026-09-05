@@ -24,19 +24,28 @@ a 100-query correctness and execution-path gate only, not a five-repeat Q2
 paper point. T2I calibration is next; YFCC and LAION remain blocked on dataset
 admission.
 
-**Calibration blocker (2026-09-05):** Demand `L={50,100,200,400}` completed
-500-query cold points and reaches recall@10 0.9326 at `L=400`. Demand `L=800`
-remained in `pqq_beam` for more than 14 minutes with four workers at full CPU
-because the frozen command uses `--iters 0` (no expansion cap); it was stopped
-and rejected before any larger or FlashANNs point started. Device state remained
-clean. Freeze an explicit common expansion/hop budget or narrow the executable
-`L` range before resuming. Machine-readable evidence is
-`results/eval/flashanns/readiness/t2i-calibration-blocker-20260905.json`.
+**Calibration blocker (2026-09-05):** The bounded `iters=L` Demand rerun
+completed 500-query cold points at `L={50,100,200,400}`, reaching recall@10
+`{0.6372,0.7706,0.8720,0.9306}`. `L=800` still failed. Debug-symbol sampling
+proved that uncovered committed queries remained in Wait/Pump after every
+local fill slot and PageCopyPool job had drained. The trigger is scoring-window
+eviction: a hot-cache 256 MiB diagnostic completed 500 queries in 1.408 s with
+zero evictions, while 128 MiB reproduced the spin. FlashANNs `L=800` also
+reproduced the idle Pump loop, so increasing capacity or changing only Demand
+would not repair 10k-query execution.
 
 **Approved resolution (2026-09-05):** Freeze internal `iters=L` for both
 Demand and FlashANNs and rerun the base sweep from `L=50`; all earlier
 `iters=0` rows remain diagnostic. Run `L={2400,3200}` only if the six base
 points do not cover the declared recall anchors.
+
+**Approved liveness amendment (2026-09-05):** Force Demand to
+`pipe_depth=1` so it is the specified blocking baseline. In both pipeline
+schedulers, when an already committed query is uncovered and its local I/O has
+drained, reissue only the missing pages from that same `C_L`. Add a shared
+decision test, record recovery issues through existing counters, and restart
+the bounded calibration from `L=50`. No new candidate, expansion, admission,
+or normal-path scheduling behavior is permitted.
 
 ---
 
@@ -46,10 +55,12 @@ points do not cover the declared recall anchors.
 - Evaluation-contract baseline: `1dc182c`.
 - Paper files are not experiment inputs. Ignore concurrent edits under
   `paper/` until Task 15.
-- Do not modify candidate-list maintenance, page collection, issue order,
-  completion handling, steal scheduling, pipeline depth, or scoring residency.
-- The only approved semantic extension is `--metric mips|l2`, used
-  consistently by PQ ADC and exact rerank.
+- Do not modify candidate-list maintenance, page collection, normal-path issue
+  order, completion handling, steal policy, FlashANNs pipeline depth, or
+  scoring residency.
+- Approved semantic extensions are `--metric mips|l2` and idle-miss recovery
+  for already committed pages. Demand alone is fixed to `pipe_depth=1` to
+  enforce its blocking baseline semantics.
 - Removed early-CL, lookahead, Blind, score-page, pipe-drive, admit-gap, and
   speculative-beam controls never enter a command.
 - Oracle and `--oracle-dram` never enter a command, accepted record, aggregate,
@@ -391,7 +402,7 @@ Create these IDs:
 
 ~~~json
 {
-  "demand": {"threads": 8, "per_thread_window": 134217728, "flags": ["--no-vmem-prefetch", "--pipe-w", "1", "--no-extent-run", "--no-steal-sched"]},
+  "demand": {"threads": 8, "per_thread_window": 134217728, "pipe_depth": 1, "flags": ["--no-vmem-prefetch", "--pipe-w", "1", "--pipe-depth", "1", "--no-extent-run", "--no-steal-sched"]},
   "pipeann": {"kind": "external-pipeann", "threads": 8, "flags": []},
   "flashanns": {"threads": 8, "flags": ["--per-thread-window", "--pipe-depth", "2", "--issue-qd", "0", "--steal-sched", "--extent-run"]},
   "serial-t1": {"threads": 1, "flags": ["--no-vmem-prefetch", "--pipe-w", "1", "--no-extent-run"]},
@@ -416,6 +427,7 @@ asynchronous batch I/O, relabel it and do not use it as Demand.
   "cache_limit": 4294967296,
   "k": 10,
   "internal_iters": "L",
+  "window_miss_recovery": "refill_committed_pages_when_idle",
   "base_L": [50, 100, 200, 400, 800, 1600],
   "extended_L": [2400, 3200],
   "smoke": {"nq": 100, "repeats": 1},

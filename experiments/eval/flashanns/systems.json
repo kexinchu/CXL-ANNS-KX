@@ -3,7 +3,8 @@
     "kind": "internal",
     "threads": 8,
     "per_thread_window": 134217728,
-    "flags": ["--no-vmem-prefetch", "--pipe-w", "1", "--no-extent-run", "--no-steal-sched"]
+    "pipe_depth": 1,
+    "flags": ["--no-vmem-prefetch", "--pipe-w", "1", "--pipe-depth", "1", "--no-extent-run", "--no-steal-sched"]
   },
   "pipeann": {
     "kind": "external-pipeann",

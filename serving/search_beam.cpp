@@ -2764,6 +2764,10 @@ int main(int argc, char** argv) {
               if (dec.act == Pipe2Act::Done) break;
               PqQ& q = slots[(size_t)dec.slot];
               if (dec.act == Pipe2Act::Pump) {
+                if (should_refill_missing(q.st, cov[(size_t)dec.slot], hub.any_inflight())) {
+                  uint64_t tok = hub.submit(q.need);
+                  if (tok) q.fill_toks.push_back(tok);
+                }
                 std::this_thread::yield();
                 continue;
               }
@@ -2833,6 +2837,11 @@ int main(int argc, char** argv) {
                 if (tls_metrics) {
                   tls_metrics->device_fill_ns += wns;
                   tls_metrics->crit_wait_ns += wns;
+                }
+                const bool covering = pqq_covering(hub.pipe, q.need);
+                if (should_refill_missing(q.st, covering, hub.any_inflight())) {
+                  uint64_t tok = hub.submit_block(q.need);
+                  if (tok) q.fill_toks.push_back(tok);
                 }
                 continue;
               }

@@ -32,6 +32,13 @@ inline bool issue_qd_ok(uint32_t inflight, uint32_t qd) {
   return qd == 0 || inflight < qd;
 }
 
+// A Wait query can lose coverage after its completed pages are evicted. Once
+// its local I/O drains, it must refill the same committed pages to make
+// forward progress; this does not admit or expand a new query.
+inline bool should_refill_missing(CbSt st, bool covering, bool any_inflight) {
+  return st == CbSt::Wait && !covering && !any_inflight;
+}
+
 // cli==0 means match T so NAND waves scale with compute threads.
 inline uint32_t effective_issue_qd(uint32_t cli, int nthreads) {
   if (cli == 0) return nthreads > 0 ? (uint32_t)nthreads : 1u;

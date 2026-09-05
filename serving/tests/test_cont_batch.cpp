@@ -127,6 +127,13 @@ int main() {
   assert(effective_issue_qd(8, 16) == 8);
   assert(effective_issue_qd(0, 0) == 1);
 
+  // A committed query whose pages were evicted after its I/O drained must
+  // refill instead of spinning forever in Wait/Pump.
+  assert(should_refill_missing(CbSt::Wait, false, false));
+  assert(!should_refill_missing(CbSt::Wait, false, true));
+  assert(!should_refill_missing(CbSt::Wait, true, false));
+  assert(!should_refill_missing(CbSt::Ready, false, false));
+
   Metrics scheduler_metrics;
   note_scheduler_inflight(&scheduler_metrics, 3);
   note_scheduler_inflight(&scheduler_metrics, 7);
