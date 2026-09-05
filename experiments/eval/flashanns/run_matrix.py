@@ -81,6 +81,8 @@ def _pipeann_command(root: Path, dataset_id: str, dataset: dict[str, Any], spec:
     ]
     if "arrival_rate" in spec:
         command += ["--arrival-rate", str(spec["arrival_rate"])]
+        command += ["--trace-dir", str(Path(spec["run_dir"]) / "trace")]
+        command += ["--shuffle-seed", "42"]
     return command
 
 

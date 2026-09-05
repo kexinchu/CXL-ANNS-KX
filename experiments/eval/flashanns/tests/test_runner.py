@@ -1,5 +1,6 @@
 import tempfile
 import inspect
+import struct
 import unittest
 import uuid
 from pathlib import Path
@@ -48,6 +49,40 @@ class RunnerTest(unittest.TestCase):
         self.assertEqual(metrics["latency_p999_ms"], 19.0)
         self.assertEqual(metrics["recall@10"], 0.9325)
         self.assertEqual(metrics["completed_queries"], 10000)
+
+    def test_open_loop_pipeann_parser_prefers_queue_inclusive_latency(self):
+        self.assertTrue(hasattr(run_one, "parse_open_loop_pipeann_metrics"))
+        text = (
+            "arrival_mode=open-loop-periodic offered_QPS=500.000 latency_includes_queue=1\n"
+            "wall_s=20.000 throughput_QPS=500.000\n"
+            "latency_ms mean=8.000 p50=7.000 p90=10.000 p95=12.000 p99=15.000\n"
+            "queue_wait_ms_mean=2.000 queue_wait_ms_p95=5.000\n"
+            " L Beamwidth QPS Mean Latency 99.9 Latency Mean IOs Mean IO (us) CPU (s) Recall@10\n"
+            " 400 8 500.000 6000.000 20000.000 42.0 3100.0 8.0 93.25\n"
+        )
+        metrics = run_one.parse_open_loop_pipeann_metrics(text, 10000, 0)
+        self.assertEqual(metrics["mean_latency_ms"], 8.0)
+        self.assertEqual(metrics["latency_p99_ms"], 15.0)
+        self.assertEqual(metrics["queue_wait_ms_mean"], 2.0)
+        self.assertEqual(metrics["recall@10"], 0.9325)
+
+    def test_open_loop_pipeann_sidecars_preserve_latency_trace(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = Path(tmp)
+            result = run_dir / "pipeann-result_400_idx_uint32.bin"
+            result.write_bytes(struct.pack("<II", 2, 10) + bytes(2 * 10 * 4))
+            trace = run_dir / "trace"
+            trace.mkdir()
+            query_ids = struct.pack("<II", 0, 1)
+            latency = struct.pack("<QQ", 1000, 2000)
+            (trace / "query_ids.u32").write_bytes(query_ids)
+            (trace / "latency_ns.u64").write_bytes(latency)
+            sidecars, completed = run_one._pipeann_sidecars(
+                run_dir, {"L": 400, "k": 10}
+            )
+        self.assertEqual(completed, 2)
+        self.assertEqual(sidecars["query_ids_sha256"], run_one.hashlib.sha256(query_ids).hexdigest())
+        self.assertEqual(sidecars["latency_ns_sha256"], run_one.hashlib.sha256(latency).hexdigest())
 
     def test_warm_evidence_marks_the_exact_cold_parent(self):
         evidence = run_one.make_warm_evidence({"cache_used": 7}, "cold-run")
@@ -163,6 +198,17 @@ class RunnerTest(unittest.TestCase):
                 float(run["command"][run["command"].index("--arrival-rate") + 1]),
                 run["arrival_rate"],
             )
+            if run["external"]:
+                self.assertIn("--trace-dir", run["command"])
+                self.assertIn("--shuffle-seed", run["command"])
+                self.assertEqual(
+                    run["command"][run["command"].index("--shuffle-seed") + 1], "42"
+                )
+            else:
+                self.assertNotIn("--trace-dir", run["command"])
+                self.assertEqual(
+                    run["command"][run["command"].index("--threads") + 1], "8"
+                )
         pipeann = next(run for run in runs if run["system"] == "pipeann")
         self.assertTrue(pipeann["command"][0].endswith("tools/pipeann_open_loop"))
 

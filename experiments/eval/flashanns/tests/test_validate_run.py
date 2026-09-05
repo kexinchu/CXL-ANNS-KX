@@ -74,6 +74,21 @@ class ValidateRunTest(unittest.TestCase):
         item["preflight_after"] = {"external": True}
         validate_record(item)
 
+    def test_open_loop_run_requires_rate_tail_latency_and_latency_trace(self):
+        item = record("pipeann")
+        item.update(phase="q3_load", external=True, arrival_rate=500.0)
+        item["preflight_before"] = {"external": True}
+        item["preflight_after"] = {"external": True}
+        item["sidecars"].update(candidate_offsets_sha256=None,
+                                candidate_ids_sha256=None,
+                                latency_ns_sha256="lat")
+        item["metrics"].update(latency_p99_ms=15.0, queue_wait_ms_mean=2.0,
+                               offered_QPS=500.0)
+        validate_record(item)
+        del item["metrics"]["latency_p99_ms"]
+        with self.assertRaisesRegex(RunValidationError, "latency_p99_ms"):
+            validate_record(item)
+
     def test_same_search_requires_all_identity_hashes(self):
         left, right = record("demand"), record("flashanns")
         validate_same_search([left, right])

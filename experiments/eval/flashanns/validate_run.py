@@ -52,6 +52,18 @@ def validate_record(record: dict[str, Any]) -> None:
     for field in required_sidecars:
         if not record["sidecars"].get(field):
             errors.append(f"missing sidecar {field}")
+    if record.get("phase") == "q3_load":
+        rate = record.get("arrival_rate")
+        if not isinstance(rate, (int, float)) or rate <= 0:
+            errors.append("q3_load requires positive arrival_rate")
+        for field in ("latency_p99_ms", "queue_wait_ms_mean", "offered_QPS"):
+            if not isinstance(metrics.get(field), (int, float)):
+                errors.append(f"missing numeric {field}")
+        if isinstance(rate, (int, float)) and isinstance(metrics.get("offered_QPS"), (int, float)):
+            if abs(float(metrics["offered_QPS"]) - float(rate)) > 1e-6 * max(1.0, float(rate)):
+                errors.append("offered_QPS differs from arrival_rate")
+        if not record["sidecars"].get("latency_ns_sha256"):
+            errors.append("missing sidecar latency_ns_sha256")
     if errors:
         raise RunValidationError("; ".join(errors))
 

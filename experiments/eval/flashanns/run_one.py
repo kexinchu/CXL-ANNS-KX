@@ -163,6 +163,28 @@ def parse_pipeann_metrics(text: str, nq: int, returncode: int) -> dict[str, Any]
     return metrics
 
 
+def parse_open_loop_pipeann_metrics(text: str, nq: int, returncode: int) -> dict[str, Any]:
+    """Merge native service counters with queue-inclusive replay latency."""
+    metrics = parse_pipeann_metrics(text, nq, returncode)
+    for key, raw in re.findall(
+        r"\b([A-Za-z][A-Za-z0-9_@]*)=(-?[0-9]+(?:\.[0-9]+)?)", text
+    ):
+        metrics[key] = float(raw) if "." in raw else int(raw)
+    latency = re.search(
+        r"^latency_ms\s+mean=([0-9.]+)\s+p50=([0-9.]+)\s+p90=([0-9.]+)\s+p95=([0-9.]+)\s+p99=([0-9.]+)$",
+        text,
+        re.MULTILINE,
+    )
+    if latency:
+        for key, raw in zip(
+            ("mean_latency_ms", "latency_p50_ms", "latency_p90_ms", "latency_p95_ms", "latency_p99_ms"),
+            latency.groups(),
+        ):
+            metrics[key] = float(raw)
+    metrics["completed_queries"] = nq if returncode == 0 else 0
+    return metrics
+
+
 def _sidecars(trace_dir: Path) -> dict[str, Any]:
     result: dict[str, Any] = {}
     for name in ("query_ids.u32", "latency_ns.u64", "candidate_offsets.u64", "candidate_ids.u32", "result_ids.u32"):
@@ -193,17 +215,18 @@ def _pipeann_sidecars(run_dir: Path, spec: dict[str, Any]) -> tuple[dict[str, An
     trace = run_dir / "trace"
     trace.mkdir(exist_ok=True)
     query_ids = trace / "query_ids.u32"
-    values = array.array("I", range(completed))
-    if sys.byteorder != "little":
-        values.byteswap()
-    query_ids.write_bytes(values.tobytes())
-    return {
-        "query_ids_sha256": _sha256(query_ids),
+    if not query_ids.is_file():
+        values = array.array("I", range(completed))
+        if sys.byteorder != "little":
+            values.byteswap()
+        query_ids.write_bytes(values.tobytes())
+    sidecars = _sidecars(trace)
+    sidecars.update({
         "candidate_offsets_sha256": None,
         "candidate_ids_sha256": None,
         "result_ids_sha256": _sha256(result_path) if completed else None,
-        "latency_ns_sha256": None,
-    }, completed
+    })
+    return sidecars, completed
 
 
 def make_warm_evidence(postflight: dict[str, Any], cold_run_id: str) -> dict[str, Any]:
@@ -272,7 +295,12 @@ def run_spec(
     manifest = root / "results" / "eval" / "flashanns" / "manifests" / f"{spec['dataset']}.json"
     binary = Path(spec["command"][0])
     if external:
-        metrics = parse_pipeann_metrics(log.read_text(errors="replace"), spec["nq"], completed.returncode)
+        parse_external = (
+            parse_open_loop_pipeann_metrics
+            if spec.get("phase") == "q3_load"
+            else parse_pipeann_metrics
+        )
+        metrics = parse_external(log.read_text(errors="replace"), spec["nq"], completed.returncode)
         sidecars, result_count = _pipeann_sidecars(run_dir, spec)
         metrics["completed_queries"] = result_count
     else:
