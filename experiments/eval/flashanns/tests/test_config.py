@@ -38,6 +38,21 @@ class ConfigTest(unittest.TestCase):
         )
         self.assertNotIn("oracle", self.systems)
 
+    def test_overall_plan_excludes_oracle_as_an_executable_system(self):
+        plan = (
+            self.repo_root
+            / "docs/superpowers/plans/2026-09-03-flashanns-evaluation.md"
+        ).read_text()
+        self.assertIn("Oracle is excluded from execution", plan)
+        for stale_contract in (
+            "Oracle, FlashANNS, and Demand",
+            "Encode Oracle, FlashANNS, Demand",
+            "Continuous, and Oracle",
+            "Oracle-gap closure",
+        ):
+            with self.subTest(stale_contract=stale_contract):
+                self.assertNotIn(stale_contract, plan)
+
     def test_rejects_oracle_system_definition(self):
         systems = copy.deepcopy(self.systems)
         systems["oracle"] = {"kind": "internal", "threads": 8, "flags": []}

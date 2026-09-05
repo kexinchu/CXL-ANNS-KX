@@ -9,21 +9,22 @@ costs.
 
 **Architecture:** One declarative experiment manifest drives all runs and emits
 self-contained JSON plus per-query sidecars.  Validated JSON is the only input
-to plotting and LaTeX-table generation.  Main comparisons keep graph search and
-resources fixed across Oracle, FlashANNS, and Demand; external DiskANN/PipeANN
-results remain visibly separate.
+to plotting and LaTeX-table generation.  Internal comparisons keep graph search
+and resources fixed across FlashANNS and Demand; the official external PipeANN
+harness remains visibly separate. Oracle is excluded from execution, accepted
+records, aggregation, and plots.
 
 **Tech Stack:** C++ runtime, Bash orchestration, JSONL/CSV, Python plotting,
 TikZ/LaTeX placeholders, acmart, `latexmk`, sysfs/NVMe counters, `perf`, SHA-256.
 
-**Spec:** `docs/superpowers/specs/2026-09-03-flashanns-evaluation-design.md`
+**Spec:** `docs/superpowers/specs/2026-09-04-flashanns-prefetcher-evaluation-design.md`
 
 ## Global Constraints
 
 - Datasets are LAION-10M, T2I-10M, and YFCC-10M using native dimensions,
   declared source/execution datatypes, and exact recall@10 ground truth.
 - Never silently truncate or project vectors to fit T2I's 2,048 B record.
-- Oracle, FlashANNS, and Demand use the same graph, query order, distance code,
+- FlashANNS and Demand use the same graph, query order, distance code,
   `L`, hop budget, CPU allocation, and complete-entry format per dataset.
 - Main latency mode admits one query at a time; main throughput mode uses a
   frozen concurrency selected by the predeclared concurrency sweep.
@@ -32,7 +33,9 @@ TikZ/LaTeX placeholders, acmart, `latexmk`, sysfs/NVMe counters, `perf`, SHA-256
   measured recall on the x-axis.
 - A FlashANNS paper point is invalid unless scoring is 100% from CXL-DRAM and
   zero from a bounce path.
-- A timed Oracle point is invalid if NAND bytes are nonzero.
+- Reject Oracle or `--oracle-dram` in any executable configuration or run
+  record. The host-side `oracle_image` artifact is correctness and byte-identity
+  evidence only.
 - True-cold points require before/after cache and window reset evidence.
 - Do not replace missing measurements with historical values or hand-entered
   numbers.
@@ -131,8 +134,9 @@ and schema rejection for a record missing its cold-reset evidence.
 
 - [ ] Encode the fixed `L={50,100,200,400,800,1600}` sweep and conditional
   extension `{2400,3200}`, `k=10`, seed 42, 10k final queries, and five repeats.
-- [ ] Encode Oracle, FlashANNS, Demand, and the official external harness as
-  separate adapters with a common identity envelope.
+- [ ] Encode FlashANNS, Demand, and the official external PipeANN harness as
+  separate adapters with a common identity envelope; fail closed if Oracle is
+  configured.
 - [ ] Randomize system order within each dataset/L/repetition block using a
   recorded matrix seed.
 - [ ] Before every cold run, reset and validate CXL-SSD cache and CXL-DRAM
@@ -140,8 +144,8 @@ and schema rejection for a record missing its cold-reset evidence.
 - [ ] Snapshot NVMe sectors/commands, FPGA counters, CPU/NUMA state, temperature,
   and throttling before and after each timed interval.
 - [ ] Reject rather than aggregate any run that violates schema, hash,
-  query-count, recall-recompute, reset, score-source, Oracle-NAND, or anomaly
-  gates.
+  query-count, recall-recompute, reset, score-source, executable-system, or
+  anomaly gates.
 - [ ] Reuse a run for multiple plots only when every manifest identity field is
   identical.
 
@@ -171,7 +175,7 @@ valid smoke record, followed by deliberate rejection when one hash is removed.
   at least five points spanning a common useful recall interval; activate only
   the predeclared extension if 0.80--0.97 is not covered.
 - [ ] At the nearest point at or above recall@10 0.90, run active-query
-  concurrency `{1,2,4,8,16,32}` for Blocking, Static, Continuous, and Oracle.
+  concurrency `{1,2,4,8,16,32}` for every executable Q2 system.
 - [ ] Select the smallest concurrency within 95% of median maximum throughput;
   write it to `concurrency.json` before the main sweep.
 - [ ] Preserve every calibration point because the same runs feed Figure 10.
@@ -197,9 +201,9 @@ all dataset/system pairs; no final plotter is allowed to choose concurrency.
   summaries agree within rounding tolerance.
 - [ ] At recall@10 0.90, and additionally T2I recall@10 0.92, compute matched
   interpolation without extrapolation.
-- [ ] Compute and report throughput Oracle-gap closure
-  `(FlashANNS-Demand)/(Oracle-Demand)` and latency gap closure
-  `(Demand-FlashANNS)/(Demand-Oracle)`.
+- [ ] Compute and report matched FlashANNS speedup over Demand and the separate
+  comparison with official PipeANN, without an Oracle-derived gap-closure
+  metric.
 
 Verification: each plotted core curve has at least five valid points and every
 point has five repetitions with confidence bounds.

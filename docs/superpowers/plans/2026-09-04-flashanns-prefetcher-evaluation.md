@@ -15,10 +15,13 @@ Demand, PipeANN, and FlashANNS; smoke proof is Demand plus FlashANNS. The
 `oracle_image` artifact remains host-side correctness evidence only.
 
 **Current live milestone (2026-09-05):** T2I full host/device identity passes.
-The first two-record Demand/FlashANNS same-search proof used mismatched host
-windows and is diagnostic only. Demand is now locked to the same frozen 128 MiB
-per-thread window as FlashANNS; the two-record smoke must be rerun from separate
-cold resets before calibration or Q2. YFCC and LAION remain blocked on dataset
+The accepted Demand/FlashANNS smoke at commit `6cab74c` used separate cold
+resets, identical 128 MiB per-thread windows, the fixed 4 GiB CXL-side page
+cache, and no Oracle command. The strict same-search validator accepted all
+four identity sidecars and equal recall@10; evidence is sealed in
+`results/eval/flashanns/readiness/t2i-proof-equal-window-20260905.json`. This is
+a 100-query correctness and execution-path gate only, not a five-repeat Q2
+paper point. T2I calibration is next; YFCC and LAION remain blocked on dataset
 admission.
 
 ---
