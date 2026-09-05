@@ -29,13 +29,17 @@ eval_wait_for_accepted_count() {
   local prerequisite_unit=$1
   local accepted_root=$2
   local expected=$3
-  while systemctl is-active --quiet "$prerequisite_unit"; do
+  local observed state
+  while true; do
+    observed=$(find "$accepted_root" -name run.json -type f 2>/dev/null | wc -l)
+    if [[ "$observed" == "$expected" ]]; then
+      return
+    fi
+    state=$(systemctl is-active "$prerequisite_unit" 2>/dev/null || true)
+    if [[ "$state" == "failed" ]]; then
+      echo "REFUSE failed prerequisite $prerequisite_unit: accepted=$observed expected=$expected" >&2
+      return 2
+    fi
     sleep 30
   done
-  local observed
-  observed=$(find "$accepted_root" -name run.json -type f | wc -l)
-  if [[ "$observed" != "$expected" ]]; then
-    echo "REFUSE prerequisite $prerequisite_unit: accepted=$observed expected=$expected" >&2
-    return 2
-  fi
 }
