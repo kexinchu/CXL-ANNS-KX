@@ -1,6 +1,14 @@
+import json
+import tempfile
 import unittest
+from pathlib import Path
 
-from experiments.eval.flashanns.aggregate import AggregationError, aggregate_records, bootstrap_ci
+from experiments.eval.flashanns.aggregate import (
+    AggregationError,
+    aggregate_records,
+    bootstrap_ci,
+    load_records,
+)
 
 
 def make_records(phase="q2", states=("cold",), **dimensions):
@@ -25,6 +33,23 @@ def make_records(phase="q2", states=("cold",), **dimensions):
 
 
 class AggregateTest(unittest.TestCase):
+    def test_loads_explicit_evidence_roots_and_rejects_duplicate_run_ids(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            first = root / "first" / "run.json"
+            second = root / "second" / "run.json"
+            first.parent.mkdir()
+            second.parent.mkdir()
+            first.write_text(json.dumps({"run_id": "r0"}))
+            second.write_text(json.dumps({"run_id": "r1"}))
+            self.assertEqual(
+                [record["run_id"] for record in load_records([first.parent, second])],
+                ["r0", "r1"],
+            )
+            second.write_text(json.dumps({"run_id": "r0"}))
+            with self.assertRaisesRegex(AggregationError, "duplicate run_id r0"):
+                load_records([first.parent, second.parent])
+
     def test_bootstrap_is_deterministic(self):
         self.assertEqual(bootstrap_ci([1, 2, 3, 4, 5]), bootstrap_ci([1, 2, 3, 4, 5]))
 

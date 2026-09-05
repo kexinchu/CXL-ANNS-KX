@@ -71,6 +71,29 @@ def bootstrap_ci(values: list[float], seed: int = 20260904, samples: int = 10000
     return medians[250], medians[9750]
 
 
+def load_records(inputs: list[Path]) -> list[dict[str, Any]]:
+    """Load only the explicitly selected evidence roots, without silent duplication."""
+    paths: list[Path] = []
+    for source in inputs:
+        source = Path(source)
+        if source.is_file():
+            paths.append(source)
+        else:
+            paths.extend(source.rglob("run.json"))
+    records: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for path in sorted(paths):
+        record = json.loads(path.read_text())
+        run_id = record.get("run_id")
+        if not run_id:
+            raise AggregationError(f"{path}: missing run_id")
+        if run_id in seen:
+            raise AggregationError(f"duplicate run_id {run_id}")
+        seen.add(run_id)
+        records.append(record)
+    return records
+
+
 def aggregate_records(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
     if not records:
         raise AggregationError("no records")
@@ -123,11 +146,14 @@ def aggregate_records(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--datasets", required=True)
-    parser.add_argument("--input", required=True, type=Path)
+    parser.add_argument(
+        "--input", required=True, type=Path, action="append",
+        help="accepted evidence directory or run.json; repeat for curated non-overlapping roots",
+    )
     parser.add_argument("--out", required=True, type=Path)
     parser.add_argument("--provenance", required=True, type=Path)
     args = parser.parse_args()
-    records = [json.loads(path.read_text()) for path in sorted(args.input.rglob("run.json"))]
+    records = load_records(args.input)
     wanted = set(args.datasets.split(","))
     records = [r for r in records if r["dataset"] in wanted]
     rows = aggregate_records(records)
