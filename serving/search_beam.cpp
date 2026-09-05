@@ -528,8 +528,13 @@ static std::vector<uint32_t> search_one_pq(Placement& pl, DramWindow& win, Prefe
     bool hit = src != nullptr;
     if (!src) {
       hit = hpipe.copy_vec(pl.vec(c.id), vb, buf);
+      if (!hit) {
+        std::fprintf(stderr,
+                     "committed-page residency invariant failed during PQ rerank id=%u\n",
+                     c.id);
+        std::exit(2);
+      }
       src = buf;
-      if (!hit) win.copy_through(pl.ssd_base, pl.vec(c.id), vb, buf);
     }
     c.dist = vec_distance(src, qf, pl.hdr->dim, pl.hdr->vec_bytes, pref.metric);
     if (cur_met(win)) {
@@ -2366,7 +2371,7 @@ int main(int argc, char** argv) {
                    ? request_t0
                    : std::chrono::steady_clock::now();
     EntryGraph qeg = eg;
-    if (nav.loaded()) qeg.entry_id = nav.search_entry(qf, nav_l);
+    if (nav.loaded()) qeg.entry_id = nav.search_entry(qf, lp.metric, nav_l);
     std::vector<uint32_t> committed;
     auto ids = search_one(pl, w, lp, nullptr, qeg, qf, qpq.data(), beam, k, iters, rerank,
                           oneshot_fp, pool, &vio, eval_trace ? &committed : nullptr);
@@ -2575,7 +2580,7 @@ int main(int argc, char** argv) {
         if (qi >= nq) break;
         EntryGraph qeg = eg;
         const float* qf = qbuf.data() + (size_t)qi * qdim;
-        if (nav.loaded()) qeg.entry_id = nav.search_entry(qf, nav_l);
+        if (nav.loaded()) qeg.entry_id = nav.search_entry(qf, pref.metric, nav_l);
         pqq_init(slots[(size_t)slot], pl, win, pref, qeg, qf, qi, L, request_t0);
       }
     };
@@ -2828,7 +2833,7 @@ int main(int argc, char** argv) {
                   if (flush_window) tw->flush();
                   const float* qf = qbuf.data() + (size_t)qi * qdim;
                   EntryGraph qeg = eg;
-                  if (nav.loaded()) qeg.entry_id = nav.search_entry(qf, nav_l);
+                  if (nav.loaded()) qeg.entry_id = nav.search_entry(qf, lp.metric, nav_l);
                   pqq_init(q, pl, *tw, lp, qeg, qf, qi, L, request_t0);
                 }
                 pqq_beam(q, pl, *lp.pq, L, iters, Rlim, &hub);
@@ -2875,7 +2880,7 @@ int main(int argc, char** argv) {
                 if (flush_window) tw->flush();
                 const float* qf = qbuf.data() + (size_t)qi * qdim;
                 EntryGraph qeg = eg;
-                if (nav.loaded()) qeg.entry_id = nav.search_entry(qf, nav_l);
+                if (nav.loaded()) qeg.entry_id = nav.search_entry(qf, lp.metric, nav_l);
                 pqq_init(q, pl, *tw, lp, qeg, qf, qi, L, request_t0);
                 pqq_beam(q, pl, *lp.pq, L, iters, Rlim, &hub);
                 pqq_issue(q, pl, hub, /*stall=*/true);

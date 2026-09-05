@@ -498,38 +498,21 @@ struct HidePipe {
   uint64_t wait_covering(const std::vector<uint64_t>& need,
                          std::vector<uint64_t>* extra_toks = nullptr) {
     if (need.empty()) return 0;
-    std::unordered_set<uint64_t> nset(need.begin(), need.end());
     auto t0 = std::chrono::steady_clock::now();
     for (;;) {
       pump();
-      for (auto it = nset.begin(); it != nset.end();) {
-        if (covers(*it))
-          it = nset.erase(it);
-        else
-          ++it;
+      if (covers(need)) break;
+      std::vector<uint64_t> orphans;
+      orphans.reserve(need.size());
+      for (uint64_t p : need) {
+        if (!covers(p) && !page_in_slot(p)) orphans.push_back(p);
       }
-      if (nset.empty()) break;
-      if (!use_window()) {
-        std::vector<uint64_t> orphans;
-        orphans.reserve(nset.size());
-        for (uint64_t p : nset) {
-          if (!page_in_slot(p)) orphans.push_back(p);
-        }
-        if (!orphans.empty()) {
-          uint64_t t = issue(orphans, /*ttl=*/128, /*stall_if_full=*/true);
-          if (t && extra_toks) extra_toks->push_back(t);
-          continue;
-        }
+      if (!orphans.empty()) {
+        uint64_t t = issue(orphans, /*ttl=*/128, /*stall_if_full=*/true);
+        if (t && extra_toks) extra_toks->push_back(t);
+        continue;
       }
       if (after_pump) after_pump();
-      bool infl = false;
-      for (int s = 0; s < kSlots; ++s) {
-        if (slot[s].active) {
-          infl = true;
-          break;
-        }
-      }
-      if (!infl) break;
       std::this_thread::yield();
     }
     pump();

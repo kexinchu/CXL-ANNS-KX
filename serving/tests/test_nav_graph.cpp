@@ -1,4 +1,5 @@
 #include "serving/nav_graph.hpp"
+#include "serving/distance_metric.hpp"
 #include "serving/placement.hpp"
 
 #include <cassert>
@@ -22,10 +23,14 @@ int main() {
   uint32_t ids[4] = {0, 1, 2, 3};
   fwrite(ids, 4, 4, f);
   std::vector<uint8_t> recs(n0 * rec, 0);
-  // Point 0 is (1,0); others near origin. Query (1,0) must return 0.
-  reinterpret_cast<float*>(recs.data())[0] = 1.f;
+  // MIPS prefers point 0=(2,0), while L2 prefers point 1=(1,0.1).
+  reinterpret_cast<float*>(recs.data())[0] = 2.f;
   reinterpret_cast<float*>(recs.data())[1] = 0.f;
   *reinterpret_cast<uint32_t*>(recs.data() + 8) = 2;
+  auto* point1 = reinterpret_cast<float*>(recs.data() + rec);
+  point1[0] = 1.f;
+  point1[1] = 0.1f;
+  *reinterpret_cast<uint32_t*>(recs.data() + rec + 8) = 2;
   fwrite(recs.data(), 1, recs.size(), f);
   fclose(f);
 
@@ -34,7 +39,8 @@ int main() {
   assert(nav.n0 == 4);
   assert(nav.loaded());
   float q[2] = {1.f, 0.f};
-  assert(nav.search_entry(q, 64) == 0);
+  assert(nav.search_entry(q, DistanceMetric::Mips, 64) == 0);
+  assert(nav.search_entry(q, DistanceMetric::L2, 64) == 1);
   unlink(path);
   assert((size_t)n0 * rec < 64ull << 20);
   std::puts("test_nav_graph OK");

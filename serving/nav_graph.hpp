@@ -1,4 +1,5 @@
 #pragma once
+#include "distance_metric.hpp"
 #include "placement.hpp"
 
 #include <algorithm>
@@ -41,20 +42,14 @@ struct NavGraph {
                                              (size_t)dim * 4 + 4);
   }
 
-  static float mips_neg(const float* a, const float* b, uint32_t d) {
-    float s = 0;
-    for (uint32_t i = 0; i < d; ++i) s += a[i] * b[i];
-    return -s;
-  }
-
   // Random 10k is too sparse for induced edges. Entry = exact 10k scan (cheap).
-  uint32_t search_entry(const float* q, uint32_t L0 = 64) const {
+  uint32_t search_entry(const float* q, DistanceMetric metric, uint32_t L0 = 64) const {
     (void)L0;
     if (!loaded()) return 0;
     uint32_t best_i = 0;
-    float best = mips_neg(vec_i(0), q, dim);
+    float best = distance_f32(vec_i(0), q, dim, metric);
     for (uint32_t i = 1; i < n0; ++i) {
-      float d = mips_neg(vec_i(i), q, dim);
+      float d = distance_f32(vec_i(i), q, dim, metric);
       if (d < best) {
         best = d;
         best_i = i;

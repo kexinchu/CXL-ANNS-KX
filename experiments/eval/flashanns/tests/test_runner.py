@@ -95,6 +95,12 @@ class RunnerTest(unittest.TestCase):
         for token in ("p50=", "p95=", "p99="):
             self.assertIn(token, source)
 
+    def test_frozen_pq_path_never_falls_back_to_score_time_flash(self):
+        source = (ROOT / "serving" / "search_beam.cpp").read_text()
+        start = source.index("static std::vector<uint32_t> search_one_pq")
+        end = source.index("static std::vector<uint32_t> search_one_fp", start)
+        self.assertNotIn("copy_through", source[start:end])
+
     def test_log_parser_does_not_confuse_latency_and_page_occupancy_mean(self):
         with tempfile.TemporaryDirectory() as tmp:
             log = Path(tmp) / "stdout.log"
