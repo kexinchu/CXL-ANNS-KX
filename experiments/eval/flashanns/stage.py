@@ -48,16 +48,18 @@ def stage_image(
     if users:
         raise StageError(f"target has open users: {users!r}")
 
-    expected_header = (
-        int(staging["magic"]),
-        1,
-        int(dataset["count"]),
-        int(dataset["dimension"]),
-        32,
-    )
     with source.open("rb") as source_stream:
         header = source_stream.read(24)
-    if len(header) != 24 or struct.unpack("<QIIII", header) != expected_header:
+    if len(header) != 24:
+        raise StageError("source layout header differs from the dataset contract")
+    magic, version, count, dimension, degree = struct.unpack("<QIIII", header)
+    if (
+        magic != int(staging["magic"])
+        or version < 2
+        or count != int(dataset["count"])
+        or dimension != int(dataset["dimension"])
+        or degree != 32
+    ):
         raise StageError("source layout header differs from the dataset contract")
 
     source_fd = -1

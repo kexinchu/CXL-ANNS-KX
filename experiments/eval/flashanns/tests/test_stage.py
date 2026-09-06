@@ -9,7 +9,7 @@ from experiments.eval.flashanns.stage import StageError, stage_image
 class StageImageTest(unittest.TestCase):
     def _dataset(self, root: Path) -> tuple[dict, bytes]:
         stride = 4096
-        header = struct.pack("<QIIII", 0x314E415843, 1, 3, 512, 32)
+        header = struct.pack("<QIIII", 0x314E415843, 2, 3, 512, 32)
         payload = header + bytes(4096 - len(header)) + bytes(range(256)) * (3 * stride // 256)
         source = root / "image.bin"
         source.write_bytes(payload)
