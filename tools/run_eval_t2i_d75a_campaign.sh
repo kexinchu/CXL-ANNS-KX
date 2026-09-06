@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Complete T2I Q2--Q4 under one immutable post-fix runtime hash.
+# Complete T2I Q2--Q4 under the immutable AVX2 runtime for the 32 GiB host.
 set -euo pipefail
 
 ROOT=/root/chukexin/CXL-ANNS-KX/.worktrees/eval-flashanns-10m
-TAG=505b
-EXPECTED_BINARY=505b9ca4e514
+TAG=68c6
+EXPECTED_BINARY=68c6ef208506
 IDENTITY=$ROOT/results/eval/flashanns/preflight/t2i-full-identity.json
 RECALL_ANCHORS=$ROOT/results/eval/flashanns/calibration/t2i10m.json
 BASE=$ROOT/results/eval/flashanns
@@ -163,4 +163,4 @@ for arrival_rate in "${rates[@]}"; do
   done
 done
 
-echo "T2I_505B_CAMPAIGN_COMPLETE"
+echo "T2I_68C6_CAMPAIGN_COMPLETE"
