@@ -1,7 +1,9 @@
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from experiments.eval.flashanns import validate_run
 
@@ -169,8 +171,13 @@ class ValidateRunTest(unittest.TestCase):
     def test_seal_records_writes_accepted_copies_without_mutating_raw(self):
         item = record()
         with tempfile.TemporaryDirectory() as tmp:
-            paths = validate_run.seal_records([item], Path(tmp))
+            with mock.patch(
+                "experiments.eval.flashanns.validate_run.os.replace", wraps=os.replace
+            ) as replace:
+                paths = validate_run.seal_records([item], Path(tmp))
             sealed = json.loads(paths[0].read_text())
+            replace.assert_called_once()
+            self.assertFalse(Path(str(paths[0]) + ".tmp").exists())
         self.assertEqual(item["validation"]["status"], "pending")
         self.assertEqual(sealed["validation"]["status"], "accepted")
         self.assertEqual(sealed["validation"]["source_status"], "pending")

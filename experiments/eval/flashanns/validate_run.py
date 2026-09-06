@@ -5,6 +5,8 @@ from __future__ import annotations
 import argparse
 import copy
 import json
+import os
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -127,7 +129,25 @@ def seal_records(records: list[dict[str, Any]], out_dir: Path) -> list[Path]:
         path.parent.mkdir(parents=True, exist_ok=True)
         if path.exists():
             raise RunValidationError(f"refusing existing sealed run {record['run_id']}")
-        path.write_text(json.dumps(sealed, indent=2, sort_keys=True) + "\n")
+        temporary: str | None = None
+        try:
+            with tempfile.NamedTemporaryFile(
+                mode="w",
+                dir=path.parent,
+                prefix=f".{path.name}.",
+                suffix=".tmp",
+                delete=False,
+            ) as stream:
+                temporary = stream.name
+                json.dump(sealed, stream, indent=2, sort_keys=True)
+                stream.write("\n")
+                stream.flush()
+                os.fsync(stream.fileno())
+            os.replace(temporary, path)
+            temporary = None
+        finally:
+            if temporary is not None:
+                Path(temporary).unlink(missing_ok=True)
         paths.append(path)
     return paths
 
