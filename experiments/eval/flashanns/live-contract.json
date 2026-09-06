@@ -9,8 +9,8 @@
   "backend": "software",
   "backing_count": 2,
   "nvme_dev": [
-    "/dev/nvme1n1",
-    "/dev/nvme2n1"
+    "/dev/disk/by-id/nvme-Dell_DC_NVMe_CD8P_E3.S_1.92TB_7EU0A01P0XK1",
+    "/dev/disk/by-id/nvme-Dell_DC_NVMe_CD8P_E3.S_1.92TB_2F50A1360XK3"
   ],
   "target_bdf": [
     "0000:d8:00.0",

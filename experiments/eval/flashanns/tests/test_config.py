@@ -1,4 +1,5 @@
 import copy
+import json
 import unittest
 from pathlib import Path
 
@@ -12,6 +13,18 @@ class ConfigTest(unittest.TestCase):
 
     def setUp(self):
         self.datasets, self.systems, self.matrix = load_configs(self.repo_root)
+
+    def test_live_backings_use_reboot_stable_device_ids(self):
+        contract = json.loads(
+            (self.repo_root / "experiments/eval/flashanns/live-contract.json").read_text()
+        )
+        self.assertEqual(
+            contract["nvme_dev"],
+            [
+                "/dev/disk/by-id/nvme-Dell_DC_NVMe_CD8P_E3.S_1.92TB_7EU0A01P0XK1",
+                "/dev/disk/by-id/nvme-Dell_DC_NVMe_CD8P_E3.S_1.92TB_2F50A1360XK3",
+            ],
+        )
 
     def test_frozen_dataset_metrics_and_constants(self):
         self.assertEqual(self.datasets["t2i10m"]["metric"], "mips")

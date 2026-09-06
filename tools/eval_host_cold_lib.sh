@@ -3,6 +3,8 @@
 
 EVAL_VMEM_KO=/root/chukexin/mem2nvme/host/vmem_sw.ko
 EVAL_VMEM_SRCVERSION=76B6E44368BF753535CD293
+EVAL_VMEM_D8=/dev/disk/by-id/nvme-Dell_DC_NVMe_CD8P_E3.S_1.92TB_7EU0A01P0XK1
+EVAL_VMEM_D9=/dev/disk/by-id/nvme-Dell_DC_NVMe_CD8P_E3.S_1.92TB_2F50A1360XK3
 
 eval_reset_and_restore() {
   local repo_root=$1
@@ -17,7 +19,7 @@ eval_reset_and_restore() {
     rmmod vmem_sw
   fi
   insmod "$EVAL_VMEM_KO" \
-    nvme_devs=/dev/nvme1n1,/dev/nvme2n1 \
+    nvme_devs="$EVAL_VMEM_D8,$EVAL_VMEM_D9" \
     target_bdfs=0000:d8:00.0,0000:d9:00.0 \
     expected_ssd_sizes_bytes=1920383410176,1920383410176 \
     ram_size_gib=28 cache_size_gib="$cache_gib" stripe_size_mib=2
