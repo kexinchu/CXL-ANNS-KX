@@ -324,7 +324,7 @@ class RunnerTest(unittest.TestCase):
 
     def test_external_pipeann_uses_each_dataset_index_prefix(self):
         datasets, _, _ = run_matrix.load_configs(ROOT)
-        spec = {"run_dir": "/tmp/yfcc-run", "k": 10, "L": 400}
+        spec = {"run_dir": "/tmp/yfcc-run", "k": 10, "L": 400, "nq": 10000}
         command = run_matrix._pipeann_command(
             ROOT, "yfcc10m", datasets["yfcc10m"], spec
         )
@@ -346,6 +346,30 @@ class RunnerTest(unittest.TestCase):
                 "400",
             ],
         )
+
+    def test_pipeann_calibration_command_uses_run_local_query_prefix(self):
+        datasets, _, _ = run_matrix.load_configs(ROOT)
+        spec = {"run_dir": "/tmp/yfcc-cal", "k": 10, "L": 50, "nq": 500}
+        command = run_matrix._pipeann_command(
+            ROOT, "yfcc10m", datasets["yfcc10m"], spec
+        )
+        self.assertEqual(command[5], "/tmp/yfcc-cal/pipeann-query.fbin")
+        self.assertEqual(command[6], "/tmp/yfcc-cal/pipeann-gt.ibin")
+
+    def test_matrix_prefix_writer_preserves_header_and_exact_rows(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = root / "source.bin"
+            target = root / "prefix.bin"
+            source.write_bytes(
+                struct.pack("<II", 3, 2)
+                + struct.pack("<6I", 10, 11, 20, 21, 30, 31)
+            )
+            run_one._write_matrix_prefix(source, target, rows=2, item_bytes=4)
+            self.assertEqual(
+                target.read_bytes(),
+                struct.pack("<II", 2, 2) + struct.pack("<4I", 10, 11, 20, 21),
+            )
 
     def test_q2_internal_commands_use_the_same_128_mib_window(self):
         runs = expand_runs(ROOT, "t2i10m", "q2", anchors={"L": 400})

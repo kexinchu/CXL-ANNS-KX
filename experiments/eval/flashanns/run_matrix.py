@@ -67,10 +67,15 @@ def _internal_command(root: Path, dataset: dict[str, Any], system: dict[str, Any
 
 def _pipeann_command(root: Path, dataset_id: str, dataset: dict[str, Any], spec: dict[str, Any]) -> list[str]:
     if "arrival_rate" not in spec:
+        query_file = dataset["artifacts"]["query_subset"]
+        gt_file = dataset["artifacts"]["ground_truth"]
+        if int(spec["nq"]) < 10000:
+            query_file = str(Path(spec["run_dir"]) / "pipeann-query.fbin")
+            gt_file = str(Path(spec["run_dir"]) / "pipeann-gt.ibin")
         return [
             str(root / "tools" / "eval-bin" / "search_disk_index"),
             "float", dataset["pipeann_index_prefix"], "8", "8",
-            dataset["artifacts"]["query_subset"], dataset["artifacts"]["ground_truth"],
+            query_file, gt_file,
             str(spec["k"]), dataset["metric"], "pq", "2", "0", str(spec["L"]),
         ]
     binary = str(root / "tools" / "pipeann_open_loop")

@@ -25,6 +25,31 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def _write_matrix_prefix(
+    source: Path, target: Path, *, rows: int, item_bytes: int
+) -> None:
+    source = Path(source)
+    target = Path(target)
+    if rows <= 0 or item_bytes <= 0:
+        raise ValueError("matrix prefix requires positive rows and item size")
+    with source.open("rb") as src:
+        raw_header = src.read(8)
+        if len(raw_header) != 8:
+            raise ValueError(f"{source}: missing matrix header")
+        source_rows, columns = struct.unpack("<II", raw_header)
+        expected_size = 8 + source_rows * columns * item_bytes
+        if rows > source_rows or source.stat().st_size != expected_size:
+            raise ValueError(f"{source}: invalid matrix shape for {rows}-row prefix")
+        payload = src.read(rows * columns * item_bytes)
+    if len(payload) != rows * columns * item_bytes:
+        raise ValueError(f"{source}: short matrix prefix")
+    with target.open("xb") as dst:
+        dst.write(struct.pack("<II", rows, columns))
+        dst.write(payload)
+        dst.flush()
+        os.fsync(dst.fileno())
+
+
 def claim_volatile_evidence(
     root: Path, evidence: dict[str, Any], run_id: str
 ) -> dict[str, str]:
@@ -308,6 +333,19 @@ def run_spec(
         os.mkdir(run_dir)
     except FileExistsError as exc:
         raise ValueError(f"refusing existing run ID {spec['run_id']}") from exc
+    if external and spec.get("phase") != "q3_load" and int(spec["nq"]) < 10000:
+        _write_matrix_prefix(
+            Path(dataset["artifacts"]["query_subset"]),
+            Path(spec["command"][5]),
+            rows=int(spec["nq"]),
+            item_bytes=4,
+        )
+        _write_matrix_prefix(
+            Path(dataset["artifacts"]["ground_truth"]),
+            Path(spec["command"][6]),
+            rows=int(spec["nq"]),
+            item_bytes=4,
+        )
     log = run_dir / "stdout.log"
     resource_log = run_dir / "resource.txt"
     timed_command = spec["command"]
