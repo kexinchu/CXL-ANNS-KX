@@ -156,6 +156,8 @@ class RunnerTest(unittest.TestCase):
             self.assertEqual(run["cache_limit"], 4294967296)
             self.assertTrue(set(command).isdisjoint(REMOVED_FLAGS))
             self.assertIn("--vmem-dev", command)
+            self.assertIn("--dram-numa", command)
+            self.assertEqual(command[command.index("--dram-numa") + 1], "0")
             self.assertNotIn("--oracle-dram", command)
             self.assertNotIn("--dram-backend", command)
             self.assertNotIn("--image", command)

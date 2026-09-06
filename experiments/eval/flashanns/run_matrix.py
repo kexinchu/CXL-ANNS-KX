@@ -53,6 +53,7 @@ def _internal_command(root: Path, dataset: dict[str, Any], system: dict[str, Any
         "--queries", a["query_subset"], "--gt", a["ground_truth"], "--id-map", a["id_map"],
         "--beam", str(spec["L"]), "--k", str(spec["k"]), "--iters", str(spec["iters"]), "--max-q", str(spec["nq"]),
         "--shuffle-seed", "42", "--threads", str(spec.get("threads", system["threads"])), "--cpu-affinity", "--policy", "P3",
+        "--dram-numa", "0",
         "--no-hide-warm-entry", "--no-direct-install", "--no-score-cache", "--no-stripe-fill",
         "--expand-batch", "8", "--issue-ahead", "1", "--eval-trace-dir", str(Path(spec["run_dir"]) / "trace"),
     ]
