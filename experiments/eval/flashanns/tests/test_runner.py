@@ -449,6 +449,10 @@ class RunnerTest(unittest.TestCase):
             source = (ROOT / "tools" / name).read_text()
             self.assertIn("Extended Q2 points required by recall anchors", source)
 
+    def test_yfcc_waiter_requires_the_full_extended_t2i_campaign(self):
+        source = (ROOT / "tools" / "build_yfcc_after_t2i.sh").read_text()
+        self.assertIn('"$ACCEPTED" 275', source)
+
     def test_internal_commands_bound_expansions_to_l(self):
         for system in ("demand", "flashanns"):
             with self.subTest(system=system):
