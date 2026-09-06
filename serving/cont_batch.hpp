@@ -5,6 +5,7 @@
 
 #include "hide_fill.hpp"
 
+#include <atomic>
 #include <cstdint>
 #include <mutex>
 #include <unordered_set>
@@ -18,6 +19,22 @@ struct Pipe2Dec {
   Pipe2Act act = Pipe2Act::Done;
   int slot = -1;
 };
+
+// Preserve deterministic, serialized admission while keeping query-local
+// preparation outside the reservation mutex. Preparation includes entry
+// selection and PQ lookup-table initialization and must scale with workers.
+template <class Prepare>
+inline bool reserve_then_prepare(std::atomic<uint32_t>& next, uint32_t limit,
+                                 std::mutex& admission_mu, Prepare&& prepare) {
+  uint32_t qi = 0;
+  {
+    std::lock_guard<std::mutex> g(admission_mu);
+    qi = next.fetch_add(1, std::memory_order_relaxed);
+  }
+  if (qi >= limit) return false;
+  prepare(qi);
+  return true;
+}
 
 // Per-thread D-deep interleave. Fill an empty seat first so NAND stays issued
 // during another query's beam; only then Rank a covering slot; else Wait; else Done.

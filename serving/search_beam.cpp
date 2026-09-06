@@ -2855,17 +2855,17 @@ int main(int argc, char** argv) {
               }
               if (dec.act == Pipe2Act::Fill) {
                 uint32_t qi = 0;
-                {
-                  std::lock_guard<std::mutex> g(admit_mu);
-                  qi = next_q.fetch_add(1, std::memory_order_relaxed);
-                  if (qi >= nq) continue;
+                const bool admitted = reserve_then_prepare(
+                    next_q, nq, admit_mu, [&](uint32_t reserved_qi) {
+                  qi = reserved_qi;
                   const auto request_t0 = wait_for_request(qi);
                   if (flush_window) tw->flush();
                   const float* qf = qbuf.data() + (size_t)qi * qdim;
                   EntryGraph qeg = eg;
                   if (nav.loaded()) qeg.entry_id = nav.search_entry(qf, lp.metric, nav_l);
                   pqq_init(q, pl, *tw, lp, qeg, qf, qi, L, request_t0);
-                }
+                });
+                if (!admitted) continue;
                 pqq_beam(q, pl, *lp.pq, L, iters, Rlim, &hub);
                 if (!try_issue(q)) q.st = CbSt::Hold;
                 continue;

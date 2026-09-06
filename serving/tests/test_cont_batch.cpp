@@ -1,4 +1,10 @@
 #include "serving/cont_batch.hpp"
+
+#include <algorithm>
+#include <atomic>
+#include <chrono>
+#include <mutex>
+#include <thread>
 #include <cassert>
 #include <cstdio>
 #include <vector>
@@ -122,6 +128,29 @@ int main() {
   assert(!issue_qd_ok(4, 4));
   assert(issue_qd_ok(3, 4));
   assert(issue_qd_ok(0, 2));
+
+  // Serial admission reserves a deterministic query ID, but query-local
+  // preparation must not remain under the reservation mutex. Otherwise a
+  // short-PQ workload serializes before it can expose cross-query overlap.
+  {
+    std::atomic<uint32_t> next{0};
+    std::mutex admission_mu;
+    std::atomic<int> active{0};
+    std::atomic<int> max_active{0};
+    auto prepare = [&](uint32_t) {
+      const int now = active.fetch_add(1) + 1;
+      int seen = max_active.load();
+      while (seen < now && !max_active.compare_exchange_weak(seen, now)) {}
+      std::this_thread::sleep_for(std::chrono::milliseconds(40));
+      active.fetch_sub(1);
+    };
+    std::thread a([&] { assert(reserve_then_prepare(next, 2, admission_mu, prepare)); });
+    std::thread b([&] { assert(reserve_then_prepare(next, 2, admission_mu, prepare)); });
+    a.join();
+    b.join();
+    assert(next.load() == 2);
+    assert(max_active.load() == 2);
+  }
   assert(effective_issue_qd(0, 8) == 8);
   assert(effective_issue_qd(0, 16) == 16);
   assert(effective_issue_qd(8, 16) == 8);
