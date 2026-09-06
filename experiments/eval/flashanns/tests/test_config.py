@@ -29,6 +29,9 @@ class ConfigTest(unittest.TestCase):
     def test_frozen_dataset_metrics_and_constants(self):
         self.assertEqual(self.datasets["t2i10m"]["metric"], "mips")
         self.assertEqual(self.datasets["laion10m"]["metric"], "mips")
+        self.assertTrue(self.datasets["t2i10m"]["pipeann_index_prefix"].endswith("/idx_t2i"))
+        self.assertTrue(self.datasets["yfcc10m"]["pipeann_index_prefix"].endswith("/pipeann"))
+        self.assertTrue(self.datasets["laion10m"]["pipeann_index_prefix"].endswith("/pipeann"))
         self.assertEqual(self.datasets["yfcc10m"]["metric"], "l2")
         self.assertTrue(self.datasets["t2i10m"]["ready"])
         self.assertFalse(self.datasets["yfcc10m"]["ready"])
@@ -57,6 +60,12 @@ class ConfigTest(unittest.TestCase):
         self.assertEqual(flashanns["per_thread_window"], 128 * 1024**2)
         self.assertEqual(self.systems["pipeann"]["kind"], "external-pipeann")
         self.assertEqual(self.systems["pipeann"]["threads"], 8)
+        self.assertEqual(
+            self.systems["pipeann"]["block_devices"],
+            [
+                "/dev/disk/by-id/nvme-Dell_Ent_NVMe_PM1733a_RI_3.84TB_S6USNE0TA08224"
+            ],
+        )
 
     def test_demand_is_the_blocking_single_depth_baseline(self):
         demand = self.systems["demand"]

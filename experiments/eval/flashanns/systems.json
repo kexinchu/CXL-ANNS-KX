@@ -9,7 +9,7 @@
   "pipeann": {
     "kind": "external-pipeann",
     "threads": 8,
-    "block_devices": ["/dev/nvme0n1"],
+    "block_devices": ["/dev/disk/by-id/nvme-Dell_Ent_NVMe_PM1733a_RI_3.84TB_S6USNE0TA08224"],
     "flags": []
   },
   "flashanns": {

@@ -155,6 +155,17 @@ for level in 50 100 200 400 800 1600; do
   done
 done
 
+
+# Extended Q2 points required by recall anchors. The base sweep remains fixed;
+# only PipeANN's already-calibrated level is added when it exceeds L=1600.
+pipe_q2_l=$(anchor_l pipeann)
+if (( pipe_q2_l > 1600 )); then
+  for repeat_id in 0 1 2 3 4; do
+    pipe_id="${DATASET}-q2-L${pipe_q2_l}-r${repeat_id}-cold-pipeann-${TAG}"
+    seal_external q2 "$pipe_q2_l" "$repeat_id" "$pipe_id"
+  done
+fi
+
 # Wise-prefetch and continuous-scheduling causal controls.
 wise_l=$(anchor_l flashanns)
 for system_name in serial-t1 batch-t1 extent-t1; do

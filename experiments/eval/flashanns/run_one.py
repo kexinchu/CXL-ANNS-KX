@@ -57,10 +57,14 @@ def claim_volatile_evidence(
     return claim
 
 
+def _block_device_name(device: str | Path) -> str:
+    return Path(device).resolve().name
+
+
 def _block_counters_for_devices(devices: list[str]) -> dict[str, str | None]:
     result: dict[str, str | None] = {}
     for device in devices:
-        name = Path(device).name
+        name = _block_device_name(device)
         path = Path("/sys/class/block") / name / "stat"
         try:
             result[name] = path.read_text().strip()
@@ -113,6 +117,14 @@ def parse_resource_usage(text: str) -> dict[str, float | int]:
     return result
 
 
+def _execution_environment(spec: dict[str, Any], run_dir: Path) -> dict[str, str] | None:
+    if not spec.get("external") or spec.get("phase") == "q3_load":
+        return None
+    env = os.environ.copy()
+    env["PIPEANN_RESULT_PREFIX"] = str(Path(run_dir) / "pipeann-result")
+    return env
+
+
 def _parse_metrics(log: Path, nq: int, returncode: int) -> dict[str, Any]:
     text = log.read_text(errors="replace")
     metrics: dict[str, Any] = {"completed_queries": nq if returncode == 0 else 0}
@@ -139,6 +151,24 @@ def parse_pipeann_metrics(text: str, nq: int, returncode: int) -> dict[str, Any]
     metrics: dict[str, Any] = {"completed_queries": nq if returncode == 0 else 0}
     lines = text.splitlines()
     for index, line in enumerate(lines):
+        if "AvgLat(us)" in line and "P99 Lat" in line:
+            for candidate in lines[index + 1 :]:
+                fields = candidate.split()
+                if len(fields) < 8 or not fields[0].isdigit():
+                    continue
+                try:
+                    metrics.update({
+                        "throughput_QPS": float(fields[2]),
+                        "mean_latency_ms": float(fields[3]) / 1000.0,
+                        "latency_p99_ms": float(fields[4]) / 1000.0,
+                        "mean_hops": float(fields[5]),
+                        "mean_ios": float(fields[6]),
+                    })
+                    recall = float(fields[7])
+                    metrics["recall@10"] = recall / 100.0 if recall > 1 else recall
+                    return metrics
+                except ValueError:
+                    continue
         if "Mean Latency" not in line or "99.9 Latency" not in line:
             continue
         for candidate in lines[index + 1 :]:
@@ -284,7 +314,14 @@ def run_spec(
     if Path("/usr/bin/time").is_file():
         timed_command = ["/usr/bin/time", "-v", "-o", str(resource_log), "--", *spec["command"]]
     with log.open("w") as stream:
-        completed = subprocess.run(timed_command, stdout=stream, stderr=subprocess.STDOUT, text=True, check=False)
+        completed = subprocess.run(
+            timed_command,
+            stdout=stream,
+            stderr=subprocess.STDOUT,
+            text=True,
+            check=False,
+            env=_execution_environment(spec, run_dir),
+        )
         stream.flush()
         os.fsync(stream.fileno())
     after = dict(before) if external else snapshot_and_validate(contract, dataset, "post", identity_evidence)

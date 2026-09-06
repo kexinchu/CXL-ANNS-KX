@@ -9,8 +9,8 @@ fi
 
 DATASET=$1
 ROOT=/root/chukexin/CXL-ANNS-KX/.worktrees/eval-flashanns-10m
-DISKANN=/mnt/disk0/chukexin_motivation/DiskANN_cpp/build/apps
-PIPEANN_BUILD=/root/chukexin/CXL-ANNS-KX/third_party/PipeANN/build/tests/build_disk_index
+DISKANN=$ROOT/tools/eval-bin
+PIPEANN_BUILD=$ROOT/tools/eval-bin/build_disk_index
 N=10000000
 R=32
 LBUILD=100
@@ -70,7 +70,7 @@ PY
 build_cpp() {
   local source=$1 output=$2
   if [[ ! -x "$output" || "$source" -nt "$output" ]]; then
-    g++ -O3 -std=c++17 -march=native -pthread -I. "$source" -o "$output"
+    g++ -O3 -std=c++17 -march=x86-64-v3 -mtune=generic -pthread -I. "$source" -o "$output"
   fi
 }
 build_cpp tools/rebuild_diskann_from_base.cpp tools/rebuild_diskann_from_base
@@ -78,7 +78,7 @@ build_cpp tools/remap_diskann_pages.cpp tools/remap_diskann_pages
 build_cpp tools/apply_diskann_slot_map.cpp tools/apply_diskann_slot_map
 build_cpp tools/build_nav_graph.cpp tools/build_nav_graph
 if [[ ! -x tools/build_diskann_pq || tools/build_diskann_pq.cpp -nt tools/build_diskann_pq ]]; then
-  g++ -O3 -std=c++17 -march=native -mavx2 -fopenmp -I. \
+  g++ -O3 -std=c++17 -march=x86-64-v3 -mtune=generic -mavx2 -fopenmp -I. \
     tools/build_diskann_pq.cpp -o tools/build_diskann_pq
 fi
 
@@ -147,7 +147,7 @@ fi
 rm -f -- "$NEIGHBOR_MAP"
 
 if [[ "$DATASET" == laion10m && ! -f "$SRV/source_gt_10k_k10.ibin" ]]; then
-  "$DISKANN/utils/compute_groundtruth" --data_type float --dist_fn mips \
+  "$DISKANN/compute_groundtruth" --data_type float --dist_fn mips \
     --base_file "$BASE" --query_file "$QUERY" \
     --gt_file "$SRV/source_gt_10k_k10.ibin" --K 10
 fi

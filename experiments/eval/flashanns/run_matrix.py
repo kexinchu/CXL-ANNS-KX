@@ -66,12 +66,14 @@ def _internal_command(root: Path, dataset: dict[str, Any], system: dict[str, Any
 
 
 def _pipeann_command(root: Path, dataset_id: str, dataset: dict[str, Any], spec: dict[str, Any]) -> list[str]:
-    base = "/mnt/disk0/chukexin_motivation"
-    binary = (
-        str(root / "tools" / "pipeann_open_loop")
-        if "arrival_rate" in spec
-        else f"{base}/DiskANN_cpp/build/apps/search_disk_index"
-    )
+    if "arrival_rate" not in spec:
+        return [
+            str(root / "tools" / "eval-bin" / "search_disk_index"),
+            "float", dataset["pipeann_index_prefix"], "8", "8",
+            dataset["artifacts"]["query_subset"], dataset["artifacts"]["ground_truth"],
+            str(spec["k"]), dataset["metric"], "pq", "2", "0", str(spec["L"]),
+        ]
+    binary = str(root / "tools" / "pipeann_open_loop")
     command = [
         binary, "--data_type", "float",
         "--dist_fn", dataset["metric"], "--index_path_prefix", dataset["pipeann_index_prefix"],
@@ -124,7 +126,7 @@ def expand_runs(
         system_ids = [system_id]
     if level is not None:
         declared_levels = list(levels)
-        if phase == "calibration":
+        if phase in ("calibration", "q2"):
             declared_levels += matrix["extended_L"]
         if level not in declared_levels:
             raise RunnerError(f"{level}: not a declared {phase} L")

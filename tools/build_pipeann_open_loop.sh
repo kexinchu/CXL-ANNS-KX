@@ -2,17 +2,21 @@
 set -euo pipefail
 
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
-DISKANN=${DISKANN_ROOT:-/mnt/disk0/chukexin_motivation/DiskANN_cpp}
-BUILD=$DISKANN/build
-TMP=$(mktemp -d /tmp/flashanns-diskann-src.XXXXXX)
-trap 'rm -rf -- "$TMP"' EXIT
+PIPEANN_ROOT=${PIPEANN_ROOT:-/root/chukexin/CXL-ANNS-KX/third_party/PipeANN}
+PIPEANN_BUILD=${PIPEANN_BUILD:-$PIPEANN_ROOT/build}
 
-git -C "$DISKANN" archive HEAD | tar -x -C "$TMP"
+test -f "$PIPEANN_ROOT/include/ssd_index.h"
+test -f "$PIPEANN_BUILD/src/libpipeann.a"
 
-g++ -std=c++17 -fopenmp -mavx2 -mfma -msse2 -ftree-vectorize \
-  -fno-builtin-malloc -fno-builtin-calloc -fno-builtin-realloc -fno-builtin-free \
-  -fopenmp-simd -funroll-loops -DUSE_AVX2 -O3 -DNDEBUG -march=native -mtune=native \
-  -I"$TMP/include" -I"$TMP/apps" "$ROOT/tools/pipeann_open_loop.cpp" \
-  "$BUILD/src/libdiskann.a" -o "$ROOT/tools/pipeann_open_loop" \
-  -lmkl_intel_ilp64 -lmkl_intel_thread -lmkl_core -liomp5 -lpthread -lm -ldl \
-  -laio -ltcmalloc -lboost_container
+g++ -std=c++17 -O3 -DNDEBUG -march=x86-64-v3 -mtune=generic \
+  -mavx2 -mfma -msse2 -fopenmp -pthread \
+  -DBG_IO_THREAD -DUSE_AVX2 -DUSE_URING -DUSE_TCMALLOC \
+  -I"$PIPEANN_ROOT/include" \
+  -I"$PIPEANN_ROOT/include/tsl/include" \
+  -I"$PIPEANN_ROOT/third_party/liburing/src/include" \
+  "$ROOT/tools/pipeann_open_loop.cpp" "$PIPEANN_BUILD/src/libpipeann.a" \
+  -L"$PIPEANN_ROOT/third_party/liburing/src" \
+  -Wl,-rpath,"$PIPEANN_ROOT/third_party/liburing/src" \
+  -Wl,--no-as-needed -ltcmalloc -Wl,--as-needed \
+  -luring -lmkl_rt -lgomp -lpthread \
+  -o "$ROOT/tools/pipeann_open_loop"

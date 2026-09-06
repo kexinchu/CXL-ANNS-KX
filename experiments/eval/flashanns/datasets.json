@@ -6,7 +6,7 @@
     "source_dtype": "float32",
     "execution_dtype": "float32",
     "metric": "mips",
-    "pipeann_index_prefix": "/mnt/disk0/chukexin_motivation/pipeann_t2i10m/idx_t2i_disk",
+    "pipeann_index_prefix": "/mnt/disk0/chukexin_motivation/pipeann_t2i10m/idx_t2i",
     "staging": {
       "offset": 1181116006400,
       "length": 20480004096,
@@ -38,7 +38,7 @@
     "source_dtype": "uint8",
     "execution_dtype": "float32",
     "metric": "l2",
-    "pipeann_index_prefix": "/mnt/disk0/chukexin_motivation/serving_yfcc_10m/pipeann_disk",
+    "pipeann_index_prefix": "/mnt/disk0/chukexin_motivation/serving_yfcc_10m/pipeann",
     "staging": {
       "offset": 1181116006400,
       "length": 20480004096,
@@ -71,7 +71,7 @@
     "source_dtype": "float32",
     "execution_dtype": "float32",
     "metric": "mips",
-    "pipeann_index_prefix": "/mnt/disk0/chukexin_motivation/serving_laion_10m/pipeann_disk",
+    "pipeann_index_prefix": "/mnt/disk0/chukexin_motivation/serving_laion_10m/pipeann",
     "staging": {
       "offset": 1181116006400,
       "length": 40960004096,

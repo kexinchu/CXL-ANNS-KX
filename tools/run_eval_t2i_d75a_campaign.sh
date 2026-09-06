@@ -141,6 +141,13 @@ for level in 50 100 200 400 800 1600; do
   done
 done
 
+# Extended Q2 points required by recall anchors. Native PipeANN first reaches
+# recall@10 >= 0.90 at L=2400 on the frozen T2I artifacts.
+for repeat_id in 0 1 2 3 4; do
+  pipe_id="t2i10m-q2-L2400-r${repeat_id}-cold-pipeann-${TAG}"
+  seal_external q2 2400 "$repeat_id" "$pipe_id"
+done
+
 # Freeze saturation only from this campaign, then run the open-loop curve.
 python3 -m experiments.eval.flashanns.freeze_load \
   "$ACCEPTED/q3_t8" "$ACCEPTED/q2" --recall-anchors "$RECALL_ANCHORS" \

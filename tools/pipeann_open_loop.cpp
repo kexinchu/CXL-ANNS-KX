@@ -1,12 +1,11 @@
-// Evaluation-only open-loop request replay for the exact DiskANN/PipeANN index.
-// It uses the same PQFlashIndex API as search_disk_index, but measures response
-// time from a fixed-rate arrival timestamp so overload includes queueing delay.
+// Evaluation-only fixed-rate replay for the native PipeANN index.
+// Every worker calls SSDIndex::pipe_search, as search_disk_index does. Latency
+// starts at the scheduled arrival time and therefore includes queueing.
 
-#include "common_includes.h"
-#include "disk_utils.h"
 #include "linux_aligned_file_reader.h"
-#include "math_utils.h"
-#include "pq_flash_index.h"
+#include "nbr/nbr.h"
+#include "ssd_index.h"
+#include "utils.h"
 
 #include <algorithm>
 #include <chrono>
@@ -80,14 +79,14 @@ double percentile(std::vector<double> values, double fraction) {
   if (values.empty()) return 0.0;
   std::sort(values.begin(), values.end());
   const size_t index = std::min(values.size() - 1,
-                                (size_t)std::ceil(fraction * values.size()) - 1);
+                                static_cast<size_t>(std::ceil(fraction * values.size())) - 1);
   return values[index];
 }
 
 template <class T>
 double mean(const std::vector<T> &values) {
   double total = 0.0;
-  for (const auto &value : values) total += (double)value;
+  for (const auto &value : values) total += static_cast<double>(value);
   return values.empty() ? 0.0 : total / values.size();
 }
 
@@ -96,7 +95,7 @@ void write_raw(const std::string &path, const std::vector<T> &values) {
   std::ofstream out(path, std::ios::binary | std::ios::trunc);
   if (!out) throw std::runtime_error("cannot create " + path);
   out.write(reinterpret_cast<const char *>(values.data()),
-            (std::streamsize)(values.size() * sizeof(T)));
+            static_cast<std::streamsize>(values.size() * sizeof(T)));
   if (!out) throw std::runtime_error("short write " + path);
 }
 
@@ -105,29 +104,24 @@ void write_raw(const std::string &path, const std::vector<T> &values) {
 int main(int argc, char **argv) {
   try {
     const Options o = parse_options(argc, argv);
-    diskann::Metric metric;
-    if (o.dist_fn == "mips") metric = diskann::Metric::INNER_PRODUCT;
-    else if (o.dist_fn == "l2") metric = diskann::Metric::L2;
-    else if (o.dist_fn == "cosine") metric = diskann::Metric::COSINE;
-    else throw std::invalid_argument("unsupported distance function");
+    const pipeann::Metric metric = pipeann::get_metric(o.dist_fn);
 
     float *queries = nullptr;
-    size_t nq = 0, dim = 0, aligned_dim = 0;
-    diskann::load_aligned_bin<float>(o.query_file, queries, nq, dim, aligned_dim);
+    size_t nq = 0, query_dim = 0;
+    pipeann::load_bin<float>(o.query_file, queries, nq, query_dim);
     if (nq == 0 || nq > UINT32_MAX) throw std::runtime_error("invalid query count");
 
     std::shared_ptr<AlignedFileReader> reader = std::make_shared<LinuxAlignedFileReader>();
-    auto index = std::make_unique<diskann::PQFlashIndex<float, uint32_t>>(reader, metric);
-    if (index->load(o.threads, o.index_prefix.c_str()) != 0)
-      throw std::runtime_error("failed to load PipeANN index");
-    std::vector<uint32_t> cache_nodes;
-    index->cache_bfs_levels(0, cache_nodes);
-    index->load_cache_list(cache_nodes);
+    pipeann::AbstractNeighbor<float> *nbr = pipeann::get_nbr_handler<float>(metric, "pq");
+    pipeann::IndexBuildParameters params;
+    params.max_nthreads = std::max<uint32_t>(16, 2 * o.threads);
+    auto index = std::make_unique<pipeann::SSDIndex<float>>(metric, reader, nbr, true, &params);
+    if (index->load(o.index_prefix.c_str(), false) != 0)
+      throw std::runtime_error("failed to load native PipeANN index");
 
-    std::vector<uint64_t> ids64(nq * o.k);
-    std::vector<uint32_t> ids32(nq * o.k);
+    std::vector<uint32_t> ids(nq * o.k);
     std::vector<float> distances(nq * o.k);
-    std::vector<diskann::QueryStats> stats(nq);
+    std::vector<pipeann::QueryStats> stats(nq);
     std::vector<double> latency_ms(nq, 0.0), queue_wait_ms(nq, 0.0);
     std::vector<uint64_t> latency_ns(nq, 0);
     std::vector<uint32_t> query_ids(nq);
@@ -137,9 +131,9 @@ int main(int argc, char **argv) {
 
     using Clock = std::chrono::steady_clock;
     const auto epoch = Clock::now();
-    auto due = [&](uint32_t qi) {
+    auto due = [&](uint32_t arrival_index) {
       return epoch + std::chrono::duration_cast<Clock::duration>(
-                         std::chrono::duration<double>((double)qi / o.arrival_rate));
+                         std::chrono::duration<double>(arrival_index / o.arrival_rate));
     };
     std::mutex mutex;
     std::condition_variable ready;
@@ -147,7 +141,7 @@ int main(int argc, char **argv) {
     bool producer_done = false;
 
     std::thread producer([&] {
-      for (uint32_t qi = 0; qi < (uint32_t)nq; ++qi) {
+      for (uint32_t qi = 0; qi < static_cast<uint32_t>(nq); ++qi) {
         std::this_thread::sleep_until(due(qi));
         {
           std::lock_guard<std::mutex> lock(mutex);
@@ -175,21 +169,21 @@ int main(int argc, char **argv) {
             qi = pending.front();
             pending.pop_front();
           }
-          const auto started = Clock::now();
           const auto scheduled = due(qi);
+          const auto started = Clock::now();
           queue_wait_ms[qi] = started > scheduled
                                   ? std::chrono::duration<double, std::milli>(started - scheduled).count()
                                   : 0.0;
           const uint32_t query_id = query_ids[qi];
-          index->cached_beam_search(
-              queries + (size_t)query_id * aligned_dim, o.k, o.l,
-              ids64.data() + (size_t)qi * o.k,
-              distances.data() + (size_t)qi * o.k, o.beam_width,
-              false, stats.data() + qi);
+          index->pipe_search(queries + static_cast<size_t>(query_id) * query_dim,
+                             o.k, 0, o.l,
+                             ids.data() + static_cast<size_t>(qi) * o.k,
+                             distances.data() + static_cast<size_t>(qi) * o.k,
+                             o.beam_width, stats.data() + qi);
           const auto finished = Clock::now();
-          latency_ns[qi] = (uint64_t)std::chrono::duration_cast<std::chrono::nanoseconds>(
-                               finished - scheduled).count();
-          latency_ms[qi] = (double)latency_ns[qi] / 1e6;
+          latency_ns[qi] = static_cast<uint64_t>(
+              std::chrono::duration_cast<std::chrono::nanoseconds>(finished - scheduled).count());
+          latency_ms[qi] = static_cast<double>(latency_ns[qi]) / 1e6;
         }
       });
     }
@@ -197,31 +191,33 @@ int main(int argc, char **argv) {
     for (auto &worker : workers) worker.join();
     const auto end = Clock::now();
 
-    for (size_t i = 0; i < ids64.size(); ++i) ids32[i] = (uint32_t)ids64[i];
     const std::string result_ids = o.result_prefix + "_" + std::to_string(o.l) + "_idx_uint32.bin";
     const std::string result_dists = o.result_prefix + "_" + std::to_string(o.l) + "_dists_float.bin";
-    diskann::save_bin<uint32_t>(result_ids, ids32.data(), nq, o.k);
-    diskann::save_bin<float>(result_dists, distances.data(), nq, o.k);
+    pipeann::save_bin<uint32_t>(result_ids, ids.data(), nq, o.k);
+    pipeann::save_bin<float>(result_dists, distances.data(), nq, o.k);
 
     double recall = 0.0;
-    uint32_t *gt_ids = nullptr;
+    unsigned *gt_ids = nullptr;
     float *gt_dists = nullptr;
     size_t gt_n = 0, gt_k = 0;
+    uint32_t *gt_tags = nullptr;
     if (o.gt_file != "null" && o.gt_file != "NULL" && file_exists(o.gt_file)) {
-      diskann::load_truthset(o.gt_file, gt_ids, gt_dists, gt_n, gt_k);
+      pipeann::load_truthset(o.gt_file, gt_ids, gt_dists, gt_n, gt_k, &gt_tags);
       if (gt_n != nq) throw std::runtime_error("ground-truth query count mismatch");
       std::vector<uint32_t> selected_gt(nq * gt_k);
       std::vector<float> selected_dists(gt_dists ? nq * gt_k : 0);
       for (size_t qi = 0; qi < nq; ++qi) {
         std::memcpy(selected_gt.data() + qi * gt_k,
-                    gt_ids + (size_t)query_ids[qi] * gt_k, gt_k * sizeof(uint32_t));
+                    gt_ids + static_cast<size_t>(query_ids[qi]) * gt_k,
+                    gt_k * sizeof(uint32_t));
         if (gt_dists)
           std::memcpy(selected_dists.data() + qi * gt_k,
-                      gt_dists + (size_t)query_ids[qi] * gt_k, gt_k * sizeof(float));
+                      gt_dists + static_cast<size_t>(query_ids[qi]) * gt_k,
+                      gt_k * sizeof(float));
       }
-      recall = diskann::calculate_recall((uint32_t)nq, selected_gt.data(),
+      recall = pipeann::calculate_recall(static_cast<uint32_t>(nq), selected_gt.data(),
                                          selected_dists.empty() ? nullptr : selected_dists.data(),
-                                         (uint32_t)gt_k, ids32.data(), o.k, o.k);
+                                         static_cast<uint32_t>(gt_k), ids.data(), o.k, o.k);
     }
 
     if (!o.trace_dir.empty()) {
@@ -230,31 +226,26 @@ int main(int argc, char **argv) {
       write_raw(o.trace_dir + "/latency_ns.u64", latency_ns);
     }
 
-    std::vector<double> total_us(nq), io_us(nq), ios(nq), cpu_us(nq);
+    std::vector<double> total_us(nq), io_us(nq), ios(nq), hops(nq);
     for (size_t i = 0; i < nq; ++i) {
       total_us[i] = stats[i].total_us;
       io_us[i] = stats[i].io_us;
       ios[i] = stats[i].n_ios;
-      cpu_us[i] = stats[i].cpu_us;
+      hops[i] = stats[i].n_hops;
     }
     const double wall_s = std::chrono::duration<double>(end - epoch).count();
     const double qps = nq / wall_s;
-    std::printf("arrival_mode=open-loop-periodic offered_QPS=%.3f latency_includes_queue=1\n",
-                o.arrival_rate);
+    std::printf("arrival_mode=open-loop-periodic offered_QPS=%.3f latency_includes_queue=1\n", o.arrival_rate);
     std::printf("wall_s=%.6f throughput_QPS=%.3f\n", wall_s, qps);
     std::printf("latency_ms mean=%.3f p50=%.3f p90=%.3f p95=%.3f p99=%.3f\n",
                 mean(latency_ms), percentile(latency_ms, 0.50), percentile(latency_ms, 0.90),
                 percentile(latency_ms, 0.95), percentile(latency_ms, 0.99));
     std::printf("queue_wait_ms_mean=%.3f queue_wait_ms_p95=%.3f\n",
                 mean(queue_wait_ms), percentile(queue_wait_ms, 0.95));
-    std::printf(" L Beamwidth QPS Mean Latency 99.9 Latency Mean IOs Mean IO (us) CPU (s) Recall@10\n");
-    std::printf(" %u %u %.3f %.3f %.3f %.3f %.3f %.3f %.3f\n", o.l, o.beam_width,
-                qps, mean(total_us), percentile(total_us, 0.999), mean(ios), mean(io_us),
-                mean(cpu_us) / 1e6, recall);
-
-    diskann::aligned_free(queries);
-    if (gt_ids) delete[] gt_ids;
-    if (gt_dists) delete[] gt_dists;
+    std::printf("         L   I/O Width         QPS  AvgLat(us)     P99 Lat   Mean Hops    Mean IOs   Recall@10\n");
+    std::printf("%10u%12u%12.2f%12.2f%12.2f%12.2f%12.2f%12.2f\n",
+                o.l, o.beam_width, qps, mean(total_us), percentile(total_us, 0.99),
+                mean(hops), mean(ios), recall);
     return 0;
   } catch (const std::exception &error) {
     std::fprintf(stderr, "pipeann_open_loop: %s\n", error.what());

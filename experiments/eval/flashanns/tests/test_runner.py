@@ -17,6 +17,28 @@ ROOT = Path(__file__).resolve().parents[4]
 
 
 class RunnerTest(unittest.TestCase):
+    def test_open_loop_pipeann_uses_native_pipe_search(self):
+        source = (ROOT / "tools" / "pipeann_open_loop.cpp").read_text()
+        self.assertIn("pipeann::SSDIndex<float>", source)
+        self.assertIn("->pipe_search(", source)
+        self.assertNotIn("PQFlashIndex", source)
+        self.assertNotIn("cached_beam_search", source)
+
+    def test_open_loop_build_links_native_pipeann(self):
+        source = (ROOT / "tools" / "build_pipeann_open_loop.sh").read_text()
+        self.assertIn("PIPEANN_ROOT", source)
+        self.assertIn("libpipeann.a", source)
+        self.assertNotIn("libdiskann.a", source)
+
+    def test_block_counter_resolves_stable_device_symlink(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            target = root / "nvme2n1"
+            target.touch()
+            stable = root / "nvme-by-id"
+            stable.symlink_to(target.name)
+            self.assertEqual(run_one._block_device_name(stable), "nvme2n1")
+
     def test_block_counter_deltas_report_reads_bytes_and_busy_time(self):
         before = {"nvme1n1": "10 2 100 8 0 0 0 0 0 20 30"}
         after = {"nvme1n1": "15 3 140 12 0 0 0 0 0 27 42"}
@@ -38,6 +60,20 @@ class RunnerTest(unittest.TestCase):
             "cpu_utilization_pct": 300.0, "peak_rss_kib": 123456,
         })
 
+    def test_closed_loop_pipeann_receives_result_prefix(self):
+        run_dir = Path("/tmp/native-pipeann-run")
+        env = run_one._execution_environment(
+            {"external": True, "phase": "q2"}, run_dir
+        )
+        self.assertEqual(
+            env["PIPEANN_RESULT_PREFIX"], str(run_dir / "pipeann-result")
+        )
+        self.assertIsNone(
+            run_one._execution_environment(
+                {"external": False, "phase": "q2"}, run_dir
+            )
+        )
+
     def test_pipeann_parser_converts_microseconds_and_recall_percent(self):
         text = (
             " L Beamwidth QPS Mean Latency 99.9 Latency Mean IOs Mean IO (us) CPU (s) Recall@10\n"
@@ -49,6 +85,19 @@ class RunnerTest(unittest.TestCase):
         self.assertEqual(metrics["latency_p999_ms"], 19.0)
         self.assertEqual(metrics["recall@10"], 0.9325)
         self.assertEqual(metrics["completed_queries"], 10000)
+
+    def test_pipeann_parser_accepts_native_pipeann_table(self):
+        text = (
+            "         L   I/O Width         QPS  AvgLat(us)     P99 Lat   Mean Hops    Mean IOs   Recall@10\n"
+            "       400           8      321.50     24000.00     41000.00       42.00       31.00       92.93\n"
+        )
+        metrics = run_one.parse_pipeann_metrics(text, nq=10000, returncode=0)
+        self.assertEqual(metrics["throughput_QPS"], 321.5)
+        self.assertEqual(metrics["mean_latency_ms"], 24.0)
+        self.assertEqual(metrics["latency_p99_ms"], 41.0)
+        self.assertEqual(metrics["mean_hops"], 42.0)
+        self.assertEqual(metrics["mean_ios"], 31.0)
+        self.assertEqual(metrics["recall@10"], 0.9293)
 
     def test_open_loop_pipeann_parser_prefers_queue_inclusive_latency(self):
         self.assertTrue(hasattr(run_one, "parse_open_loop_pipeann_metrics"))
@@ -268,7 +317,9 @@ class RunnerTest(unittest.TestCase):
         runs = expand_runs(ROOT, "t2i10m", "q2", anchors={"L": 400})
         pipeann = next(run for run in runs if run["system"] == "pipeann")
         self.assertTrue(pipeann["external"])
-        self.assertTrue(pipeann["command"][0].endswith("search_disk_index"))
+        self.assertEqual(
+            pipeann["command"][0], str(ROOT / "tools" / "eval-bin" / "search_disk_index")
+        )
         self.assertNotIn("search_beam", " ".join(pipeann["command"]))
 
     def test_external_pipeann_uses_each_dataset_index_prefix(self):
@@ -278,10 +329,23 @@ class RunnerTest(unittest.TestCase):
             ROOT, "yfcc10m", datasets["yfcc10m"], spec
         )
         self.assertEqual(
-            command[command.index("--index_path_prefix") + 1],
-            datasets["yfcc10m"]["pipeann_index_prefix"],
+            command,
+            [
+                str(ROOT / "tools" / "eval-bin" / "search_disk_index"),
+                "float",
+                datasets["yfcc10m"]["pipeann_index_prefix"],
+                "8",
+                "8",
+                datasets["yfcc10m"]["artifacts"]["query_subset"],
+                datasets["yfcc10m"]["artifacts"]["ground_truth"],
+                "10",
+                "l2",
+                "pq",
+                "2",
+                "0",
+                "400",
+            ],
         )
-        self.assertEqual(command[command.index("--dist_fn") + 1], "l2")
 
     def test_q2_internal_commands_use_the_same_128_mib_window(self):
         runs = expand_runs(ROOT, "t2i10m", "q2", anchors={"L": 400})
@@ -364,6 +428,26 @@ class RunnerTest(unittest.TestCase):
             level=2400,
         )
         self.assertEqual([run["L"] for run in extended], [2400])
+
+    def test_q2_allows_explicit_extended_pipeann_level(self):
+        runs = expand_runs(
+            ROOT,
+            "t2i10m",
+            "q2",
+            anchors={"primary": {"pipeann": {"L": 2400}}},
+            system_id="pipeann",
+            level=2400,
+            repeat_id=0,
+        )
+        self.assertEqual([run["L"] for run in runs], [2400])
+
+    def test_campaigns_measure_extended_q2_anchor_levels(self):
+        for name in (
+            "run_eval_t2i_d75a_campaign.sh",
+            "run_eval_dataset_d75a_campaign.sh",
+        ):
+            source = (ROOT / "tools" / name).read_text()
+            self.assertIn("Extended Q2 points required by recall anchors", source)
 
     def test_internal_commands_bound_expansions_to_l(self):
         for system in ("demand", "flashanns"):
