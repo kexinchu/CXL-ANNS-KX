@@ -1,0 +1,7 @@
+{
+  "accepted": true,
+  "runs": [
+    "yfcc10m-smoke-L400-r0-proof-demand-4ad7-c3ef",
+    "yfcc10m-smoke-L400-r0-proof-flashanns-4ad7-c3ef"
+  ]
+}

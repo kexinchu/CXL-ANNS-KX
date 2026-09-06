@@ -1,0 +1,42 @@
+{
+  "accepted": true,
+  "dataset": "yfcc10m",
+  "primary": {
+    "demand": {
+      "L": 50,
+      "recall@10": 0.918,
+      "run_id": "yfcc10m-calibration-L50-r0-cold-demand-4ad7-c3ef"
+    },
+    "flashanns": {
+      "L": 50,
+      "recall@10": 0.918,
+      "run_id": "yfcc10m-calibration-L50-r0-cold-flashanns-4ad7-c3ef"
+    },
+    "pipeann": {
+      "L": 50,
+      "recall@10": 0.9052,
+      "run_id": "yfcc10m-calibration-L50-r0-cold-pipeann-4ad7-c3ef"
+    }
+  },
+  "primary_target": 0.9,
+  "runs": [
+    "yfcc10m-calibration-L100-r0-cold-demand-4ad7-c3ef",
+    "yfcc10m-calibration-L100-r0-cold-flashanns-4ad7-c3ef",
+    "yfcc10m-calibration-L100-r0-cold-pipeann-4ad7-c3ef",
+    "yfcc10m-calibration-L1600-r0-cold-demand-4ad7-c3ef",
+    "yfcc10m-calibration-L1600-r0-cold-flashanns-4ad7-c3ef",
+    "yfcc10m-calibration-L1600-r0-cold-pipeann-4ad7-c3ef",
+    "yfcc10m-calibration-L200-r0-cold-demand-4ad7-c3ef",
+    "yfcc10m-calibration-L200-r0-cold-flashanns-4ad7-c3ef",
+    "yfcc10m-calibration-L200-r0-cold-pipeann-4ad7-c3ef",
+    "yfcc10m-calibration-L400-r0-cold-demand-4ad7-c3ef",
+    "yfcc10m-calibration-L400-r0-cold-flashanns-4ad7-c3ef",
+    "yfcc10m-calibration-L400-r0-cold-pipeann-4ad7-c3ef",
+    "yfcc10m-calibration-L50-r0-cold-demand-4ad7-c3ef",
+    "yfcc10m-calibration-L50-r0-cold-flashanns-4ad7-c3ef",
+    "yfcc10m-calibration-L50-r0-cold-pipeann-4ad7-c3ef",
+    "yfcc10m-calibration-L800-r0-cold-demand-4ad7-c3ef",
+    "yfcc10m-calibration-L800-r0-cold-flashanns-4ad7-c3ef",
+    "yfcc10m-calibration-L800-r0-cold-pipeann-4ad7-c3ef"
+  ]
+}
