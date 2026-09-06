@@ -9,8 +9,12 @@ fi
 
 DATASET=$1
 ROOT=/root/chukexin/CXL-ANNS-KX/.worktrees/eval-flashanns-10m
-TAG=68c6
-EXPECTED_BINARY=68c6ef208506
+EXPECTED_BINARY=${FLASHANNS_EXPECTED_BINARY_SHA256:-4ad796de9cbdd89f03833c8b655bda9a33c15dcbe228d0dcd9e8ca9910fd221a}
+TAG=${FLASHANNS_CAMPAIGN_TAG:-${EXPECTED_BINARY:0:4}}
+[[ "$EXPECTED_BINARY" == "$TAG"* ]] || {
+  echo "campaign tag $TAG is not a prefix of binary SHA-256 $EXPECTED_BINARY" >&2
+  exit 2
+}
 BASE=$ROOT/results/eval/flashanns
 RAW=$BASE/raw/$DATASET/$TAG
 ACCEPTED=$BASE/accepted/$DATASET/$TAG
@@ -235,4 +239,4 @@ for arrival_rate in "${rates[@]}"; do
   done
 done
 
-echo "DATASET_68C6_CAMPAIGN_COMPLETE dataset=$DATASET"
+echo "DATASET_CAMPAIGN_COMPLETE dataset=$DATASET tag=$TAG binary=$EXPECTED_BINARY"

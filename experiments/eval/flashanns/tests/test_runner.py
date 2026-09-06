@@ -473,6 +473,18 @@ class RunnerTest(unittest.TestCase):
             source = (ROOT / "tools" / name).read_text()
             self.assertIn("Extended Q2 points required by recall anchors", source)
 
+    def test_campaigns_bind_new_results_to_explicit_binary_identity(self):
+        for name in (
+            "run_eval_t2i_d75a_campaign.sh",
+            "run_eval_dataset_d75a_campaign.sh",
+        ):
+            with self.subTest(name=name):
+                source = (ROOT / "tools" / name).read_text()
+                self.assertIn("FLASHANNS_CAMPAIGN_TAG", source)
+                self.assertIn("FLASHANNS_EXPECTED_BINARY_SHA256", source)
+                self.assertIn('[[ "$EXPECTED_BINARY" == "$TAG"* ]]', source)
+                self.assertNotIn("TAG=68c6", source)
+
     def test_yfcc_waiter_requires_the_full_extended_t2i_campaign(self):
         source = (ROOT / "tools" / "build_yfcc_after_t2i.sh").read_text()
         self.assertIn('"$ACCEPTED" 275', source)

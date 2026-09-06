@@ -3,8 +3,12 @@
 set -euo pipefail
 
 ROOT=/root/chukexin/CXL-ANNS-KX/.worktrees/eval-flashanns-10m
-TAG=68c6
-EXPECTED_BINARY=68c6ef208506
+EXPECTED_BINARY=${FLASHANNS_EXPECTED_BINARY_SHA256:-4ad796de9cbdd89f03833c8b655bda9a33c15dcbe228d0dcd9e8ca9910fd221a}
+TAG=${FLASHANNS_CAMPAIGN_TAG:-${EXPECTED_BINARY:0:4}}
+[[ "$EXPECTED_BINARY" == "$TAG"* ]] || {
+  echo "campaign tag $TAG is not a prefix of binary SHA-256 $EXPECTED_BINARY" >&2
+  exit 2
+}
 IDENTITY=$ROOT/results/eval/flashanns/preflight/t2i-full-identity.json
 RECALL_ANCHORS=$ROOT/results/eval/flashanns/calibration/t2i10m.json
 BASE=$ROOT/results/eval/flashanns
@@ -172,4 +176,4 @@ for arrival_rate in "${rates[@]}"; do
   done
 done
 
-echo "T2I_68C6_CAMPAIGN_COMPLETE"
+echo "T2I_CAMPAIGN_COMPLETE tag=$TAG binary=$EXPECTED_BINARY"
