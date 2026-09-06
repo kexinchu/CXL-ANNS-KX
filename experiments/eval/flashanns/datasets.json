@@ -32,7 +32,7 @@
     }
   },
   "yfcc10m": {
-    "ready": false,
+    "ready": true,
     "count": 10000000,
     "dimension": 192,
     "source_dtype": "uint8",
@@ -59,8 +59,8 @@
       "ground_truth": "/mnt/disk0/chukexin_motivation/serving_yfcc_10m/gt_10k_k10.ibin",
       "id_map": "/mnt/disk0/chukexin_motivation/serving_yfcc_10m/new_to_old_pagebin.bin",
       "slot_map": "/mnt/disk0/chukexin_motivation/serving_yfcc_10m/id_to_slot_10m_extent.bin",
-      "pq64_pivots": "/mnt/disk0/chukexin_motivation/serving_yfcc_10m/index_pq64_pivots.bin",
-      "pq64_codes": "/mnt/disk0/chukexin_motivation/serving_yfcc_10m/index_pq64_compressed.bin"
+      "pq64_pivots": "/mnt/disk0/chukexin_motivation/serving_yfcc_10m/index_pq64_pq_pivots.bin",
+      "pq64_codes": "/mnt/disk0/chukexin_motivation/serving_yfcc_10m/index_pq64_pq_compressed.bin"
     }
   },
   "laion10m": {
@@ -92,8 +92,8 @@
       "ground_truth": "/mnt/disk0/chukexin_motivation/serving_laion_10m/gt_10k_k10.ibin",
       "id_map": "/mnt/disk0/chukexin_motivation/serving_laion_10m/new_to_old_pagebin.bin",
       "slot_map": "/mnt/disk0/chukexin_motivation/serving_laion_10m/id_to_slot_10m_extent.bin",
-      "pq64_pivots": "/mnt/disk0/chukexin_motivation/serving_laion_10m/index_pq64_pivots.bin",
-      "pq64_codes": "/mnt/disk0/chukexin_motivation/serving_laion_10m/index_pq64_compressed.bin"
+      "pq64_pivots": "/mnt/disk0/chukexin_motivation/serving_laion_10m/index_pq64_pq_pivots.bin",
+      "pq64_codes": "/mnt/disk0/chukexin_motivation/serving_laion_10m/index_pq64_pq_compressed.bin"
     }
   }
 }

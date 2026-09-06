@@ -1,0 +1,83 @@
+{
+  "artifacts": {
+    "entry": {
+      "bytes": 1081356,
+      "path": "/mnt/disk0/chukexin_motivation/serving_yfcc_10m/serving_entry_yfcc_10m_pagebin.bin",
+      "sha256": "7076df780bd0ef3938e8b5baaa085856a47c5180cf54646290a22d7f67a7d770"
+    },
+    "execution_base": {
+      "bytes": 7680000008,
+      "path": "/mnt/disk0/chukexin_motivation/serving_yfcc_10m/base.10M.fbin",
+      "sha256": "70b9565cff4343e0c7c39992f33df4c1da920eaa33b19687fc63812901238bc2"
+    },
+    "extent_image": {
+      "bytes": 20480004096,
+      "path": "/mnt/disk0/chukexin_motivation/serving_yfcc_10m/diskann_yfcc_10m_extent.bin",
+      "sha256": "7cd80c7546a517ea9929cce496a8b3e93079d23c14c0f29dfe954ef12bc4ae8d"
+    },
+    "graph": {
+      "bytes": 1280000000,
+      "path": "/mnt/disk0/chukexin_motivation/serving_yfcc_10m/diskann_yfcc_10m.graph.bin",
+      "sha256": "292e83ff31eceedfcc115ba5b4c531c8a2e476f0b5f2f839bc8f6bb471b3acae"
+    },
+    "ground_truth": {
+      "bytes": 400008,
+      "path": "/mnt/disk0/chukexin_motivation/serving_yfcc_10m/gt_10k_k10.ibin",
+      "sha256": "6d49a8cb71c389e0e857c643baa4d78617de0814b746c59a82a2c3cd4076c9f4"
+    },
+    "id_map": {
+      "bytes": 40000000,
+      "path": "/mnt/disk0/chukexin_motivation/serving_yfcc_10m/new_to_old_pagebin.bin",
+      "sha256": "8a966ce88ca6210619d99704f93a981eaa59665c5033711826783c127ff88c01"
+    },
+    "nav_graph": {
+      "bytes": 9040012,
+      "path": "/mnt/disk0/chukexin_motivation/serving_yfcc_10m/nav_10k.bin",
+      "sha256": "71da839afe4ef7a491576bc202ada0d691e1612257d46590662598f6f42b584a"
+    },
+    "oracle_image": {
+      "bytes": 20480004096,
+      "path": "/mnt/disk0/chukexin_motivation/serving_yfcc_10m/diskann_yfcc_10m.bin",
+      "sha256": "e1006935b8f03a3c72a315d21cd91e89d8ac17744ffc0289203858cbc99bb379"
+    },
+    "pq64_codes": {
+      "bytes": 640000008,
+      "path": "/mnt/disk0/chukexin_motivation/serving_yfcc_10m/index_pq64_pq_compressed.bin",
+      "sha256": "f3680aaa936ebceda28c0f1d5927311c7ebc76705b061aacd2d18f815a089e59"
+    },
+    "pq64_pivots": {
+      "bytes": 202532,
+      "path": "/mnt/disk0/chukexin_motivation/serving_yfcc_10m/index_pq64_pq_pivots.bin",
+      "sha256": "eba45aca0237912afec614288ad02d533e2307cfcf6fee56311148b020831367"
+    },
+    "query_subset": {
+      "bytes": 7680008,
+      "path": "/mnt/disk0/chukexin_motivation/serving_yfcc_10m/query_10k.fbin",
+      "sha256": "9289df99bad90bc500312aa33121d3bb7a82f6643fa4f44643ea687077d3f3b0"
+    },
+    "slot_map": {
+      "bytes": 40000000,
+      "path": "/mnt/disk0/chukexin_motivation/serving_yfcc_10m/id_to_slot_10m_extent.bin",
+      "sha256": "99e31e3e5519e2c07e4cbcb22d5c9ab76ec63ead6bdffd6f4c64d04ffb2fdd9b"
+    },
+    "source_base": {
+      "bytes": 1920000008,
+      "path": "/mnt/disk0/chukexin_motivation/data/yfcc10m/base.10M.u8bin",
+      "sha256": "589030afcbcc44a50ff798cec935f0980815a02eb7075b224d4f7c12febe96bf"
+    },
+    "source_gt": {
+      "bytes": 80000008,
+      "path": "/mnt/disk0/chukexin_motivation/data/yfcc10m/unfiltered.GT.public.ibin",
+      "sha256": "52899b776a4485d67e41c9edf35dd2fb776bb4c1af5568db95d5000aaa673e0f"
+    },
+    "source_queries": {
+      "bytes": 19200008,
+      "path": "/mnt/disk0/chukexin_motivation/data/yfcc10m/query.public.100K.u8bin",
+      "sha256": "77a937d67baf7523a7d9089a6e49c0ac8c6a3e7eb5499d759afeacf0a843df82"
+    }
+  },
+  "count": 10000000,
+  "dataset": "yfcc10m",
+  "dimension": 192,
+  "metric": "l2"
+}

@@ -34,7 +34,7 @@ class ConfigTest(unittest.TestCase):
         self.assertTrue(self.datasets["laion10m"]["pipeann_index_prefix"].endswith("/pipeann"))
         self.assertEqual(self.datasets["yfcc10m"]["metric"], "l2")
         self.assertTrue(self.datasets["t2i10m"]["ready"])
-        self.assertFalse(self.datasets["yfcc10m"]["ready"])
+        self.assertTrue(self.datasets["yfcc10m"]["ready"])
         self.assertFalse(self.datasets["laion10m"]["ready"])
         self.assertEqual(self.matrix["cache_limit"], 4 * 1024**3)
         self.assertEqual(
@@ -51,6 +51,16 @@ class ConfigTest(unittest.TestCase):
             self.assertEqual(dataset["staging"]["magic"], 0x314E415843)
         self.assertEqual(self.datasets["yfcc10m"]["staging"]["length"], 4096 + 10_000_000 * 2048)
         self.assertEqual(self.datasets["laion10m"]["staging"]["length"], 4096 + 10_000_000 * 4096)
+
+    def test_built_dataset_pq_paths_match_builder_outputs(self):
+        for dataset_id in ("yfcc10m", "laion10m"):
+            artifacts = self.datasets[dataset_id]["artifacts"]
+            self.assertTrue(
+                artifacts["pq64_pivots"].endswith("/index_pq64_pq_pivots.bin")
+            )
+            self.assertTrue(
+                artifacts["pq64_codes"].endswith("/index_pq64_pq_compressed.bin")
+            )
 
     def test_frozen_flashanns_shape(self):
         flashanns = self.systems["flashanns"]
