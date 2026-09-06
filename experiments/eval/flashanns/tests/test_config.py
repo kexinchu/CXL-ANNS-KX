@@ -35,7 +35,7 @@ class ConfigTest(unittest.TestCase):
         self.assertEqual(self.datasets["yfcc10m"]["metric"], "l2")
         self.assertTrue(self.datasets["t2i10m"]["ready"])
         self.assertTrue(self.datasets["yfcc10m"]["ready"])
-        self.assertFalse(self.datasets["laion10m"]["ready"])
+        self.assertTrue(self.datasets["laion10m"]["ready"])
         self.assertEqual(self.matrix["cache_limit"], 4 * 1024**3)
         self.assertEqual(
             self.matrix["window_miss_recovery"],

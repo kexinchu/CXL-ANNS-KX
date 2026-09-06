@@ -1,0 +1,83 @@
+{
+  "artifacts": {
+    "entry": {
+      "bytes": 1081356,
+      "path": "/mnt/disk0/chukexin_motivation/serving_laion_10m/serving_entry_laion_10m_pagebin.bin",
+      "sha256": "7f0cb9885b8fa96aa1f94f413c3f6899b54c2dba7a114bec600f8da34fe524bd"
+    },
+    "execution_base": {
+      "bytes": 20480000008,
+      "path": "/mnt/disk0/chukexin_motivation/serving_laion_10m/base.10M.fbin",
+      "sha256": "1c0a25b7e767c3f576cbacfceea180ecb740201eec025106eef62d094e406e8f"
+    },
+    "extent_image": {
+      "bytes": 40960004096,
+      "path": "/mnt/disk0/chukexin_motivation/serving_laion_10m/diskann_laion_10m_extent.bin",
+      "sha256": "7252298df68f4fb55b7dc1d3cfa69e072e12b61225a188ad9593685d7a204270"
+    },
+    "graph": {
+      "bytes": 1280000000,
+      "path": "/mnt/disk0/chukexin_motivation/serving_laion_10m/diskann_laion_10m.graph.bin",
+      "sha256": "0365485073a535490dcedd77a88c569e9f416d059feb00045fc1d3695d26539a"
+    },
+    "ground_truth": {
+      "bytes": 400008,
+      "path": "/mnt/disk0/chukexin_motivation/serving_laion_10m/gt_10k_k10.ibin",
+      "sha256": "bbec6e20aa59d21bf391c0f31bcc67df797c3fdfbf923afc6c1260821b156e00"
+    },
+    "id_map": {
+      "bytes": 40000000,
+      "path": "/mnt/disk0/chukexin_motivation/serving_laion_10m/new_to_old_pagebin.bin",
+      "sha256": "8a966ce88ca6210619d99704f93a981eaa59665c5033711826783c127ff88c01"
+    },
+    "nav_graph": {
+      "bytes": 21840012,
+      "path": "/mnt/disk0/chukexin_motivation/serving_laion_10m/nav_10k.bin",
+      "sha256": "420a4ebc48b1252d7a5c036f6b1f1da2c1ca8b9cecfa026a7ec2ffc184a63018"
+    },
+    "oracle_image": {
+      "bytes": 40960004096,
+      "path": "/mnt/disk0/chukexin_motivation/serving_laion_10m/diskann_laion_10m.bin",
+      "sha256": "d63b9cd875d92e6637cd04cd5538406666fc04b6647936ef99c7d8336015a877"
+    },
+    "pq64_codes": {
+      "bytes": 640000008,
+      "path": "/mnt/disk0/chukexin_motivation/serving_laion_10m/index_pq64_pq_compressed.bin",
+      "sha256": "0d170220eac756815b29aa5f2374905a15317771a4a55c578aeb717e89f6f098"
+    },
+    "pq64_pivots": {
+      "bytes": 532772,
+      "path": "/mnt/disk0/chukexin_motivation/serving_laion_10m/index_pq64_pq_pivots.bin",
+      "sha256": "5b0a0da01be0de302f003addfa8ee40830a94b17778e7c6a5247d017f91a85fa"
+    },
+    "query_subset": {
+      "bytes": 20480008,
+      "path": "/mnt/disk0/chukexin_motivation/serving_laion_10m/query_10k.fbin",
+      "sha256": "ee22d0bf225b950bdfc798f0e4279b4307da370f88885fe88396ac0eb55491d5"
+    },
+    "slot_map": {
+      "bytes": 40000000,
+      "path": "/mnt/disk0/chukexin_motivation/serving_laion_10m/id_to_slot_10m_extent.bin",
+      "sha256": "5e7de93747f52a925e9f4faa7ece1fc759a3a8c818ce8bf4bf00dca3cbad20fc"
+    },
+    "source_base": {
+      "bytes": 51200000008,
+      "path": "/mnt/disk0/chukexin_motivation/diskann_data_laion25m/base.bin",
+      "sha256": "52508ace216cb52e895e53ee1372cef71bdd857e0728ff7956eaaff3e482668c"
+    },
+    "source_gt": {
+      "bytes": 800008,
+      "path": "/mnt/disk0/chukexin_motivation/serving_laion_10m/source_gt_10k_k10.ibin",
+      "sha256": "7af990f328b2cdf3a7bbce8ad1e507d96d09205c16f1e84e90ddb6b30c465cfd"
+    },
+    "source_queries": {
+      "bytes": 102400008,
+      "path": "/mnt/disk0/chukexin_motivation/diskann_data_laion25m/query.bin",
+      "sha256": "a8552a0ddfb4b4e6bb42a6f54997b612753e43553b73ac10f08a1416e65771e0"
+    }
+  },
+  "count": 10000000,
+  "dataset": "laion10m",
+  "dimension": 512,
+  "metric": "mips"
+}
