@@ -60,6 +60,7 @@ seal_external() {
     echo "SKIP accepted $run_id"
     return
   fi
+  eval_wait_for_commit_headroom
   [[ ! -e "$run_dir" && ! -e "$sealed" ]]
   python3 -m experiments.eval.flashanns.run_matrix \
     --dataset t2i10m --phase "$phase" --system pipeann --L "$level" \
@@ -105,6 +106,7 @@ for repeat_id in 0 1 2 3 4; do
     [[ ! -e "$warm_dir" ]]
     warm_evidence="$RAW/q4_cold_warm/$cold_id/warm-evidence.json"
     [[ -f "$warm_evidence" ]]
+    eval_wait_for_commit_headroom
     python3 -m experiments.eval.flashanns.run_matrix \
       --dataset t2i10m --phase q4_cold_warm --system flashanns --L 400 \
       --repeat "$repeat_id" --state warm --run-tag "$TAG" \
