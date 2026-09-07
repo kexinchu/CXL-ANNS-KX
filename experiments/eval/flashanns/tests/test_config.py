@@ -88,6 +88,31 @@ class ConfigTest(unittest.TestCase):
         with self.assertRaisesRegex(ConfigError, "demand pipe_depth.*1"):
             validate_configs(self.datasets, systems, self.matrix)
 
+    def test_original_layout_demand_is_supplemental(self):
+        system = self.systems["demand-orc"]
+        self.assertEqual(system["kind"], "internal")
+        self.assertEqual(system["layout"], "original")
+        self.assertEqual(system["threads"], 8)
+        self.assertEqual(system["pipe_depth"], 1)
+        self.assertIn("--no-vmem-prefetch", system["flags"])
+        self.assertIn("--no-extent-run", system["flags"])
+        self.assertIn("--no-steal-sched", system["flags"])
+        self.assertEqual(
+            self.matrix["q2"]["systems"], ["demand", "pipeann", "flashanns"]
+        )
+        self.assertEqual(
+            self.matrix["smoke_original"]["systems"], ["demand-orc"]
+        )
+        self.assertEqual(
+            self.matrix["q2_original"]["systems"], ["demand-orc"]
+        )
+
+    def test_rejects_original_layout_on_non_orc_system(self):
+        systems = copy.deepcopy(self.systems)
+        systems["demand"]["layout"] = "original"
+        with self.assertRaisesRegex(ConfigError, "only demand-orc"):
+            validate_configs(self.datasets, systems, self.matrix)
+
     def test_q2_excludes_oracle(self):
         self.assertEqual(
             self.matrix["q2"]["systems"],

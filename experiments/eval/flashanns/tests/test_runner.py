@@ -1,5 +1,6 @@
 import tempfile
 import inspect
+import subprocess
 import struct
 import unittest
 import uuid
@@ -17,6 +18,27 @@ ROOT = Path(__file__).resolve().parents[4]
 
 
 class RunnerTest(unittest.TestCase):
+    def test_demand_orc_campaign_is_original_only_and_resumable(self):
+        source = (ROOT / "tools" / "run_eval_demand_orc_campaign.sh").read_text()
+        self.assertIn("--layout original", source)
+        self.assertIn("PHASE=q2_original", source)
+        self.assertIn("SYSTEM=demand-orc", source)
+        self.assertIn('--system demand-orc', source)
+        self.assertIn("EXPECTED_ACCEPTED=30", source)
+        self.assertIn("trap restore_extent EXIT", source)
+        self.assertIn('index("--id-slot-map") | not', source)
+
+    def test_shell_rate_tag_matches_runner_six_significant_digits(self):
+        command = (
+            f'source "{ROOT / "tools" / "eval_host_cold_lib.sh"}"; '
+            'eval_rate_tag 1466.605'
+        )
+        completed = subprocess.run(
+            ["bash", "-c", command], check=True, text=True,
+            capture_output=True,
+        )
+        self.assertEqual(completed.stdout.strip(), "1466p61")
+
     def test_open_loop_pipeann_uses_native_pipe_search(self):
         source = (ROOT / "tools" / "pipeann_open_loop.cpp").read_text()
         self.assertIn("pipeann::SSDIndex<float>", source)
@@ -390,6 +412,37 @@ class RunnerTest(unittest.TestCase):
                     command[command.index("--host-bytes") + 1], "134217728"
                 )
 
+    def test_demand_orc_uses_original_image_without_slot_map(self):
+        runs = expand_runs(
+            ROOT,
+            "t2i10m",
+            "q2_original",
+            system_id="demand-orc",
+            level=400,
+            repeat_id=0,
+            run_tag="4ad7-orc1",
+        )
+        self.assertEqual(len(runs), 1)
+        run = runs[0]
+        self.assertEqual(run["layout"], "original")
+        self.assertEqual(run["staged_artifact"], "oracle_image")
+        self.assertNotIn("--id-slot-map", run["command"])
+        self.assertIn("--no-vmem-prefetch", run["command"])
+        self.assertIn("--no-extent-run", run["command"])
+
+    def test_existing_demand_command_remains_extent_mapped(self):
+        run = expand_runs(
+            ROOT,
+            "t2i10m",
+            "q2",
+            system_id="demand",
+            level=400,
+            repeat_id=0,
+        )[0]
+        self.assertEqual(run["layout"], "extent")
+        self.assertEqual(run["staged_artifact"], "extent_image")
+        self.assertIn("--id-slot-map", run["command"])
+
     def test_calibration_can_select_one_system_and_one_declared_level(self):
         self.assertIn(
             "level",
@@ -482,8 +535,43 @@ class RunnerTest(unittest.TestCase):
                 source = (ROOT / "tools" / name).read_text()
                 self.assertIn("FLASHANNS_CAMPAIGN_TAG", source)
                 self.assertIn("FLASHANNS_EXPECTED_BINARY_SHA256", source)
-                self.assertIn('[[ "$EXPECTED_BINARY" == "$TAG"* ]]', source)
+                self.assertIn('BINARY_TAG=${EXPECTED_BINARY:0:4}', source)
+                self.assertIn('"$TAG" == "$BINARY_TAG"-*', source)
                 self.assertNotIn("TAG=68c6", source)
+
+    def test_campaigns_route_q3_load_to_frozen_load_anchors(self):
+        for name in (
+            "run_eval_t2i_d75a_campaign.sh",
+            "run_eval_dataset_d75a_campaign.sh",
+        ):
+            with self.subTest(name=name):
+                source = (ROOT / "tools" / name).read_text()
+                self.assertGreaterEqual(
+                    source.count('[[ "$phase" == q3_load ]] && anchor_file=$LOAD_ANCHORS'),
+                    2,
+                )
+
+    def test_t2i_q3_load_campaign_is_tagged_binary_bound_and_phase_scoped(self):
+        source = (ROOT / "tools" / "run_eval_t2i_q3_load.sh").read_text()
+        self.assertIn("FLASHANNS_CAMPAIGN_TAG", source)
+        self.assertIn("FLASHANNS_EXPECTED_BINARY_SHA256", source)
+        self.assertIn("FLASHANNS_LOAD_SOURCE_TAG", source)
+        self.assertIn('RAW=$BASE/raw/t2i10m/$TAG/q3_load', source)
+        self.assertIn('ACCEPTED=$BASE/accepted/t2i10m/$TAG/q3_load', source)
+        self.assertNotIn("q3_t1", source)
+        self.assertNotIn("q3_t8", source)
+
+    def test_non_t2i_campaign_can_resume_at_q3_load(self):
+        source = (ROOT / "tools" / "run_eval_dataset_d75a_campaign.sh").read_text()
+        self.assertIn('FLASHANNS_RESUME_PHASE:-', source)
+        self.assertIn('if [[ "$RESUME_PHASE" != q3_load ]]; then', source)
+
+    def test_non_t2i_campaign_uses_canonical_laion_identity_evidence(self):
+        source = (ROOT / "tools" / "run_eval_dataset_d75a_campaign.sh").read_text()
+        self.assertIn(
+            'laion10m) IDENTITY=$BASE/preflight/laion-full-identity.json ;;',
+            source,
+        )
 
     def test_yfcc_waiter_requires_the_full_extended_t2i_campaign(self):
         source = (ROOT / "tools" / "build_yfcc_after_t2i.sh").read_text()

@@ -40,6 +40,7 @@ REMOVED_FLAGS = {
     "--oracle-dram",
 }
 Q2_SYSTEMS = ["demand", "pipeann", "flashanns"]
+ORIGINAL_SYSTEM = "demand-orc"
 
 
 def _read_json(path: Path) -> dict[str, Any]:
@@ -125,6 +126,19 @@ def validate_configs(
         raise ConfigError(f"q2 systems must be {Q2_SYSTEMS}")
     if matrix["q2"].get("sweep_L") is not True:
         raise ConfigError("q2 must sweep L")
+    for phase, nq, repeats in (
+        ("smoke_original", 100, 1),
+        ("q2_original", 10_000, 5),
+    ):
+        phase_cfg = matrix.get(phase)
+        if not isinstance(phase_cfg, dict):
+            raise ConfigError(f"missing matrix phase {phase}")
+        if phase_cfg.get("nq") != nq or phase_cfg.get("repeats") != repeats:
+            raise ConfigError(f"{phase}: require {nq} queries and {repeats} repeats")
+        if phase_cfg.get("systems") != [ORIGINAL_SYSTEM]:
+            raise ConfigError(f"{phase}: systems must be [{ORIGINAL_SYSTEM!r}]")
+    if matrix["q2_original"].get("sweep_L") is not True:
+        raise ConfigError("q2_original must sweep L")
     if matrix["q3_t8"].get("threads") != [1, 2, 4, 8, 16]:
         raise ConfigError("q3_t8 threads differ from the frozen contract")
     if matrix["q3_load"].get("arrival_rates") != "calibrated_to_saturation":
@@ -144,6 +158,23 @@ def validate_configs(
         bad_flags = sorted(set(flags) & REMOVED_FLAGS)
         if bad_flags:
             raise ConfigError(f"{system_id}: removed flag is live: {', '.join(bad_flags)}")
+        layout = system.get("layout")
+        if system.get("kind") == "internal" and layout not in ("extent", "original"):
+            raise ConfigError(f"{system_id}: internal layout must be extent or original")
+        if system.get("kind") == "external-pipeann" and layout != "external":
+            raise ConfigError(f"{system_id}: external layout must be external")
+        if layout == "original" and system_id != ORIGINAL_SYSTEM:
+            raise ConfigError("only demand-orc may use original layout")
+
+    original = systems.get(ORIGINAL_SYSTEM, {})
+    if original.get("layout") != "original":
+        raise ConfigError("demand-orc layout must be original")
+    if original.get("kind") != "internal" or original.get("threads") != 8:
+        raise ConfigError("demand-orc must be an internal T=8 system")
+    if original.get("per_thread_window") != 128 * 1024**2:
+        raise ConfigError("demand-orc window must be 134217728")
+    if original.get("pipe_depth") != 1:
+        raise ConfigError("demand-orc pipe_depth must be 1")
 
     for system_id in matrix["q2"]["systems"]:
         if systems[system_id].get("threads") != 8:

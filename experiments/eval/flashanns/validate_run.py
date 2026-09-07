@@ -32,6 +32,25 @@ def validate_record(record: dict[str, Any]) -> None:
     if record["system"] == "oracle":
         errors.append("Oracle system is excluded from the executable evaluation contract")
     external = bool(record.get("external"))
+    layout = record.get("layout")
+    staged_artifact = record.get("staged_artifact")
+    command = record.get("command", [])
+    if record["system"] == "demand-orc":
+        if layout != "original":
+            errors.append("demand-orc requires original layout")
+        if staged_artifact != "oracle_image":
+            errors.append("demand-orc requires oracle_image")
+        if "--id-slot-map" in command:
+            errors.append("demand-orc command contains a slot map")
+    elif layout == "original":
+        errors.append("original layout is reserved for demand-orc")
+    if layout == "extent":
+        if staged_artifact != "extent_image":
+            errors.append("extent layout requires extent_image")
+        if not external and "--id-slot-map" not in command:
+            errors.append("extent layout command lacks a slot map")
+    if external and layout not in (None, "external"):
+        errors.append("external system has an internal physical layout")
     expected_cache = 4294967296
     if record.get("phase") == "q4_cache":
         expected_cache = int(record.get("cache_gib", 0)) * 1024**3
@@ -66,6 +85,8 @@ def validate_record(record: dict[str, Any]) -> None:
                 errors.append("offered_QPS differs from arrival_rate")
         if not record["sidecars"].get("latency_ns_sha256"):
             errors.append("missing sidecar latency_ns_sha256")
+    if record.get("phase") == "q2_original" and record.get("system") != "demand-orc":
+        errors.append("q2_original is reserved for demand-orc")
     if errors:
         raise RunValidationError("; ".join(errors))
 

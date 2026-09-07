@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from experiments.eval.flashanns.config import load_configs
+from experiments.eval.flashanns.layout import LAYOUT_ARTIFACT, select_dataset_layout
 from experiments.eval.flashanns.preflight import atomic_json_write, snapshot_and_validate
 
 
@@ -303,6 +304,11 @@ def run_spec(
     datasets, systems, _ = load_configs(root)
     dataset = datasets[spec["dataset"]]
     external = bool(spec.get("external"))
+    if not external:
+        dataset = select_dataset_layout(dataset, str(spec.get("layout", "")))
+        expected_artifact = LAYOUT_ARTIFACT[spec["layout"]]
+        if spec.get("staged_artifact") != expected_artifact:
+            raise ValueError("run spec staged artifact differs from selected layout")
     contract_path = root / "experiments" / "eval" / "flashanns" / "live-contract.json"
     contract = json.loads(contract_path.read_text())
     if spec.get("phase") == "q4_cache":
@@ -382,7 +388,7 @@ def run_spec(
         metrics = _parse_metrics(log, spec["nq"], completed.returncode)
         sidecars = _sidecars(run_dir / "trace")
     record = {
-        **{key: spec[key] for key in ("run_id", "dataset", "metric", "phase", "system", "state", "L", "k", "nq", "repeat", "command")},
+        **{key: spec[key] for key in ("run_id", "dataset", "metric", "phase", "system", "state", "L", "k", "nq", "repeat", "command", "layout", "staged_artifact")},
         "git": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=root, text=True).strip(),
         "binary_sha256": _sha256(binary),
         "artifact_manifest_sha256": _sha256(manifest),

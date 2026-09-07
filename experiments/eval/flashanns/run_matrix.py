@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from experiments.eval.flashanns.config import REMOVED_FLAGS, load_configs
+from experiments.eval.flashanns.layout import LAYOUT_ARTIFACT, select_dataset_layout
 
 
 class RunnerError(ValueError):
@@ -44,8 +45,11 @@ def _internal_command(root: Path, dataset: dict[str, Any], system: dict[str, Any
         "--vmem-dev", "/dev/vmem0",
         "--vmem-offset", str(staging["offset"]),
         "--vmem-len", str(staging["length"]),
-        "--id-slot-map", a["slot_map"],
     ]
+    if spec["layout"] == "extent":
+        command += ["--id-slot-map", a["slot_map"]]
+    elif spec["layout"] != "original":
+        raise RunnerError(f"unsupported internal layout {spec['layout']}")
     command += [
         "--diskann-layout", "--pq-nav", "--pq-pivots", a["pq64_pivots"],
         "--pq-compressed", a["pq64_codes"], "--metric", dataset["metric"],
@@ -118,11 +122,13 @@ def expand_runs(
     out = Path(out or root / "results" / "eval" / "flashanns" / "raw" / dataset_id / phase)
     if phase == "smoke":
         phase_cfg, system_ids, levels, states = matrix["smoke"], [s for s in matrix["q2"]["systems"] if systems[s]["kind"] == "internal"], [400], ["proof"]
+    elif phase == "smoke_original":
+        phase_cfg, system_ids, levels, states = matrix[phase], matrix[phase]["systems"], [400], ["proof"]
     elif phase == "calibration":
         phase_cfg, system_ids, levels, states = matrix["calibration"], matrix["q2"]["systems"], matrix["base_L"], ["cold"]
-    elif phase in ("q2", "q3_t1", "q3_t8", "q3_load", "q4_hide", "q4_cold_warm", "q4_cache"):
+    elif phase in ("q2", "q2_original", "q3_t1", "q3_t8", "q3_load", "q4_hide", "q4_cold_warm", "q4_cache"):
         phase_cfg, system_ids, states = matrix[phase], matrix[phase]["systems"], matrix[phase].get("states", ["cold"])
-        levels = matrix["base_L"] if phase == "q2" else sorted({_anchor_l(anchors, system) for system in system_ids})
+        levels = matrix["base_L"] if phase in ("q2", "q2_original") else sorted({_anchor_l(anchors, system) for system in system_ids})
     else:
         raise RunnerError(f"unknown phase {phase}")
     if system_id is not None:
@@ -131,7 +137,7 @@ def expand_runs(
         system_ids = [system_id]
     if level is not None:
         declared_levels = list(levels)
-        if phase in ("calibration", "q2"):
+        if phase in ("calibration", "q2", "q2_original"):
             declared_levels += matrix["extended_L"]
         if level not in declared_levels:
             raise RunnerError(f"{level}: not a declared {phase} L")
@@ -181,7 +187,7 @@ def expand_runs(
                for cache_gib in cache_values:
                 for arrival_rate in arrival_values:
                  for system_id in ordered:
-                    if phase not in ("smoke", "calibration", "q2") and _anchor_l(anchors, system_id) != level:
+                    if phase not in ("smoke", "smoke_original", "calibration", "q2", "q2_original") and _anchor_l(anchors, system_id) != level:
                         continue
                     rate_suffix = ""
                     if arrival_rate is not None:
@@ -207,7 +213,19 @@ def expand_runs(
                     if state == "warm":
                         spec["cold_parent_run_id"] = f"{dataset_id}-{phase}-L{level}-r{repeat}-cold-{system_id}{suffix}{tag_suffix}"
                     spec["iters"] = level if matrix["internal_iters"] == "L" else None
-                    spec["command"] = _pipeann_command(root, dataset_id, dataset, spec) if spec["external"] else _internal_command(root, dataset, systems[system_id], spec)
+                    layout = systems[system_id]["layout"]
+                    spec["layout"] = layout
+                    spec["staged_artifact"] = LAYOUT_ARTIFACT.get(layout)
+                    selected_dataset = (
+                        dataset
+                        if spec["external"]
+                        else select_dataset_layout(dataset, layout)
+                    )
+                    spec["command"] = (
+                        _pipeann_command(root, dataset_id, dataset, spec)
+                        if spec["external"]
+                        else _internal_command(root, selected_dataset, systems[system_id], spec)
+                    )
                     bad = set(spec["command"]) & REMOVED_FLAGS
                     if bad:
                         raise RunnerError(f"removed flags in {run_id}: {sorted(bad)}")

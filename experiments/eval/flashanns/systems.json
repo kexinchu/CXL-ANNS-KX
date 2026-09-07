@@ -1,6 +1,7 @@
 {
   "demand": {
     "kind": "internal",
+    "layout": "extent",
     "threads": 8,
     "per_thread_window": 134217728,
     "pipe_depth": 1,
@@ -8,12 +9,14 @@
   },
   "pipeann": {
     "kind": "external-pipeann",
+    "layout": "external",
     "threads": 8,
     "block_devices": ["/dev/disk/by-id/nvme-Dell_Ent_NVMe_PM1733a_RI_3.84TB_S6USNE0TA08224"],
     "flags": []
   },
   "flashanns": {
     "kind": "internal",
+    "layout": "extent",
     "threads": 8,
     "per_thread_window": 134217728,
     "pipe_depth": 2,
@@ -22,28 +25,40 @@
   },
   "serial-t1": {
     "kind": "internal",
+    "layout": "extent",
     "threads": 1,
     "per_thread_window": 134217728,
     "flags": ["--no-vmem-prefetch", "--pipe-w", "1", "--no-extent-run"]
   },
   "batch-t1": {
     "kind": "internal",
+    "layout": "extent",
     "threads": 1,
     "per_thread_window": 134217728,
     "flags": ["--pipe-w", "16", "--no-extent-run"]
   },
   "extent-t1": {
     "kind": "internal",
+    "layout": "extent",
     "threads": 1,
     "per_thread_window": 134217728,
     "flags": ["--pipe-w", "16", "--extent-run"]
   },
   "wise-only": {
     "kind": "internal",
+    "layout": "extent",
     "threads": "matrix",
     "per_thread_window": 134217728,
     "pipe_depth": 2,
     "issue_qd": 0,
     "flags": ["--per-thread-window", "--pipe-depth", "2", "--issue-qd", "0", "--no-steal-sched", "--extent-run"]
+  },
+  "demand-orc": {
+    "kind": "internal",
+    "layout": "original",
+    "threads": 8,
+    "per_thread_window": 134217728,
+    "pipe_depth": 1,
+    "flags": ["--no-vmem-prefetch", "--pipe-w", "1", "--pipe-depth", "1", "--no-extent-run", "--no-steal-sched"]
   }
 }

@@ -67,6 +67,23 @@ class ValidateRunTest(unittest.TestCase):
         with self.assertRaisesRegex(RunValidationError, "Oracle system is excluded"):
             validate_record(record("oracle"))
 
+    def test_demand_orc_requires_original_layout_and_no_slot_map(self):
+        item = record("demand-orc")
+        item.update(
+            phase="q2_original",
+            layout="original",
+            staged_artifact="oracle_image",
+        )
+        validate_record(item)
+        item["command"] += ["--id-slot-map", "/tmp/map"]
+        with self.assertRaisesRegex(RunValidationError, "slot map"):
+            validate_record(item)
+
+        item["command"] = ["binary"]
+        item["layout"] = "extent"
+        with self.assertRaisesRegex(RunValidationError, "original layout"):
+            validate_record(item)
+
     def test_external_pipeann_does_not_claim_internal_candidate_trace(self):
         item = record("pipeann")
         item["external"] = True

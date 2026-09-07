@@ -2,9 +2,13 @@
 # Shared fail-closed host helpers for detached FlashANNS evaluation services.
 
 EVAL_VMEM_KO=/root/chukexin/mem2nvme/host/vmem_sw.ko
-EVAL_VMEM_SRCVERSION=76B6E44368BF753535CD293
+EVAL_VMEM_SRCVERSION=C3EFE5700757D87BABCC26C
 EVAL_VMEM_D8=/dev/disk/by-id/nvme-Dell_DC_NVMe_CD8P_E3.S_1.92TB_7EU0A01P0XK1
 EVAL_VMEM_D9=/dev/disk/by-id/nvme-Dell_DC_NVMe_CD8P_E3.S_1.92TB_2F50A1360XK3
+
+eval_rate_tag() {
+  python3 -c 'import sys; print(f"{float(sys.argv[1]):g}".replace(".", "p"))' "$1"
+}
 
 eval_commit_headroom_kib() {
   local meminfo=${1:-${EVAL_MEMINFO_PATH:-/proc/meminfo}}
@@ -37,6 +41,7 @@ eval_reset_and_restore() {
   local dataset=$2
   local evidence=$3
   local cache_gib=${4:-4}
+  local physical_layout=${5:-extent}
 
   eval_wait_for_commit_headroom
   [[ ! -e "$evidence" ]]
@@ -51,7 +56,7 @@ eval_reset_and_restore() {
     expected_ssd_sizes_bytes=1920383410176,1920383410176 \
     ram_size_gib=28 cache_size_gib="$cache_gib" stripe_size_mib=2
   python3 -m experiments.eval.flashanns.restore_volatile \
-    --dataset "$dataset" --write --out "$evidence"
+    --dataset "$dataset" --layout "$physical_layout" --write --out "$evidence"
 }
 
 eval_wait_for_accepted_count() {

@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any
 
 from experiments.eval.flashanns.config import load_configs
+from experiments.eval.flashanns.layout import select_dataset_layout
 from experiments.eval.flashanns.preflight import atomic_json_write
 
 
@@ -77,7 +78,8 @@ def _mapped_bytes(fd: int, offset: int, length: int, writable: bool) -> tuple[mm
 
 
 def restore_volatile_stripes(
-    *, source: Path, device: Path, sysfs: Path, offset: int, length: int
+    *, source: Path, device: Path, sysfs: Path, offset: int, length: int,
+    physical_layout: str = "extent", host_artifact: str = "extent_image"
 ) -> dict[str, Any]:
     if source.stat().st_size != length:
         raise ValueError(f"source size must equal staged length {length}")
@@ -128,6 +130,8 @@ def restore_volatile_stripes(
         "staging_offset": offset,
         "staging_length": length,
         "layout": layout,
+        "physical_layout": physical_layout,
+        "host_artifact": host_artifact,
         "segment_count": len(segments),
         "restored_bytes": sum(segment.length for segment in segments),
         "source_ram_sha256": source_hash.hexdigest(),
@@ -151,6 +155,7 @@ def restore_volatile_stripes(
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--dataset", required=True)
+    parser.add_argument("--layout", choices=("extent", "original"), default="extent")
     parser.add_argument("--device", type=Path, default=Path("/dev/vmem0"))
     parser.add_argument("--sysfs", type=Path, default=Path("/sys/class/vmem/vmem0"))
     parser.add_argument("--write", action="store_true")
@@ -158,7 +163,7 @@ def main() -> int:
     args = parser.parse_args()
     root = Path(__file__).resolve().parents[3]
     datasets, _, _ = load_configs(root)
-    dataset = datasets[args.dataset]
+    dataset = select_dataset_layout(datasets[args.dataset], args.layout)
     staging = dataset["staging"]
     source = Path(dataset["artifacts"][staging["host_artifact"]])
     layout = {
@@ -176,6 +181,8 @@ def main() -> int:
         sysfs=args.sysfs,
         offset=staging["offset"],
         length=staging["length"],
+        physical_layout=args.layout,
+        host_artifact=staging["host_artifact"],
     )
     result["dataset"] = args.dataset
     if args.out:

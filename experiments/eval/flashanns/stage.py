@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from experiments.eval.flashanns.config import load_configs
+from experiments.eval.flashanns.layout import select_dataset_layout
 from experiments.eval.flashanns.preflight import _open_users
 
 
@@ -96,12 +97,19 @@ def stage_image(
             os.close(target_fd)
         if source_fd >= 0:
             os.close(source_fd)
-    return {"copied_bytes": length, "staging_offset": offset, "verified_slots": min(4, int(dataset["count"]))}
+    return {
+        "copied_bytes": length,
+        "staging_offset": offset,
+        "verified_slots": min(4, int(dataset["count"])),
+        "layout": dataset.get("selected_layout", "extent"),
+        "host_artifact": staging["host_artifact"],
+    }
 
 
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--dataset", required=True)
+    parser.add_argument("--layout", choices=("extent", "original"), default="extent")
     parser.add_argument("--device", default="/dev/vmem0", type=Path)
     args = parser.parse_args()
     root = Path(__file__).resolve().parents[3]
@@ -117,7 +125,8 @@ def main() -> int:
             last_report = gib
             print(f"stage_progress bytes={done}/{total}", flush=True)
 
-    record = stage_image(datasets[args.dataset], args.device, progress=report)
+    dataset = select_dataset_layout(datasets[args.dataset], args.layout)
+    record = stage_image(dataset, args.device, progress=report)
     record.update({"dataset": args.dataset, "device": str(args.device)})
     print(json.dumps(record, sort_keys=True))
     return 0

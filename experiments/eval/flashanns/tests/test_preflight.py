@@ -7,6 +7,7 @@ from pathlib import Path
 from unittest import mock
 
 from experiments.eval.flashanns import preflight
+from experiments.eval.flashanns.layout import select_dataset_layout
 from experiments.eval.flashanns.preflight import (
     PreflightError,
     atomic_json_write,
@@ -109,6 +110,26 @@ class PreflightTest(unittest.TestCase):
                 full_layout_digest(path, 6, 7, block_bytes=3),
                 hashlib.sha256(b"payload").hexdigest(),
             )
+
+    def test_full_digest_maps_one_bounded_window_at_a_time(self):
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "image.bin"
+            page = 4096
+            payload = bytes(range(256)) * (5 * page // 256)
+            path.write_bytes(bytes(page) + payload)
+            import hashlib
+
+            real_mmap = preflight.mmap.mmap
+            with mock.patch.object(
+                preflight.mmap, "mmap", side_effect=real_mmap
+            ) as mapped:
+                digest = full_layout_digest(
+                    path, page, len(payload), block_bytes=page
+                )
+
+            self.assertEqual(digest, hashlib.sha256(payload).hexdigest())
+            self.assertEqual(mapped.call_count, 5)
+            self.assertTrue(all(call.args[1] <= page for call in mapped.call_args_list))
 
     def test_digest_uses_mmap_for_nonseekable_character_device(self):
         with tempfile.TemporaryDirectory() as td:
@@ -227,6 +248,26 @@ class PreflightTest(unittest.TestCase):
             sampled = dict(evidence, identity_scope="sampled")
             with self.assertRaisesRegex(PreflightError, "full-stage identity"):
                 snapshot_and_validate(contract, dataset, "cold", sampled, volatile)
+
+    def test_rejects_identity_evidence_from_another_layout(self):
+        dataset = select_dataset_layout(
+            {
+                "artifacts": {
+                    "extent_image": "/tmp/extent.bin",
+                    "oracle_image": "/tmp/original.bin",
+                },
+                "staging": {
+                    "offset": 0,
+                    "length": 4096,
+                    "host_artifact": "extent_image",
+                    "magic": 0x314E415843,
+                },
+            },
+            "original",
+        )
+        evidence = {"accepted": True, "layout": "extent", "host_artifact": "extent_image"}
+        with self.assertRaisesRegex(PreflightError, "layout is stale"):
+            snapshot_and_validate(self.contract, dataset, "post", evidence)
 
     def test_atomic_json_write_leaves_no_tmp(self):
         with tempfile.TemporaryDirectory() as td:
