@@ -33,13 +33,14 @@ RAW=$RAW_BASE/$PHASE
 ACCEPTED=$BASE/accepted/$DATASET/$TAG/$PHASE
 PREFLIGHT=$BASE/preflight/$TAG
 IDENTITY=$PREFLIGHT/${DATASET}-${TAG}-original-full-identity.json
+EXTENT_IDENTITY=$PREFLIGHT/${DATASET}-${TAG}-extent-full-identity.json
 INITIAL_IDENTITY=$PREFLIGHT/initial-${RESTORE_DATASET}-extent.json
 RESTORED_IDENTITY=$PREFLIGHT/restored-${RESTORE_DATASET}-extent.json
 RESTORE_ARMED=0
 
 source "$ROOT/tools/eval_host_cold_lib.sh"
 cd "$ROOT"
-mkdir -p "$RAW" "$ACCEPTED" "$PREFLIGHT" "$RAW_BASE/smoke_original"
+mkdir -p "$RAW" "$ACCEPTED" "$PREFLIGHT" "$RAW_BASE/smoke" "$RAW_BASE/smoke_original"
 
 check_binary() {
   [[ "$(sha256sum serving/search_beam | awk '{print $1}')" == "$EXPECTED_BINARY" ]]
@@ -81,6 +82,38 @@ RESTORE_ARMED=1
 
 check_binary
 python3 -m experiments.eval.flashanns.verify_dataset --dataset "$DATASET" --full
+
+# Build a same-binary, same-query extent reference before replacing the image.
+python3 -m experiments.eval.flashanns.stage \
+  --dataset "$DATASET" --layout extent --device /dev/vmem0
+python3 -m experiments.eval.flashanns.preflight \
+  --dataset "$DATASET" --layout extent --state post \
+  --full-identity --out "$EXTENT_IDENTITY"
+
+PAIR_ID="${DATASET}-smoke-L400-r0-proof-demand-${TAG}"
+PAIR_DIR="$RAW_BASE/smoke/$PAIR_ID"
+if [[ ! -f "$PAIR_DIR/run.json" ]]; then
+  PAIR_EVIDENCE="$PREFLIGHT/${PAIR_ID}-volatile.json"
+  [[ ! -e "$PAIR_DIR" && ! -e "$PAIR_EVIDENCE" ]]
+  check_binary
+  eval_reset_and_restore "$ROOT" "$DATASET" "$PAIR_EVIDENCE" 4 extent
+  python3 -m experiments.eval.flashanns.run_matrix \
+    --dataset "$DATASET" --phase smoke --system demand \
+    --L 400 --repeat 0 --run-tag "$TAG" \
+    --out "$RAW_BASE/smoke" --identity-evidence "$EXTENT_IDENTITY" \
+    --volatile-evidence "$PAIR_EVIDENCE"
+fi
+jq -e --arg binary "$EXPECTED_BINARY" '
+  .binary_sha256 == $binary and
+  .system == "demand" and
+  .layout == "extent" and
+  .staged_artifact == "extent_image" and
+  .nq == 100 and
+  .metrics.completed_queries == .nq
+' "$PAIR_DIR/run.json" >/dev/null
+echo "PAIR_SMOKE_ACCEPTED dataset=$DATASET run=$PAIR_ID"
+
+echo "STAGE_ORIGINAL_BEGIN dataset=$DATASET"
 python3 -m experiments.eval.flashanns.stage \
   --dataset "$DATASET" --layout original --device /dev/vmem0
 python3 -m experiments.eval.flashanns.preflight \
@@ -126,7 +159,7 @@ if [[ ! -f "$SMOKE_DIR/run.json" ]]; then
   run_original_raw smoke_original 400 0 "$SMOKE_ID"
 fi
 python3 -m experiments.eval.flashanns.validate_run --compare-same-search \
-  "$(reference_record 400 0)" "$SMOKE_DIR/run.json"
+  "$PAIR_DIR/run.json" "$SMOKE_DIR/run.json"
 
 for level in 50 100 200 400 800 1600; do
   for repeat_id in 0 1 2 3 4; do

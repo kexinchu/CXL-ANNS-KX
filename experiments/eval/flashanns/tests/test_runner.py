@@ -28,6 +28,13 @@ class RunnerTest(unittest.TestCase):
         self.assertIn("trap restore_extent EXIT", source)
         self.assertIn('index("--id-slot-map") | not', source)
 
+    def test_demand_orc_smoke_uses_same_binary_extent_pair_before_original(self):
+        source = (ROOT / "tools" / "run_eval_demand_orc_campaign.sh").read_text()
+        self.assertIn('PAIR_ID="${DATASET}-smoke-L400-r0-proof-demand-${TAG}"', source)
+        self.assertIn('--phase smoke --system demand', source)
+        self.assertIn('"$PAIR_DIR/run.json" "$SMOKE_DIR/run.json"', source)
+        self.assertLess(source.index("PAIR_SMOKE_ACCEPTED"), source.index("STAGE_ORIGINAL_BEGIN"))
+
     def test_shell_rate_tag_matches_runner_six_significant_digits(self):
         command = (
             f'source "{ROOT / "tools" / "eval_host_cold_lib.sh"}"; '
