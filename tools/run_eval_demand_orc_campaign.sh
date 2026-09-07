@@ -18,6 +18,7 @@ RESTORE_DATASET=${FLASHANNS_RESTORE_DATASET:?set the currently staged extent dat
 EXPECTED_BINARY=${FLASHANNS_EXPECTED_BINARY_SHA256:-$(sha256sum "$ROOT/serving/search_beam" | awk '{print $1}')}
 TAG=${FLASHANNS_CAMPAIGN_TAG:-${EXPECTED_BINARY:0:4}-orc1}
 REFERENCE_TAG=${FLASHANNS_REFERENCE_TAG:-4ad7-c3ef}
+MIN_COMMIT_KIB=${FLASHANNS_MIN_COMMIT_HEADROOM_KIB:-12582912}
 [[ "$TAG" == "${EXPECTED_BINARY:0:4}"-* ]] || {
   echo "campaign tag $TAG does not identify binary $EXPECTED_BINARY" >&2
   exit 2
@@ -75,6 +76,7 @@ restore_extent() {
 trap restore_extent EXIT
 
 # The restore target must be the exact extent image currently in the aperture.
+eval_wait_for_commit_headroom "$MIN_COMMIT_KIB"
 python3 -m experiments.eval.flashanns.preflight \
   --dataset "$RESTORE_DATASET" --layout extent --state post \
   --full-identity --out "$INITIAL_IDENTITY"
@@ -84,6 +86,7 @@ check_binary
 python3 -m experiments.eval.flashanns.verify_dataset --dataset "$DATASET" --full
 
 # Build a same-binary, same-query extent reference before replacing the image.
+eval_wait_for_commit_headroom "$MIN_COMMIT_KIB"
 python3 -m experiments.eval.flashanns.stage \
   --dataset "$DATASET" --layout extent --device /dev/vmem0
 python3 -m experiments.eval.flashanns.preflight \
@@ -96,6 +99,7 @@ if [[ ! -f "$PAIR_DIR/run.json" ]]; then
   PAIR_EVIDENCE="$PREFLIGHT/${PAIR_ID}-volatile.json"
   [[ ! -e "$PAIR_DIR" && ! -e "$PAIR_EVIDENCE" ]]
   check_binary
+  eval_wait_for_commit_headroom "$MIN_COMMIT_KIB"
   eval_reset_and_restore "$ROOT" "$DATASET" "$PAIR_EVIDENCE" 4 extent
   python3 -m experiments.eval.flashanns.run_matrix \
     --dataset "$DATASET" --phase smoke --system demand \
@@ -114,6 +118,7 @@ jq -e --arg binary "$EXPECTED_BINARY" '
 echo "PAIR_SMOKE_ACCEPTED dataset=$DATASET run=$PAIR_ID"
 
 echo "STAGE_ORIGINAL_BEGIN dataset=$DATASET"
+eval_wait_for_commit_headroom "$MIN_COMMIT_KIB"
 python3 -m experiments.eval.flashanns.stage \
   --dataset "$DATASET" --layout original --device /dev/vmem0
 python3 -m experiments.eval.flashanns.preflight \
@@ -126,6 +131,7 @@ run_original_raw() {
   local evidence="$PREFLIGHT/${run_id}-volatile.json"
   [[ ! -e "$run_dir" && ! -e "$evidence" ]]
   check_binary
+  eval_wait_for_commit_headroom "$MIN_COMMIT_KIB"
   eval_reset_and_restore "$ROOT" "$DATASET" "$evidence" 4 original
   python3 -m experiments.eval.flashanns.run_matrix \
     --dataset "$DATASET" --phase "$phase" --system demand-orc \

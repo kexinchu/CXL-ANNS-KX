@@ -35,6 +35,13 @@ class RunnerTest(unittest.TestCase):
         self.assertIn('"$PAIR_DIR/run.json" "$SMOKE_DIR/run.json"', source)
         self.assertLess(source.index("PAIR_SMOKE_ACCEPTED"), source.index("STAGE_ORIGINAL_BEGIN"))
 
+    def test_demand_orc_campaign_waits_for_measured_peak_headroom(self):
+        source = (ROOT / "tools" / "run_eval_demand_orc_campaign.sh").read_text()
+        self.assertIn("FLASHANNS_MIN_COMMIT_HEADROOM_KIB:-12582912", source)
+        self.assertGreaterEqual(
+            source.count('eval_wait_for_commit_headroom "$MIN_COMMIT_KIB"'), 3
+        )
+
     def test_shell_rate_tag_matches_runner_six_significant_digits(self):
         command = (
             f'source "{ROOT / "tools" / "eval_host_cold_lib.sh"}"; '
