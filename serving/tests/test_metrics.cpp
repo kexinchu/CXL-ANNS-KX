@@ -40,6 +40,11 @@ int main() {
   assert(prec > 29.9 && prec < 30.1);
   m.crit_wait_ns = 1234;
   m.device_fill_ns = 5000;
+  m.note_coverage_wait(700);
+  m.note_slot_backpressure_wait(300);
+  assert(m.coverage_wait_ns == 700);
+  assert(m.slot_backpressure_wait_ns == 300);
+  assert(m.host_data_stall_ns() == 1000);
   m.wall_ns = 2000;
   assert(m.overlap_ratio() > 2.4 && m.overlap_ratio() < 2.6);
 
@@ -50,6 +55,24 @@ int main() {
   a.add_from(b);
   assert(a.score_from_window == 3);
   assert(a.score_from_bounce == 4);
+
+  Metrics stall_more;
+  stall_more.note_coverage_wait(11);
+  stall_more.note_slot_backpressure_wait(13);
+  a.add_from(stall_more);
+  assert(a.coverage_wait_ns == 11);
+  assert(a.slot_backpressure_wait_ns == 13);
+  assert(a.host_data_stall_ns() == 24);
+
+  Metrics score_contract;
+  score_contract.note_score_from_window(8);
+  score_contract.note_score_from_cache(1);
+  score_contract.note_score_from_bounce(1);
+  assert(score_contract.score_triggered_flash_fills == 0);
+  assert(score_contract.score_prematerialized_pct() == 100.0);
+  score_contract.note_score_triggered_flash_fill();
+  assert(score_contract.score_triggered_flash_fills == 1);
+  assert(score_contract.score_prematerialized_pct() == 0.0);
 
   Metrics events;
   events.note_pf_issue_event(7, 10);

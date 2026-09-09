@@ -67,6 +67,41 @@ class ValidateRunTest(unittest.TestCase):
         with self.assertRaisesRegex(RunValidationError, "Oracle system is excluded"):
             validate_record(record("oracle"))
 
+    def test_q4_hide_requires_explicit_consistent_host_stall_contract(self):
+        item = record("flashanns")
+        item["phase"] = "q4_hide"
+        item["metrics"].update(
+            coverage_wait_ns=700,
+            slot_backpressure_wait_ns=300,
+            host_data_stall_ns=1000,
+            score_triggered_flash_fills=0,
+            score_prematerialized_pct=100.0,
+        )
+        validate_record(item)
+
+        for missing in (
+            "coverage_wait_ns",
+            "slot_backpressure_wait_ns",
+            "host_data_stall_ns",
+            "score_triggered_flash_fills",
+            "score_prematerialized_pct",
+        ):
+            bad = json.loads(json.dumps(item))
+            del bad["metrics"][missing]
+            with self.assertRaisesRegex(RunValidationError, missing):
+                validate_record(bad)
+
+        bad_sum = json.loads(json.dumps(item))
+        bad_sum["metrics"]["host_data_stall_ns"] = 999
+        with self.assertRaisesRegex(RunValidationError, "stall sum"):
+            validate_record(bad_sum)
+
+        bad_score = json.loads(json.dumps(item))
+        bad_score["metrics"]["score_triggered_flash_fills"] = 1
+        bad_score["metrics"]["score_prematerialized_pct"] = 90.0
+        with self.assertRaisesRegex(RunValidationError, "score contract"):
+            validate_record(bad_score)
+
     def test_demand_orc_requires_original_layout_and_no_slot_map(self):
         item = record("demand-orc")
         item.update(

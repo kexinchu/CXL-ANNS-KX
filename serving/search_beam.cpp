@@ -509,7 +509,10 @@ static std::vector<uint32_t> search_one_pq(Placement& pl, DramWindow& win, Prefe
   std::vector<uint64_t> extra_toks;
   if (last_issue_tok) extra_toks.push_back(last_issue_tok);
   uint64_t wns = hpipe.wait_covering(need, &extra_toks);
-  if (!wns) wns = hpipe.wait_all();
+  if (!wns) {
+    wns = hpipe.wait_all();
+    if (cur_met(win)) cur_met(win)->note_coverage_wait(wns);
+  }
   if (cur_met(win)) {
     cur_met(win)->device_fill_ns += wns;
     cur_met(win)->crit_wait_ns += wns;
@@ -957,7 +960,10 @@ static std::vector<uint32_t> search_one_fp(Placement& pl, DramWindow& win, Prefe
         }
         pipe.issue(need, /*ttl=*/128, /*stall_if_full=*/true);
         uint64_t wns = pipe.wait_covering(need);
-        if (!wns && !pending.empty()) wns = pipe.wait_all();
+        if (!wns && !pending.empty()) {
+          wns = pipe.wait_all();
+          if (cur_met(win)) cur_met(win)->note_coverage_wait(wns);
+        }
         if (cur_met(win)) {
           cur_met(win)->device_fill_ns += wns;
           cur_met(win)->crit_wait_ns += wns;
@@ -1648,6 +1654,7 @@ int main(int argc, char** argv) {
   uint32_t stagger_us = 0;        // frozen steal path: no start sleep
   bool steal_sched = true;        // frozen: dual-queue, never block compute on NAND
   uint32_t issue_qd = 0;          // 0 = match T (steal-sched)
+  uint32_t static_cohort = 0;     // 0 = dynamic admission; otherwise batch barrier
   bool sync_hop = false;
   bool extent_run = false;
   bool extent_run_explicit = false;
@@ -1787,6 +1794,7 @@ int main(int argc, char** argv) {
     else if (a == "--steal-sched") steal_sched = true;
     else if (a == "--no-steal-sched") steal_sched = false;
     else if (a == "--issue-qd") issue_qd = (uint32_t)atoi(need(a.c_str()));
+    else if (a == "--static-cohort") static_cohort = (uint32_t)atoi(need(a.c_str()));
     else {
       fprintf(stderr, "unknown %s\n", a.c_str());
       return 2;
@@ -1795,6 +1803,13 @@ int main(int argc, char** argv) {
   if (oneshot_fp) rerank = false;
   if (!std::isfinite(arrival_rate) || arrival_rate < 0.0) {
     fprintf(stderr, "--arrival-rate must be finite and non-negative\n");
+    return 2;
+  }
+  if (static_cohort != 0 &&
+      (!steal_sched || nthreads <= 1 || !per_thread_window || pipe_depth < 2)) {
+    fprintf(stderr,
+            "--static-cohort requires --steal-sched, --per-thread-window, "
+            "--threads >1, and --pipe-depth >=2\n");
     return 2;
   }
   DistanceMetric metric;
@@ -2130,7 +2145,8 @@ int main(int argc, char** argv) {
     printf("P3v2 softpin W=%u budget=%zu install_top=%u fetch_top=%u page_group_b=%d "
            "install_all=%d threads=%d inflight=%d per_thread_window=%d cont_batch=%d "
            "pipe_depth=%d expand_batch=%u issue_ahead=%u slot_map=%d sync_hop=%d extent_run=%d "
-           "direct_install=%d hide_score=%s stagger_us=%u steal_sched=%d issue_qd=%u\n",
+           "direct_install=%d hide_score=%s stagger_us=%u steal_sched=%d issue_qd=%u "
+           "static_cohort=%u\n",
            pref.pipe_w, budget, pref.install_top, pref.fetch_top, (int)page_group_b,
            (int)install_all_fetched, nthreads, cont_inflight, (int)per_thread_window,
            (int)cont_batch_mode, pipe_depth, pref.expand_batch, pref.issue_ahead,
@@ -2139,7 +2155,7 @@ int main(int argc, char** argv) {
            pref.hide_score == HideScore::Bounce ? "bounce"
            : pref.hide_score == HideScore::Vmem ? "vmem"
                                                  : "window",
-           stagger_us, (int)steal_sched, issue_qd);
+           stagger_us, (int)steal_sched, issue_qd, static_cohort);
   }
 
   EntryGraph eg = load_entry(entry);
@@ -2691,6 +2707,7 @@ int main(int argc, char** argv) {
     std::atomic<uint32_t> next_q{0};
     std::atomic<uint32_t> nand_inflight{0};
     std::mutex admit_mu;
+    StaticCohortGate static_gate(nq, static_cohort);
     std::vector<std::thread> ths;
     std::mutex merge_mu;
     ths.reserve((size_t)nthreads);
@@ -2777,6 +2794,7 @@ int main(int argc, char** argv) {
               q.nand_held = false;
               q.nand_tok = 0;
             }
+            if (!static_gate.complete(q.qi)) std::abort();
             q = PqQ{};
             q.st = CbSt::Empty;
           };
@@ -2806,11 +2824,24 @@ int main(int argc, char** argv) {
           if (steal_sched) {
             if (t == 0) {
               printf("steal_sched=1 depth=%d threads=%d shared_pool=1 issue_qd=%u "
-                     "admit_serial=1\n",
-                     D, nthreads, issue_qd);
+                     "admit_serial=1 static_cohort=%u\n",
+                     D, nthreads, issue_qd, static_cohort);
               fflush(stdout);
             }
+            HostStallCause active_stall = HostStallCause::None;
+            auto stall_started = std::chrono::steady_clock::now();
+            auto finish_active_stall = [&](std::chrono::steady_clock::time_point now) {
+              if (active_stall == HostStallCause::None) return false;
+              tls_metrics->note_host_stall(
+                  active_stall,
+                  (uint64_t)std::chrono::duration_cast<std::chrono::nanoseconds>(
+                      now - stall_started)
+                      .count());
+              active_stall = HostStallCause::None;
+              return true;
+            };
             for (;;) {
+              const auto loop_started = std::chrono::steady_clock::now();
               hub.pump();
               for (auto it = detached_qd_tokens.begin(); it != detached_qd_tokens.end();) {
                 if (hub.token_pending(*it)) {
@@ -2835,19 +2866,50 @@ int main(int argc, char** argv) {
                 if (stbuf[i] == CbSt::Wait || stbuf[i] == CbSt::Ready)
                   cov[i] = pqq_covering(hub.pipe, slots[(size_t)i].need);
               }
-              const bool has_more = next_q.load(std::memory_order_relaxed) < nq;
+              const uint32_t next_value = next_q.load(std::memory_order_relaxed);
+              const bool has_more = next_value < nq;
+              const bool cohort_ready = has_more && static_gate.can_admit(next_value);
+              const bool next_due = cohort_ready &&
+                  (!arrivals.enabled() || std::chrono::steady_clock::now() >=
+                                             arrivals.scheduled(arrival_epoch, next_value));
               const uint32_t inflight_now = nand_inflight.load(std::memory_order_relaxed);
               note_scheduler_inflight(tls_metrics, inflight_now);
               const bool qd_ok = issue_qd_ok(inflight_now, issue_qd);
-              auto dec = steal_decide(stbuf, cov, D, has_more, qd_ok);
+              auto dec = steal_decide(stbuf, cov, D, next_due, qd_ok);
+              const auto decision_time = std::chrono::steady_clock::now();
+              const bool continued_stall = finish_active_stall(decision_time);
               if (should_wait_for_detached_qd(dec.act, detached_qd_tokens.size())) {
                 std::this_thread::yield();
                 continue;
               }
-              if (dec.act == Pipe2Act::Done) break;
+              if (dec.act == Pipe2Act::Done) {
+                if (has_more) {
+                  if (!cohort_ready) {
+                    std::this_thread::yield();
+                    continue;
+                  }
+                  const auto due = arrivals.scheduled(arrival_epoch, next_value);
+                  const auto cap = std::chrono::steady_clock::now() +
+                                   std::chrono::microseconds(100);
+                  std::this_thread::sleep_until(due < cap ? due : cap);
+                  continue;
+                }
+                break;
+              }
               PqQ& q = slots[(size_t)dec.slot];
               if (dec.act == Pipe2Act::Pump) {
-                if (should_refill_missing(q.st, cov[(size_t)dec.slot], hub.any_inflight())) {
+                const bool fill_pending = hub.any_token_pending(q.fill_toks);
+                active_stall = classify_host_stall(dec.act, q.st, fill_pending);
+                if (!continued_stall && active_stall != HostStallCause::None) {
+                  tls_metrics->note_host_stall(
+                      active_stall,
+                      (uint64_t)std::chrono::duration_cast<std::chrono::nanoseconds>(
+                          decision_time - loop_started)
+                          .count());
+                }
+                stall_started = decision_time;
+                if (query_needs_refill(q.st, cov[(size_t)dec.slot],
+                                       hub.any_token_pending(q.fill_toks))) {
                   q.st = CbSt::Hold;
                 }
                 std::this_thread::yield();
@@ -2855,8 +2917,15 @@ int main(int argc, char** argv) {
               }
               if (dec.act == Pipe2Act::Fill) {
                 uint32_t qi = 0;
-                const bool admitted = reserve_then_prepare(
-                    next_q, nq, admit_mu, [&](uint32_t reserved_qi) {
+                const auto admitted = reserve_ready_then_prepare(
+                    next_q, nq, admit_mu,
+                    [&](uint32_t candidate_qi) {
+                      return static_gate.can_admit(candidate_qi) &&
+                             (!arrivals.enabled() ||
+                              std::chrono::steady_clock::now() >=
+                                  arrivals.scheduled(arrival_epoch, candidate_qi));
+                    },
+                    [&](uint32_t reserved_qi) {
                   qi = reserved_qi;
                   const auto request_t0 = wait_for_request(qi);
                   if (flush_window) tw->flush();
@@ -2865,13 +2934,27 @@ int main(int argc, char** argv) {
                   if (nav.loaded()) qeg.entry_id = nav.search_entry(qf, lp.metric, nav_l);
                   pqq_init(q, pl, *tw, lp, qeg, qf, qi, L, request_t0);
                 });
-                if (!admitted) continue;
+                if (admitted != ReserveResult::Prepared) continue;
                 pqq_beam(q, pl, *lp.pq, L, iters, Rlim, &hub);
                 if (!try_issue(q)) q.st = CbSt::Hold;
                 continue;
               }
               if (dec.act == Pipe2Act::Issue) {
-                if (!try_issue(q)) q.st = CbSt::Hold;
+                if (!try_issue(q)) {
+                  q.st = CbSt::Hold;
+                  bool alternate = false;
+                  for (int i = 0; i < D; ++i) {
+                    if ((has_more && stbuf[i] == CbSt::Empty) ||
+                        ((stbuf[i] == CbSt::Wait || stbuf[i] == CbSt::Ready) && cov[i])) {
+                      alternate = true;
+                      break;
+                    }
+                  }
+                  if (!alternate) {
+                    active_stall = HostStallCause::SlotBackpressure;
+                    stall_started = std::chrono::steady_clock::now();
+                  }
+                }
                 continue;
               }
               if (!pqq_covering(hub.pipe, q.need)) continue;
@@ -2900,8 +2983,21 @@ int main(int argc, char** argv) {
                 if (stbuf[i] == CbSt::Wait || stbuf[i] == CbSt::Ready)
                   cov[i] = pqq_covering(hub.pipe, slots[(size_t)i].need);
               }
-              auto dec = pipe2_decide(stbuf, cov, D, next_qi < nq);
-              if (dec.act == Pipe2Act::Done) break;
+              const bool has_more = next_qi < nq;
+              const bool next_due = has_more &&
+                  (!arrivals.enabled() || std::chrono::steady_clock::now() >=
+                                             arrivals.scheduled(arrival_epoch, next_qi));
+              auto dec = pipe2_decide(stbuf, cov, D, next_due);
+              if (dec.act == Pipe2Act::Done) {
+                if (has_more) {
+                  const auto due = arrivals.scheduled(arrival_epoch, next_qi);
+                  const auto cap = std::chrono::steady_clock::now() +
+                                   std::chrono::microseconds(100);
+                  std::this_thread::sleep_until(due < cap ? due : cap);
+                  continue;
+                }
+                break;
+              }
               PqQ& q = slots[(size_t)dec.slot];
               if (dec.act == Pipe2Act::Fill) {
                 uint32_t qi = next_qi;
@@ -2923,7 +3019,8 @@ int main(int argc, char** argv) {
                   tls_metrics->crit_wait_ns += wns;
                 }
                 const bool covering = pqq_covering(hub.pipe, q.need);
-                if (should_refill_missing(q.st, covering, hub.any_inflight())) {
+                if (query_needs_refill(q.st, covering,
+                                       hub.any_token_pending(q.fill_toks))) {
                   uint64_t tok = hub.submit_block(q.need);
                   if (tok) q.fill_toks.push_back(tok);
                 }

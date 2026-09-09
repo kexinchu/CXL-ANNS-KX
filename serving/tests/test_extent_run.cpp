@@ -62,6 +62,7 @@ int main() {
   pipe.pool = &pool;
   pipe.win = &win;
   pipe.pl = &placement;
+  pipe.m = &metrics;
 
   // Token state follows the physical copy wave.  A ready wave is complete
   // even before its owning query reaches rerank/finish.
@@ -89,6 +90,9 @@ int main() {
   pipe.wait_covering(committed);
   assert(displaced);
   assert(pipe.covers(committed));
+  assert(metrics.coverage_wait_ns > 0);
+  assert(metrics.host_data_stall_ns() == metrics.coverage_wait_ns +
+                                             metrics.slot_backpressure_wait_ns);
   pool.stop_join();
 
   std::puts("test_extent_run OK");

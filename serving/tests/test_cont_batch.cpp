@@ -118,6 +118,19 @@ int main() {
     bool cov[2] = {false, false};
     auto d = steal_decide(st, cov, 2, false, false);
     assert(d.act == Pipe2Act::Pump && d.slot == 0);
+    assert(classify_host_stall(d.act, st[d.slot], /*fill_pending=*/false) ==
+           HostStallCause::SlotBackpressure);
+  }
+  {
+    assert(classify_host_stall(Pipe2Act::Pump, CbSt::Wait,
+                               /*fill_pending=*/true) ==
+           HostStallCause::Coverage);
+    assert(classify_host_stall(Pipe2Act::Pump, CbSt::Wait,
+                               /*fill_pending=*/false) ==
+           HostStallCause::SlotBackpressure);
+    assert(classify_host_stall(Pipe2Act::Rank, CbSt::Wait,
+                               /*fill_pending=*/true) ==
+           HostStallCause::None);
   }
   {
     CbSt st[2] = {CbSt::Empty, CbSt::Empty};
@@ -151,10 +164,53 @@ int main() {
     assert(next.load() == 2);
     assert(max_active.load() == 2);
   }
+
+  // Open-loop admission must not reserve a request before its due time.  A
+  // worker with another live slot must remain available to advance that slot
+  // instead of sleeping inside preparation for a future request.
+  {
+    std::atomic<uint32_t> next{0};
+    std::mutex admission_mu;
+    bool prepared = false;
+    auto not_due = [](uint32_t) { return false; };
+    auto prepare = [&](uint32_t) { prepared = true; };
+    auto result = reserve_ready_then_prepare(next, 2, admission_mu, not_due, prepare);
+    assert(result == ReserveResult::NotReady);
+    assert(next.load() == 0);
+    assert(!prepared);
+
+    auto due = [](uint32_t) { return true; };
+    result = reserve_ready_then_prepare(next, 2, admission_mu, due, prepare);
+    assert(result == ReserveResult::Prepared);
+    assert(next.load() == 1);
+    assert(prepared);
+  }
   assert(effective_issue_qd(0, 8) == 8);
   assert(effective_issue_qd(0, 16) == 16);
   assert(effective_issue_qd(8, 16) == 8);
   assert(effective_issue_qd(0, 0) == 1);
+
+  // Static batching admits one fixed cohort at a time.  Completion may be
+  // out of order, but query 8 cannot enter until every query in [0, 8) has
+  // retired.  The final partial cohort follows the same rule.
+  {
+    StaticCohortGate gate(/*total_queries=*/18, /*cohort_size=*/8);
+    for (uint32_t qi = 0; qi < 8; ++qi) assert(gate.can_admit(qi));
+    assert(!gate.can_admit(8));
+    for (uint32_t qi : {7u, 0u, 5u, 1u, 2u, 3u, 4u}) gate.complete(qi);
+    assert(!gate.can_admit(8));
+    gate.complete(6);
+    for (uint32_t qi = 8; qi < 16; ++qi) assert(gate.can_admit(qi));
+    assert(!gate.can_admit(16));
+    for (uint32_t qi : {15u, 8u, 14u, 9u, 13u, 10u, 12u, 11u}) gate.complete(qi);
+    assert(gate.can_admit(16));
+    assert(gate.can_admit(17));
+    assert(!gate.can_admit(18));
+    gate.complete(17);
+    assert(!gate.can_admit(18));
+    gate.complete(16);
+    assert(gate.all_complete());
+  }
 
   // A per-thread hub partitions one declared global I/O-worker budget; it
   // must not replicate the complete pool for every query thread.
@@ -187,11 +243,12 @@ int main() {
   assert(!should_wait_for_detached_qd(Pipe2Act::Pump, 1));
 
   // A committed query whose pages were evicted after its I/O drained must
-  // refill instead of spinning forever in Wait/Pump.
-  assert(should_refill_missing(CbSt::Wait, false, false));
-  assert(!should_refill_missing(CbSt::Wait, false, true));
-  assert(!should_refill_missing(CbSt::Wait, true, false));
-  assert(!should_refill_missing(CbSt::Ready, false, false));
+  // refill instead of spinning forever in Wait/Pump.  Unrelated I/O from
+  // other queries must not suppress this query-local recovery.
+  assert(query_needs_refill(CbSt::Wait, false, false));
+  assert(!query_needs_refill(CbSt::Wait, false, true));
+  assert(!query_needs_refill(CbSt::Wait, true, false));
+  assert(!query_needs_refill(CbSt::Ready, false, false));
 
   Metrics scheduler_metrics;
   note_scheduler_inflight(&scheduler_metrics, 3);

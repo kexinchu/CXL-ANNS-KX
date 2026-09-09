@@ -20,6 +20,62 @@ struct Pipe2Dec {
   int slot = -1;
 };
 
+enum class ReserveResult : uint8_t { Prepared, NotReady, Exhausted };
+
+// Admission-only barrier for fixed-size static batches.  Queries within a
+// cohort may finish in any order; the next cohort becomes admissible only
+// after every query in the current cohort has retired.  cohort_size==0 is the
+// dynamic-batching identity: every in-range query is immediately admissible.
+class StaticCohortGate {
+ public:
+  StaticCohortGate(uint32_t total_queries, uint32_t cohort_size)
+      : total_(total_queries), cohort_size_(cohort_size) {
+    cohort_end_ = cohort_size_ == 0 ? total_ : bounded_end(0);
+    retired_.assign((size_t)(cohort_end_ - cohort_begin_), false);
+  }
+
+  bool can_admit(uint32_t qi) const {
+    std::lock_guard<std::mutex> g(mu_);
+    return qi < total_ && (cohort_size_ == 0 || qi < cohort_end_);
+  }
+
+  bool complete(uint32_t qi) {
+    std::lock_guard<std::mutex> g(mu_);
+    if (cohort_size_ == 0) return qi < total_;
+    if (qi < cohort_begin_ || qi >= cohort_end_) return false;
+    const size_t local = (size_t)(qi - cohort_begin_);
+    if (retired_[local]) return false;
+    retired_[local] = true;
+    ++retired_count_;
+    if (retired_count_ == retired_.size()) {
+      cohort_begin_ = cohort_end_;
+      cohort_end_ = bounded_end(cohort_begin_);
+      retired_count_ = 0;
+      retired_.assign((size_t)(cohort_end_ - cohort_begin_), false);
+    }
+    return true;
+  }
+
+  bool all_complete() const {
+    std::lock_guard<std::mutex> g(mu_);
+    return cohort_size_ != 0 && cohort_begin_ == total_;
+  }
+
+ private:
+  uint32_t bounded_end(uint32_t begin) const {
+    const uint64_t end = (uint64_t)begin + cohort_size_;
+    return end < total_ ? (uint32_t)end : total_;
+  }
+
+  const uint32_t total_;
+  const uint32_t cohort_size_;
+  mutable std::mutex mu_;
+  uint32_t cohort_begin_ = 0;
+  uint32_t cohort_end_ = 0;
+  size_t retired_count_ = 0;
+  std::vector<bool> retired_;
+};
+
 // Preserve deterministic, serialized admission while keeping query-local
 // preparation outside the reservation mutex. Preparation includes entry
 // selection and PQ lookup-table initialization and must scale with workers.
@@ -34,6 +90,27 @@ inline bool reserve_then_prepare(std::atomic<uint32_t>& next, uint32_t limit,
   if (qi >= limit) return false;
   prepare(qi);
   return true;
+}
+
+// Open-loop admission must not reserve a future request and then sleep while
+// the worker owns other live pipeline slots.  Recheck readiness while holding
+// the short reservation lock, but keep all query-local preparation outside it.
+template <class Ready, class Prepare>
+inline ReserveResult reserve_ready_then_prepare(std::atomic<uint32_t>& next,
+                                                uint32_t limit,
+                                                std::mutex& admission_mu,
+                                                Ready&& ready,
+                                                Prepare&& prepare) {
+  uint32_t qi = 0;
+  {
+    std::lock_guard<std::mutex> g(admission_mu);
+    qi = next.load(std::memory_order_relaxed);
+    if (qi >= limit) return ReserveResult::Exhausted;
+    if (!ready(qi)) return ReserveResult::NotReady;
+    next.store(qi + 1, std::memory_order_relaxed);
+  }
+  prepare(qi);
+  return ReserveResult::Prepared;
 }
 
 // Per-thread D-deep interleave. Fill an empty seat first so NAND stays issued
@@ -66,8 +143,8 @@ inline bool should_wait_for_detached_qd(Pipe2Act act, size_t detached_count) {
 // A Wait query can lose coverage after its completed pages are evicted. Once
 // its local I/O drains, it must refill the same committed pages to make
 // forward progress; this does not admit or expand a new query.
-inline bool should_refill_missing(CbSt st, bool covering, bool any_inflight) {
-  return st == CbSt::Wait && !covering && !any_inflight;
+inline bool query_needs_refill(CbSt st, bool covering, bool query_fill_pending) {
+  return st == CbSt::Wait && !covering && !query_fill_pending;
 }
 
 // cli==0 means match T so NAND waves scale with compute threads.
@@ -91,6 +168,18 @@ inline size_t per_thread_pool_workers(size_t total, int nthreads, int thread_id)
 
 inline void note_scheduler_inflight(Metrics* metrics, uint32_t inflight) {
   if (metrics) metrics->note_inflight_depth(inflight);
+}
+
+// Classify only a scheduler decision that cannot run another query.  A Wait
+// with a live fill is waiting for coverage; Hold (or a drained Wait that still
+// cannot submit) is admission backpressure.  Runnable decisions are not stall.
+inline HostStallCause classify_host_stall(Pipe2Act act, CbSt state,
+                                          bool fill_pending) {
+  if (act != Pipe2Act::Pump) return HostStallCause::None;
+  if (state == CbSt::Wait && fill_pending) return HostStallCause::Coverage;
+  if (state == CbSt::Wait || state == CbSt::Hold)
+    return HostStallCause::SlotBackpressure;
+  return HostStallCause::None;
 }
 
 // Dual-queue: never block the compute thread.
@@ -258,5 +347,13 @@ struct PrefetchHub {
   bool token_pending(uint64_t tok) {
     std::lock_guard<std::mutex> g(mu);
     return pipe.token_pending(tok);
+  }
+
+  bool any_token_pending(const std::vector<uint64_t>& toks) {
+    std::lock_guard<std::mutex> g(mu);
+    for (uint64_t tok : toks) {
+      if (pipe.token_pending(tok)) return true;
+    }
+    return false;
   }
 };

@@ -8,18 +8,27 @@ if [[ $# -ne 1 || ( "$1" != yfcc10m && "$1" != laion10m ) ]]; then
 fi
 
 DATASET=$1
+RESUME_PHASE=${FLASHANNS_RESUME_PHASE:-}
+[[ -z "$RESUME_PHASE" || "$RESUME_PHASE" == q3_load ]] || {
+  echo "unsupported resume phase: $RESUME_PHASE" >&2
+  exit 2
+}
 ROOT=/root/chukexin/CXL-ANNS-KX/.worktrees/eval-flashanns-10m
 EXPECTED_BINARY=${FLASHANNS_EXPECTED_BINARY_SHA256:-4ad796de9cbdd89f03833c8b655bda9a33c15dcbe228d0dcd9e8ca9910fd221a}
 TAG=${FLASHANNS_CAMPAIGN_TAG:-${EXPECTED_BINARY:0:4}}
-[[ "$EXPECTED_BINARY" == "$TAG"* ]] || {
-  echo "campaign tag $TAG is not a prefix of binary SHA-256 $EXPECTED_BINARY" >&2
+BINARY_TAG=${EXPECTED_BINARY:0:4}
+[[ "$EXPECTED_BINARY" == "$TAG"* || "$TAG" == "$BINARY_TAG"-* ]] || {
+  echo "campaign tag $TAG does not identify binary SHA-256 $EXPECTED_BINARY" >&2
   exit 2
 }
 BASE=$ROOT/results/eval/flashanns
 RAW=$BASE/raw/$DATASET/$TAG
 ACCEPTED=$BASE/accepted/$DATASET/$TAG
 PREFLIGHT=$BASE/preflight/$TAG
-IDENTITY=$BASE/preflight/${DATASET}-full-identity.json
+case "$DATASET" in
+  yfcc10m) IDENTITY=$BASE/preflight/yfcc10m-full-identity.json ;;
+  laion10m) IDENTITY=$BASE/preflight/laion-full-identity.json ;;
+esac
 RECALL_ANCHORS=$BASE/calibration/${DATASET}-${TAG}.json
 LOAD_ANCHORS=$BASE/calibration/${DATASET}-load-${TAG}.json
 PROOF=$BASE/readiness/${DATASET}-proof-${TAG}.json
@@ -78,11 +87,13 @@ seal_internal() {
   local phase=$1 system_name=$2 level=$3 repeat_id=$4 run_id=$5
   shift 5
   local sealed="$ACCEPTED/$phase/$run_id/run.json"
+  local anchor_file=$RECALL_ANCHORS
+  [[ "$phase" == q3_load ]] && anchor_file=$LOAD_ANCHORS
   if [[ -f "$sealed" ]] && jq -e '.validation.status == "accepted"' "$sealed" >/dev/null; then
     echo "SKIP accepted $run_id"
     return
   fi
-  run_internal_raw "$phase" "$system_name" "$level" "$repeat_id" "$run_id" "$RECALL_ANCHORS" "$@"
+  run_internal_raw "$phase" "$system_name" "$level" "$repeat_id" "$run_id" "$anchor_file" "$@"
   python3 -m experiments.eval.flashanns.validate_run "$RAW/$phase/$run_id" \
     --seal-dir "$ACCEPTED/$phase"
   echo "ACCEPTED $run_id"
@@ -92,11 +103,13 @@ seal_external() {
   local phase=$1 level=$2 repeat_id=$3 run_id=$4
   shift 4
   local sealed="$ACCEPTED/$phase/$run_id/run.json"
+  local anchor_file=$RECALL_ANCHORS
+  [[ "$phase" == q3_load ]] && anchor_file=$LOAD_ANCHORS
   if [[ -f "$sealed" ]] && jq -e '.validation.status == "accepted"' "$sealed" >/dev/null; then
     echo "SKIP accepted $run_id"
     return
   fi
-  run_external_raw "$phase" "$level" "$repeat_id" "$run_id" "$RECALL_ANCHORS" "$@"
+  run_external_raw "$phase" "$level" "$repeat_id" "$run_id" "$anchor_file" "$@"
   python3 -m experiments.eval.flashanns.validate_run "$RAW/$phase/$run_id" \
     --seal-dir "$ACCEPTED/$phase"
   echo "ACCEPTED $run_id"
@@ -108,6 +121,7 @@ jq -e --arg dataset "$DATASET" '.accepted == true and .dataset == $dataset and
 python3 -m experiments.eval.flashanns.verify_dataset --dataset "$DATASET" --full
 check_binary
 
+if [[ "$RESUME_PHASE" != q3_load ]]; then
 # Candidate/result proof under separate cold restorations.
 for system_name in demand flashanns; do
   run_id="${DATASET}-smoke-L400-r0-proof-${system_name}-${TAG}"
@@ -217,6 +231,7 @@ for repeat_id in 0 1 2 3 4; do
       --seal-dir "$ACCEPTED/q4_cold_warm"
   fi
 done
+fi
 
 # Freeze saturation from this dataset/campaign only and execute open-loop load.
 python3 -m experiments.eval.flashanns.freeze_load \
@@ -227,7 +242,7 @@ mapfile -t rates < <(jq -r '.arrival_rates[]' "$LOAD_ANCHORS")
 pipe_l=$(jq -r '.primary.pipeann.L' "$LOAD_ANCHORS")
 flash_l=$(jq -r '.primary.flashanns.L' "$LOAD_ANCHORS")
 for arrival_rate in "${rates[@]}"; do
-  rate_tag=${arrival_rate/./p}
+  rate_tag=$(eval_rate_tag "$arrival_rate")
   for repeat_id in 0 1 2 3 4; do
     pipe_id="${DATASET}-q3_load-L${pipe_l}-r${repeat_id}-cold-pipeann-T8-R${rate_tag}-${TAG}"
     seal_external q3_load "$pipe_l" "$repeat_id" "$pipe_id" --threads 8 --arrival-rate "$arrival_rate"

@@ -514,6 +514,7 @@ struct HidePipe {
   uint64_t wait_covering(const std::vector<uint64_t>& need,
                          std::vector<uint64_t>* extra_toks = nullptr) {
     if (need.empty()) return 0;
+    const uint64_t bp_before = m ? m->slot_backpressure_wait_ns : 0;
     auto t0 = std::chrono::steady_clock::now();
     for (;;) {
       pump();
@@ -533,7 +534,15 @@ struct HidePipe {
     }
     pump();
     auto t1 = std::chrono::steady_clock::now();
-    return (uint64_t)std::chrono::duration_cast<std::chrono::nanoseconds>(t1 - t0).count();
+    const uint64_t total = (uint64_t)std::chrono::duration_cast<std::chrono::nanoseconds>(
+                               t1 - t0)
+                               .count();
+    if (m) {
+      const uint64_t bp_after = m->slot_backpressure_wait_ns;
+      const uint64_t nested_bp = bp_after >= bp_before ? bp_after - bp_before : 0;
+      m->note_coverage_wait(total > nested_bp ? total - nested_bp : 0);
+    }
+    return total;
   }
 
   HideInflight& free_or_older() {
@@ -569,6 +578,7 @@ struct HidePipe {
       }
     }
     if (!dst && stall_if_full) {
+      auto stall_t0 = std::chrono::steady_clock::now();
       if (!use_window()) {
         while (!dst) {
           pump();
@@ -589,6 +599,12 @@ struct HidePipe {
           if (slot[i].ready_n >= slot[best].ready_n) best = i;
         hide_wait(slot[best], *win, *pool, after_pump ? &after_pump : nullptr, score);
         dst = &slot[best];
+      }
+      if (m) {
+        auto stall_t1 = std::chrono::steady_clock::now();
+        m->note_slot_backpressure_wait(
+            (uint64_t)std::chrono::duration_cast<std::chrono::nanoseconds>(stall_t1 - stall_t0)
+                .count());
       }
     }
     if (!dst) return 0;

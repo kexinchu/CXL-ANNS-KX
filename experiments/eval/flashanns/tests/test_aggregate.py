@@ -21,6 +21,7 @@ def make_records(phase="q2", states=("cold",), **dimensions):
                     "run_id": cold_id if state == "cold" else f"warm-{repeat}",
                     "dataset": "t2i10m", "phase": phase, "system": "flashanns", "state": state,
                     "L": 400, "repeat": repeat, "validation": {"status": "accepted"},
+                    "layout": "extent", "command": ["binary", "--id-slot-map", "map"],
                     **dimensions,
                     "artifact_manifest_sha256": "artifact",
                     "binary_sha256": "binary",
@@ -69,10 +70,31 @@ class AggregateTest(unittest.TestCase):
         with self.assertRaisesRegex(AggregationError, "accepted"):
             aggregate_records(records)
 
+    def test_external_repeats_allow_result_variation_with_fixed_queries(self):
+        records = make_records()
+        for repeat, record in enumerate(records):
+            record["external"] = True
+            record["sidecars"] = {
+                "query_ids_sha256": "same-query-order",
+                "result_ids_sha256": f"scheduler-dependent-results-{repeat}",
+            }
+        rows = aggregate_records(records)
+        self.assertEqual(len(rows), 1)
+
+        records[-1]["sidecars"]["query_ids_sha256"] = "different-query-order"
+        with self.assertRaisesRegex(AggregationError, "query_ids_sha256"):
+            aggregate_records(records)
+
     def test_rejects_binary_drift_within_five_repeats(self):
         records = make_records("q3_t1")
         records[4]["binary_sha256"] = "different-binary"
         with self.assertRaisesRegex(AggregationError, "binary_sha256"):
+            aggregate_records(records)
+
+    def test_aggregation_rejects_mixed_layout_repetitions(self):
+        records = make_records()
+        records[-1]["layout"] = "original"
+        with self.assertRaisesRegex(AggregationError, "five"):
             aggregate_records(records)
 
     def test_rejects_oracle_records(self):
@@ -108,7 +130,11 @@ class AggregateTest(unittest.TestCase):
                 "p99": 9,
                 "dist": 999_999,
                 "crit_wait_ns": 200_000_000,
+                "coverage_wait_ns": 120_000_000,
+                "slot_backpressure_wait_ns": 30_000_000,
+                "host_data_stall_ns": 150_000_000,
                 "nvme_read_B": 104_857_600,
+                "nand_read_bytes": 209_715_200,
                 "requested_pages": 200,
                 "issued_pages": 300,
                 "issue_commands": 100,
@@ -122,7 +148,10 @@ class AggregateTest(unittest.TestCase):
         self.assertEqual(row["latency_p95_ms_median"], 7)
         self.assertEqual(row["latency_p99_ms_median"], 9)
         self.assertEqual(row["critical_wait_ms_median"], 2)
-        self.assertEqual(row["nand_mib_per_query_median"], 1)
+        self.assertEqual(row["coverage_wait_ms_median"], 1.2)
+        self.assertEqual(row["slot_backpressure_wait_ms_median"], 0.3)
+        self.assertEqual(row["host_data_stall_ms_median"], 1.5)
+        self.assertEqual(row["nand_mib_per_query_median"], 2)
         self.assertEqual(row["committed_candidates_median"], 400)
         self.assertEqual(row["missing_pages_median"], 2)
         self.assertEqual(row["issued_pages_per_query_median"], 3)

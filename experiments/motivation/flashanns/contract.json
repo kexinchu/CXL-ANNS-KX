@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "cache_bytes": 4294967296,
+  "page_bytes": 4096,
+  "stripe_bytes": 2097152,
+  "repeats": [0, 1, 2, 3, 4],
+  "phases": {
+    "c1_tier": {
+      "datasets": ["t2i10m", "yfcc10m", "laion10m"],
+      "tiers": ["host", "cxl_cache", "flash"],
+      "distinct_pages": 2000
+    },
+    "c2_admission": {
+      "datasets": ["laion10m"],
+      "policies": ["selective_4k", "blind_16k"],
+      "queries": 10000
+    },
+    "c2_coverage": {
+      "datasets": ["laion10m"],
+      "policies": ["demand", "top1", "top2", "top8"],
+      "queries": 10000
+    },
+    "c3_capability": {
+      "datasets": ["device"],
+      "concurrency": [1, 2, 4, 8, 16, 32, 64, 128]
+    },
+    "c3_qd": {
+      "datasets": ["t2i10m", "yfcc10m", "laion10m"],
+      "threads": [1, 2, 4, 8, 16],
+      "representative_L": {
+        "t2i10m": 400,
+        "yfcc10m": 50,
+        "laion10m": 400
+      },
+      "min_queries": 2000,
+      "min_seconds": 30
+    },
+    "c3_batching": {
+      "datasets": ["t2i10m"],
+      "conditions": ["single", "static", "dynamic"],
+      "threads": {"single": 1, "static": 8, "dynamic": 8},
+      "static_cohort": 8,
+      "representative_L": 400,
+      "queries": 10000
+    }
+  }
+}

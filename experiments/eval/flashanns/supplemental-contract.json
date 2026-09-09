@@ -1,0 +1,52 @@
+{
+  "expected_nq": 10000,
+  "repeats": [0, 1, 2, 3, 4],
+  "load": {
+    "systems": ["wise-only", "pipeann", "flashanns"],
+    "datasets": {
+      "t2i10m": {
+        "campaign_tag": "68c6",
+        "L": {"wise-only": 400, "pipeann": 2400, "flashanns": 400},
+        "rates": [73.835, 147.67, 221.505, 295.34, 369.175],
+        "binary_sha256": {
+          "wise-only": "68c6ef2085061f3112a5d3766ef7d8cfc556c42092758400accb9cbe4c78dd06",
+          "pipeann": "09b8160ffbe7bea67ea190f1c73a1e3ac3f4d26ba0a1d1a84656359765ce6c22",
+          "flashanns": "68c6ef2085061f3112a5d3766ef7d8cfc556c42092758400accb9cbe4c78dd06"
+        }
+      },
+      "yfcc10m": {
+        "campaign_tag": "4ad7-c3ef",
+        "L": {"wise-only": 50, "pipeann": 50, "flashanns": 50},
+        "rates": [733.303, 1466.605, 2199.908, 2933.21, 3666.512],
+        "binary_sha256": {
+          "wise-only": "4ad796de9cbdd89f03833c8b655bda9a33c15dcbe228d0dcd9e8ca9910fd221a",
+          "pipeann": "09b8160ffbe7bea67ea190f1c73a1e3ac3f4d26ba0a1d1a84656359765ce6c22",
+          "flashanns": "4ad796de9cbdd89f03833c8b655bda9a33c15dcbe228d0dcd9e8ca9910fd221a"
+        }
+      },
+      "laion10m": {
+        "campaign_tag": "4ad7-c3ef",
+        "L": {"wise-only": 400, "pipeann": 400, "flashanns": 400},
+        "rates": [101.502, 203.005, 304.507, 406.01, 507.512],
+        "binary_sha256": {
+          "wise-only": "4ad796de9cbdd89f03833c8b655bda9a33c15dcbe228d0dcd9e8ca9910fd221a",
+          "pipeann": "09b8160ffbe7bea67ea190f1c73a1e3ac3f4d26ba0a1d1a84656359765ce6c22",
+          "flashanns": "4ad796de9cbdd89f03833c8b655bda9a33c15dcbe228d0dcd9e8ca9910fd221a"
+        }
+      }
+    }
+  },
+  "io": {
+    "dataset": "t2i10m",
+    "L": 400,
+    "dimension": 200,
+    "element_bytes": 4,
+    "stages": [
+      {"name": "original-layout", "label": "Original layout", "phase": "q2_original", "system": "demand-orc", "campaign_tag": "33ba-orc1", "threads": 8, "binary_sha256": "33ba0a76ff65314716ec5cd04b3d7afb079b87c49b9b4fc9c55de3a2e76d0a20"},
+      {"name": "co-use-layout", "label": "Co-use layout", "phase": "q2", "system": "demand", "campaign_tag": "4ad7-c3ef", "threads": 8, "binary_sha256": "4ad796de9cbdd89f03833c8b655bda9a33c15dcbe228d0dcd9e8ca9910fd221a"},
+      {"name": "serialized", "label": "Serialized", "phase": "q3_t1", "system": "serial-t1", "campaign_tag": "4ad7-c3ef", "threads": 1, "binary_sha256": "4ad796de9cbdd89f03833c8b655bda9a33c15dcbe228d0dcd9e8ca9910fd221a"},
+      {"name": "post-commit", "label": "Post-commit batch", "phase": "q3_t1", "system": "batch-t1", "campaign_tag": "4ad7-c3ef", "threads": 1, "binary_sha256": "4ad796de9cbdd89f03833c8b655bda9a33c15dcbe228d0dcd9e8ca9910fd221a"},
+      {"name": "extent-reads", "label": "Extent reads", "phase": "q3_t1", "system": "extent-t1", "campaign_tag": "4ad7-c3ef", "threads": 1, "binary_sha256": "4ad796de9cbdd89f03833c8b655bda9a33c15dcbe228d0dcd9e8ca9910fd221a"}
+    ]
+  }
+}

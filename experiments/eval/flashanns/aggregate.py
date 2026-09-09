@@ -40,7 +40,19 @@ def _canonical_metrics(record: dict[str, Any]) -> dict[str, float]:
     nq = float(record.get("nq") or metrics.get("nq") or 1)
     if "crit_wait_ns" in metrics:
         metrics["critical_wait_ms"] = metrics["crit_wait_ns"] / nq / 1_000_000.0
-    if "nvme_read_B" in metrics:
+    stall_aliases = {
+        "coverage_wait_ms": "coverage_wait_ns",
+        "slot_backpressure_wait_ms": "slot_backpressure_wait_ns",
+        "host_data_stall_ms": "host_data_stall_ns",
+    }
+    for canonical, raw in stall_aliases.items():
+        if raw in metrics:
+            metrics[canonical] = metrics[raw] / nq / 1_000_000.0
+    if "nand_read_bytes" in metrics:
+        metrics["nand_mib_per_query"] = metrics["nand_read_bytes"] / nq / 1_048_576.0
+    elif "nvme_read_B" in metrics:
+        # Compatibility fallback for legacy records that predate device-delta
+        # counters. New physical-NAND claims must use nand_read_bytes.
         metrics["nand_mib_per_query"] = metrics["nvme_read_B"] / nq / 1_048_576.0
     # The committed full-precision set is the frozen C_L. ``dist`` counts all
     # PQ navigation distance evaluations and is not a candidate-set size.
@@ -60,6 +72,19 @@ def _canonical_metrics(record: dict[str, Any]) -> dict[str, float]:
 
 def _dimension(record: dict[str, Any], name: str) -> Any:
     return record.get(name, record.get("metrics", {}).get(name))
+
+
+def _record_layout(record: dict[str, Any]) -> str:
+    layout = record.get("layout")
+    if layout in ("extent", "original", "external"):
+        return str(layout)
+    if record.get("external"):
+        return "external"
+    if "--id-slot-map" in record.get("command", []):
+        return "extent"
+    raise AggregationError(
+        f"run {record.get('run_id')} lacks physical layout identity"
+    )
 
 
 def bootstrap_ci(values: list[float], seed: int = 20260904, samples: int = 10000) -> tuple[float, float]:
@@ -113,7 +138,7 @@ def aggregate_records(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
     groups: dict[tuple[Any, ...], list[dict[str, Any]]] = defaultdict(list)
     for record in records:
         key = (
-            record["dataset"], record["phase"], record["system"], record["state"], record["L"],
+            record["dataset"], record["phase"], record["system"], _record_layout(record), record["state"], record["L"],
             _dimension(record, "threads"), _dimension(record, "arrival_rate"),
             _dimension(record, "cache_gib"),
         )
@@ -125,12 +150,16 @@ def aggregate_records(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
         for identity in ("artifact_manifest_sha256", "binary_sha256"):
             if len({r[identity] for r in group}) != 1:
                 raise AggregationError(f"{key}: {identity} mismatch")
-        trace_identities = ("query_ids_sha256", "result_ids_sha256") if group[0].get("external") else ("query_ids_sha256", "candidate_ids_sha256")
+        trace_identities = (
+            ("query_ids_sha256",)
+            if group[0].get("external")
+            else ("query_ids_sha256", "candidate_ids_sha256")
+        )
         for identity in trace_identities:
             if len({r["sidecars"].get(identity) for r in group}) != 1:
                 raise AggregationError(f"{key}: {identity} mismatch")
         row: dict[str, Any] = dict(zip(
-            ("dataset", "phase", "system", "state", "L", "threads", "arrival_rate", "cache_gib"),
+            ("dataset", "phase", "system", "layout", "state", "L", "threads", "arrival_rate", "cache_gib"),
             key,
         ))
         row["run_ids"] = ";".join(r["run_id"] for r in sorted(group, key=lambda x: x["repeat"]))
@@ -166,7 +195,7 @@ def main() -> int:
         writer = csv.DictWriter(dst, fieldnames=fields)
         writer.writeheader()
         writer.writerows(rows)
-    args.provenance.write_text(json.dumps({"datasets": sorted(wanted), "marks": [{"key": [r["dataset"], r["phase"], r["system"], r["state"], r["L"]], "run_ids": r["run_ids"].split(";")} for r in rows]}, indent=2, sort_keys=True) + "\n")
+    args.provenance.write_text(json.dumps({"datasets": sorted(wanted), "marks": [{"key": [r["dataset"], r["phase"], r["system"], r["layout"], r["state"], r["L"]], "run_ids": r["run_ids"].split(";")} for r in rows]}, indent=2, sort_keys=True) + "\n")
     return 0
 
 

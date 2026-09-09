@@ -69,6 +69,30 @@ def validate_record(record: dict[str, Any]) -> None:
         errors.append("score_bounce is nonzero")
     if record["system"] == "flashanns" and metrics.get("score_flash", 0) != 0:
         errors.append("score_flash is nonzero")
+    if record.get("phase") == "q4_hide" and not external:
+        stall_fields = (
+            "coverage_wait_ns",
+            "slot_backpressure_wait_ns",
+            "host_data_stall_ns",
+            "score_triggered_flash_fills",
+            "score_prematerialized_pct",
+        )
+        for field in stall_fields:
+            if not isinstance(metrics.get(field), (int, float)):
+                errors.append(f"missing numeric {field}")
+        coverage = metrics.get("coverage_wait_ns")
+        backpressure = metrics.get("slot_backpressure_wait_ns")
+        total_stall = metrics.get("host_data_stall_ns")
+        if all(isinstance(value, (int, float)) for value in (coverage, backpressure, total_stall)):
+            if coverage < 0 or backpressure < 0 or total_stall < 0:
+                errors.append("host stall counters are negative")
+            elif total_stall != coverage + backpressure:
+                errors.append("host stall sum is inconsistent")
+        fills = metrics.get("score_triggered_flash_fills")
+        prematerialized = metrics.get("score_prematerialized_pct")
+        if isinstance(fills, (int, float)) and isinstance(prematerialized, (int, float)):
+            if fills != 0 or abs(float(prematerialized) - 100.0) > 1e-6:
+                errors.append("score contract is not pre-materialized-only")
     required_sidecars = ("query_ids_sha256", "result_ids_sha256") if external else SAME_SEARCH_FIELDS
     for field in required_sidecars:
         if not record["sidecars"].get(field):

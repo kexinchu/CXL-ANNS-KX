@@ -4,6 +4,8 @@
 #include <unordered_set>
 #include <vector>
 
+enum class HostStallCause : uint8_t { None, Coverage, SlotBackpressure };
+
 struct Metrics {
   uint64_t dram_hits = 0;
   uint64_t ssd_misses = 0;
@@ -26,6 +28,9 @@ struct Metrics {
   uint64_t fetched_pages = 0;
   uint64_t crit_wait_ns = 0;
   uint64_t device_fill_ns = 0;
+  uint64_t coverage_wait_ns = 0;
+  uint64_t slot_backpressure_wait_ns = 0;
+  uint64_t score_triggered_flash_fills = 0;
   uint64_t wall_ns = 0;
   // Unique NAND pages issued by hide vs later covering a score (not hide_prec).
   std::unordered_set<uint64_t> pf_issued;
@@ -70,6 +75,18 @@ struct Metrics {
   }
   void note_score_from_bounce(uint64_t n = 1) { score_from_bounce += n; }
   void note_score_from_cache(uint64_t n = 1) { score_from_cache += n; }
+  void note_score_triggered_flash_fill(uint64_t n = 1) {
+    score_triggered_flash_fills += n;
+  }
+  void note_coverage_wait(uint64_t ns) { coverage_wait_ns += ns; }
+  void note_slot_backpressure_wait(uint64_t ns) { slot_backpressure_wait_ns += ns; }
+  void note_host_stall(HostStallCause cause, uint64_t ns) {
+    if (cause == HostStallCause::Coverage) note_coverage_wait(ns);
+    else if (cause == HostStallCause::SlotBackpressure) note_slot_backpressure_wait(ns);
+  }
+  uint64_t host_data_stall_ns() const {
+    return coverage_wait_ns + slot_backpressure_wait_ns;
+  }
   void note_fetched_pages(uint64_t n) { fetched_pages += n; }
   void note_pf_issue_event(uint64_t requested, uint64_t issued) {
     pf_requested_page_events += requested;
@@ -164,6 +181,11 @@ struct Metrics {
     uint64_t tot = score_from_window + score_from_bounce;
     return tot ? 100.0 * (double)score_from_cxl_dram / (double)tot : 0.0;
   }
+  double score_prematerialized_pct() const {
+    const uint64_t scored = score_from_window + score_from_bounce + score_from_cache;
+    if (!scored) return 0.0;
+    return score_triggered_flash_fills == 0 ? 100.0 : 0.0;
+  }
   // Hide precision: scores whose bytes were already in the window / pages fetched.
   double hide_precision_pct() const {
     return fetched_pages ? 100.0 * (double)score_from_window / (double)fetched_pages : 0.0;
@@ -192,6 +214,9 @@ struct Metrics {
     fetched_pages += o.fetched_pages;
     crit_wait_ns += o.crit_wait_ns;
     device_fill_ns += o.device_fill_ns;
+    coverage_wait_ns += o.coverage_wait_ns;
+    slot_backpressure_wait_ns += o.slot_backpressure_wait_ns;
+    score_triggered_flash_fills += o.score_triggered_flash_fills;
     wall_ns += o.wall_ns;
     pf_issued.insert(o.pf_issued.begin(), o.pf_issued.end());
     pf_used.insert(o.pf_used.begin(), o.pf_used.end());
@@ -238,12 +263,19 @@ struct Metrics {
     fprintf(f,
             "hide from_win=%llu from_cxl_dram=%llu from_bounce=%llu from_cache=%llu "
             "from_win_pct=%.2f from_cxl_dram_pct=%.2f hide_prec=%.2f "
-            "crit_wait_ns=%llu device_fill_ns=%llu overlap=%.2f\n",
+            "crit_wait_ns=%llu device_fill_ns=%llu overlap=%.2f "
+            "coverage_wait_ns=%llu slot_backpressure_wait_ns=%llu "
+            "host_data_stall_ns=%llu score_triggered_flash_fills=%llu "
+            "score_prematerialized_pct=%.2f\n",
             (unsigned long long)score_from_window, (unsigned long long)score_from_cxl_dram,
             (unsigned long long)score_from_bounce, (unsigned long long)score_from_cache,
             score_from_window_pct(), score_from_cxl_dram_pct(), hide_precision_pct(),
             (unsigned long long)crit_wait_ns, (unsigned long long)device_fill_ns,
-            overlap_ratio());
+            overlap_ratio(), (unsigned long long)coverage_wait_ns,
+            (unsigned long long)slot_backpressure_wait_ns,
+            (unsigned long long)host_data_stall_ns(),
+            (unsigned long long)score_triggered_flash_fills,
+            score_prematerialized_pct());
     const uint64_t lu = prefetch_look_used();
     fprintf(f,
             "prefetch_use issued=%zu used=%zu page_use_pct=%.2f look_issued=%zu "

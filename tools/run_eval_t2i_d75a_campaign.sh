@@ -5,8 +5,9 @@ set -euo pipefail
 ROOT=/root/chukexin/CXL-ANNS-KX/.worktrees/eval-flashanns-10m
 EXPECTED_BINARY=${FLASHANNS_EXPECTED_BINARY_SHA256:-4ad796de9cbdd89f03833c8b655bda9a33c15dcbe228d0dcd9e8ca9910fd221a}
 TAG=${FLASHANNS_CAMPAIGN_TAG:-${EXPECTED_BINARY:0:4}}
-[[ "$EXPECTED_BINARY" == "$TAG"* ]] || {
-  echo "campaign tag $TAG is not a prefix of binary SHA-256 $EXPECTED_BINARY" >&2
+BINARY_TAG=${EXPECTED_BINARY:0:4}
+[[ "$EXPECTED_BINARY" == "$TAG"* || "$TAG" == "$BINARY_TAG"-* ]] || {
+  echo "campaign tag $TAG does not identify binary SHA-256 $EXPECTED_BINARY" >&2
   exit 2
 }
 IDENTITY=$ROOT/results/eval/flashanns/preflight/t2i-full-identity.json
@@ -163,7 +164,7 @@ mapfile -t rates < <(jq -r '.arrival_rates[]' "$LOAD_ANCHORS")
 pipe_l=$(jq -r '.primary.pipeann.L' "$LOAD_ANCHORS")
 flash_l=$(jq -r '.primary.flashanns.L' "$LOAD_ANCHORS")
 for arrival_rate in "${rates[@]}"; do
-  rate_tag=${arrival_rate/./p}
+  rate_tag=$(eval_rate_tag "$arrival_rate")
   for repeat_id in 0 1 2 3 4; do
     pipe_id="t2i10m-q3_load-L${pipe_l}-r${repeat_id}-cold-pipeann-T8-R${rate_tag}-${TAG}"
     seal_external q3_load "$pipe_l" "$repeat_id" "$pipe_id" \
