@@ -134,15 +134,16 @@ in~\S\ref{sec:design}.
 
 \begin{figure}[t]
   \centering
-  \input{sections/fig_mot_bubbles}
-  \caption{Pipeline bubbles on a faulting CXL address space
-    (schematic).
-    $y$ is in-flight fills; $D$ is the depth NAND parallelism needs.
-    A single query cannot hold $D$; a blocking load/store is stuck at
-    QD$\approx 1$; a static batch drains at the barrier.
+  \includegraphics[width=0.95\columnwidth]{figs/mot-c3-io-concurrency.pdf}
+  \caption{\textbf{Per-query dependencies limit Flash I/O concurrency.}
+    Frozen PQ-64 end-batch on T2I-10M (nq=500, seed 42, iso-recall 0.920).
+    $QD_{\mathrm{eff}}(1)=0.98$, $QD_{\mathrm{eff}}(16)=3.35$,
+    measured $QD_{\mathrm{sat}}=974$ (4\,KiB randread).
+    One committed fill wave cannot hold the device; overlapping independent
+    queries raise effective queue depth (peak 3.79 at $T=8$).
     How the runtime issues across queries is~\S\ref{sec:design}.}
-  \Description{Three timelines of device queue occupancy under
-    naive single-query and static-batch issue.}
+  \Description{Scatter of effective NVMe queue depth versus concurrent queries
+    with a measured QDsat reference line.}
   \label{fig:mot-bubbles}
 \end{figure}
 

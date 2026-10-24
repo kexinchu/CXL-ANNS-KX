@@ -199,4 +199,21 @@ struct PrefetchHub {
     }
     return false;
   }
+
+  uint32_t active_pages() {
+    std::lock_guard<std::mutex> g(mu);
+    return pipe.active_pages();
+  }
+  uint32_t active_slots() {
+    std::lock_guard<std::mutex> g(mu);
+    return pipe.active_slots();
+  }
+  uint32_t last_miss_n() {
+    std::lock_guard<std::mutex> g(mu);
+    return pipe.last_miss_n;
+  }
+  uint32_t last_issue_n() {
+    std::lock_guard<std::mutex> g(mu);
+    return pipe.last_issue_n;
+  }
 };

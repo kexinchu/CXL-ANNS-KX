@@ -21,6 +21,7 @@
 #include "serving/vmem_prefetch.hpp"
 #include "serving/hide_fill.hpp"
 #include "serving/cont_batch.hpp"
+#include "serving/inflight_trace.hpp"
 #include "serving/nav_graph.hpp"
 
 #include <algorithm>
@@ -45,6 +46,23 @@
 #include <vector>
 
 static FILE* g_expand_dump = nullptr;
+struct PqQ;
+static InflightTrace g_io_trace;
+static const char* g_io_trace_path = nullptr;
+static thread_local uint32_t tls_trace_qi = 0;
+static std::atomic<uint64_t> g_io_t0_ns{0};
+static std::mutex g_io_mu;
+static PrefetchHub* g_io_hub = nullptr;
+static const std::vector<PqQ>* g_io_slots = nullptr;
+static int g_io_T = 0;
+
+static uint64_t io_now_ns() {
+  return (uint64_t)std::chrono::duration_cast<std::chrono::nanoseconds>(
+             std::chrono::steady_clock::now().time_since_epoch())
+      .count();
+}
+
+static void io_sample_now(HidePipe* pipe = nullptr);
 
 #include <immintrin.h>
 #include <fcntl.h>
@@ -470,6 +488,9 @@ static std::vector<uint32_t> search_one_pq(Placement& pl, DramWindow& win, Prefe
     pages.reserve(ids.size() * 2);
     for (uint32_t id : ids) hide_collect_vec_pages(pl, vb, pb, id, pages, &ps);
     uint64_t tok = 0;
+    if (g_io_trace_path) {
+      hpipe.on_inflight = [&hpipe]() { io_sample_now(&hpipe); };
+    }
     if (!pages.empty()) tok = hpipe.issue(pages, /*ttl=*/128, /*stall_if_full=*/true);
     last_issue_tok = tok;
     return pages;
@@ -498,6 +519,13 @@ static std::vector<uint32_t> search_one_pq(Placement& pl, DramWindow& win, Prefe
   if (cur_met(win)) {
     cur_met(win)->device_fill_ns += wns;
     cur_met(win)->crit_wait_ns += wns;
+  }
+  if (g_io_trace_path) {
+    const uint32_t extra =
+        hpipe.last_issue_n > hpipe.last_miss_n ? hpipe.last_issue_n - hpipe.last_miss_n : 0;
+    std::lock_guard<std::mutex> g(g_io_mu);
+    g_io_trace.note_query_fill(tls_trace_qi, (uint32_t)cand.size(), (uint32_t)need.size(),
+                              hpipe.last_miss_n, hpipe.last_issue_n, extra, wns);
   }
   hpipe.pump();
 
@@ -1498,9 +1526,20 @@ static void pqq_issue(PqQ& q, Placement& pl, PrefetchHub& hub, bool stall = fals
   for (const Cand& c : q.cand) hide_collect_vec_pages(pl, vb, pb, c.id, q.need, &ps);
   uint64_t tok = stall ? hub.submit_block(q.need) : hub.submit(q.need);
   if (tok) q.fill_toks.push_back(tok);
+  if (g_io_trace_path) {
+    const uint32_t extra =
+        hub.last_issue_n() > hub.last_miss_n() ? hub.last_issue_n() - hub.last_miss_n() : 0;
+    std::lock_guard<std::mutex> g(g_io_mu);
+    g_io_trace.note_query_fill(q.qi, (uint32_t)q.cand.size(), (uint32_t)q.need.size(),
+                              hub.last_miss_n(), hub.last_issue_n(), extra, 0);
+  }
   q.fp_done.assign(q.cand.size(), 0);
   q.fp_n = 0;
-  q.st = q.need.empty() ? CbSt::Ready : CbSt::Wait;
+  // Keep Busy exclusive: the shared T-wide scheduler sets Busy, then ranks
+  // unlocked. Flipping to Wait here lets a second worker pick the same slot
+  // (cache-hot covering is instant) and finish_slot nulls qf under AVX.
+  if (q.st != CbSt::Busy)
+    q.st = q.need.empty() ? CbSt::Ready : CbSt::Wait;
 }
 
 // Score any covering C_L vector (window / bounce / vmem). Still commit-before-fetch:
@@ -1537,6 +1576,27 @@ static bool pqq_rank(PqQ& q, Placement& pl, HidePipe& pipe) {
   pipe.release_pages(q.need);
   q.st = CbSt::Done;
   return true;
+}
+
+static void io_sample_now(HidePipe* pipe) {
+  if (!g_io_trace_path) return;
+  uint32_t pages = 0, slots = 0, qwait = 0;
+  if (g_io_hub) {
+    pages = g_io_hub->active_pages();
+    slots = g_io_hub->active_slots();
+  } else if (pipe) {
+    pages = pipe->active_pages();
+    slots = pipe->active_slots();
+  }
+  if (g_io_slots && g_io_T > 0) {
+    for (int i = 0; i < g_io_T; ++i) {
+      if ((*g_io_slots)[(size_t)i].st == CbSt::Wait) qwait++;
+    }
+  }
+  uint64_t t0 = g_io_t0_ns.load(std::memory_order_relaxed);
+  uint64_t t = io_now_ns();
+  std::lock_guard<std::mutex> g(g_io_mu);
+  g_io_trace.sample(t >= t0 ? t - t0 : 0, pages, slots, qwait);
 }
 
 static std::vector<uint32_t> pqq_finish(PqQ& q, uint32_t k) {
@@ -1729,6 +1789,7 @@ int main(int argc, char** argv) {
     else if (a == "--nav-l") nav_l = (uint32_t)atoi(need(a.c_str()));
     else if (a == "--graph-file") graph_file = need(a.c_str());
     else if (a == "--dump-scored") dump_scored = need(a.c_str());
+    else if (a == "--io-trace") g_io_trace_path = need(a.c_str());
     else if (a == "--cont-batch") {
       cont_inflight = atoi(need(a.c_str()));
       per_thread_window = false;
@@ -1997,16 +2058,18 @@ int main(int argc, char** argv) {
   if (graph_in_dram && pl.diskann_layout && graph_file && graph_file[0] && hdr->n &&
       hdr->R) {
     const size_t need = (size_t)hdr->n * (size_t)hdr->R * 4;
-    graph_host_buf.resize(need);
-    FILE* gf = fopen(graph_file, "rb");
-    bool okg = gf && fread(graph_host_buf.data(), 1, need, gf) == need;
-    if (gf) fclose(gf);
-    if (okg) {
-      pl.set_graph_host(graph_host_buf.data(), need);
-      printf("diskann graph-file %s bytes=%zu (host N(u), no SSD ID faults)\n", graph_file,
-             need);
+    int gfd = open(graph_file, O_RDONLY);
+    void* gp = MAP_FAILED;
+    if (gfd >= 0) {
+      gp = mmap(nullptr, need, PROT_READ, MAP_SHARED, gfd, 0);
+      close(gfd);
+    }
+    if (gp != MAP_FAILED) {
+      pl.set_graph_host(static_cast<const uint8_t*>(gp), need);
+      printf("diskann graph-file %s bytes=%zu mmap (host N(u), no SSD ID faults)\n",
+             graph_file, need);
     } else {
-      fprintf(stderr, "WARN diskann --graph-file %s read failed; N(u) still from mmap\n",
+      fprintf(stderr, "WARN diskann --graph-file %s mmap failed; N(u) still from image\n",
               graph_file);
     }
   }
@@ -2301,6 +2364,7 @@ int main(int argc, char** argv) {
       }
     }
     auto tq0 = std::chrono::steady_clock::now();
+    tls_trace_qi = qi;
     EntryGraph qeg = eg;
     if (nav.loaded()) qeg.entry_id = nav.search_entry(qf, nav_l);
     auto ids = search_one(pl, w, lp, nullptr, qeg, qf, qpq.data(), beam, k, iters, rerank,
@@ -2413,6 +2477,19 @@ int main(int argc, char** argv) {
     fflush(stdout);
   }
 
+  g_io_t0_ns.store(io_now_ns(), std::memory_order_relaxed);
+  std::atomic<bool> io_samp_stop{false};
+  std::thread io_samp_th;
+  if (g_io_trace_path) {
+    g_io_trace.fills.reserve(nq);
+    g_io_trace.samples.reserve(g_io_trace.max_samples);
+    io_samp_th = std::thread([&] {
+      while (!io_samp_stop.load(std::memory_order_relaxed)) {
+        io_sample_now();
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+      }
+    });
+  }
   const uint64_t nvme_sect0 = nvme_read_sectors();
   std::vector<int> aff_cpus;
   if (cpu_affinity) aff_cpus = list_cpu_ids();
@@ -2439,10 +2516,13 @@ int main(int argc, char** argv) {
       return 2;
     }
     std::vector<PqQ> slots((size_t)T);
+    g_io_slots = &slots;
     lat_ms.assign(nq, 0);
     std::vector<double> recs(nq, -1);
     printf("cont_batch_sched=1 pq_endbatch=1 inflight=%d workers=%d interleave=1\n", T, W);
     fflush(stdout);
+    g_io_hub = &hub;
+    g_io_T = T;
     std::mutex sched_mu;
     std::atomic<uint32_t> next_q{0};
     std::atomic<uint32_t> finished{0};
@@ -2533,7 +2613,7 @@ int main(int argc, char** argv) {
           if (q.need.empty()) {
             pqq_beam(q, pl, *pref.pq, L, iters, Rlim, &hub);
             pqq_issue(q, pl, hub);
-            if (q.st == CbSt::Ready || pqq_covering(hub.pipe, q.need)) pqq_rank(q, pl, hub.pipe);
+            if (q.need.empty() || pqq_covering(hub.pipe, q.need)) pqq_rank(q, pl, hub.pipe);
           } else {
             pqq_rank(q, pl, hub.pipe);
           }
@@ -2559,6 +2639,9 @@ int main(int argc, char** argv) {
     printf("cont_batch_hub issue_n=%llu issue_pages=%llu avg_pages=%.1f\n",
            (unsigned long long)hub.issue_n, (unsigned long long)hub.issue_pages,
            hub.issue_n ? (double)hub.issue_pages / (double)hub.issue_n : 0.0);
+    g_io_hub = nullptr;
+    g_io_slots = nullptr;
+    g_io_T = 0;
   } else if (nthreads <= 1) {
     for (uint32_t qi = 0; qi < nq; ++qi) {
       auto r = run_one_q(qi, pref, win, use_shared_pool ? &shared_pool : nullptr);
@@ -2819,6 +2902,11 @@ int main(int argc, char** argv) {
       metrics.queries++;
     }
   }
+  io_samp_stop.store(true, std::memory_order_relaxed);
+  if (io_samp_th.joinable()) io_samp_th.join();
+  g_io_hub = nullptr;
+  g_io_slots = nullptr;
+  g_io_T = 0;
   auto t1 = std::chrono::steady_clock::now();
   if (nthreads > 1) {
     for (auto& c : thr_ctx) {
@@ -2874,6 +2962,16 @@ int main(int argc, char** argv) {
     }
   }
   metrics.print();
+  if (g_io_trace_path) {
+    char csv[1024];
+    snprintf(csv, sizeof(csv), "%s.csv", g_io_trace_path);
+    if (g_io_trace.dump_csv(csv)) {
+      printf("io_trace path=%s fills=%zu peak_sw_pages=%u\n", csv, g_io_trace.fills.size(),
+             g_io_trace.peak_sw_pages());
+    } else {
+      fprintf(stderr, "io_trace dump failed %s\n", csv);
+    }
+  }
   {
     const double nvme_gbs = sec > 0 ? (double)metrics.nvme_read_bytes / 1e9 / sec : 0;
     const double peak = 1.560;  // single-disk rnd PREFETCH_BATCH; dual 256k-page peak is 1.744
