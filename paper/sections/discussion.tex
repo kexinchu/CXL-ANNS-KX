@@ -16,8 +16,10 @@ A window miss while scoring is a hide failure we close, not a reason to shrink t
 \paragraph{Block-path comparison.}
 PQ navigation plus deep \texttt{aio} avoids most full-precision reads.
 \sys{} also uses PQ navigation, but materializes a committed FP rerank set through a load/store hierarchy rather than issuing traversal records through block I/O.
-At T=8, \sys{} reaches 689.32 QPS versus a 952.07-QPS same-machine local-DRAM reference; the 72.4\% ratio is diagnostic because query counts and recall differ.
-The remaining gap includes Flash materialization and proxy copying under a cache lock; scaling beyond the fixed budget and removing that copy are engineering questions, not scheduling claims.
+We therefore compare matched-recall frontiers and resource costs rather than
+normalizing against an unmatched all-DRAM run. Remaining costs include Flash
+materialization and proxy copying under a cache lock; scaling beyond the fixed
+budget and removing that copy are engineering questions, not scheduling claims.
 
 \paragraph{What would change our mind.}
 If HPS makes the FPGA BAR a coherent miss window, we re-measure hide there and keep the same counters.

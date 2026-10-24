@@ -353,6 +353,23 @@ struct HidePipe {
   HideScore score = HideScore::Window;
   uint64_t next_tok = 1;
   std::function<void()> after_pump;
+  std::function<void()> on_inflight;
+  uint32_t last_miss_n = 0;
+  uint32_t last_issue_n = 0;
+
+  uint32_t active_slots() const {
+    uint32_t n = 0;
+    for (int s = 0; s < kSlots; ++s)
+      if (slot[s].active) n++;
+    return n;
+  }
+
+  uint32_t active_pages() const {
+    uint32_t n = 0;
+    for (int s = 0; s < kSlots; ++s)
+      if (slot[s].active) n += (uint32_t)slot[s].pages.size();
+    return n;
+  }
 
   bool use_window() const { return score == HideScore::Window; }
 
@@ -477,6 +494,7 @@ struct HidePipe {
       if (use_window() && slot[i].active && slot[i].ready_n >= slot[i].pages.size())
         slot[i].clear();
     }
+    if (on_inflight) on_inflight();
   }
 
   uint64_t wait_all() {
@@ -586,8 +604,11 @@ struct HidePipe {
     }
     if (!dst) return 0;
     if (miss.size() > 1024) miss.resize(1024);
+    last_miss_n = (uint32_t)miss.size();
     hide_issue(*dst, *win, *pl, *pool, vio, miss, ttl, m, lookahead, extent_run,
                use_window() && direct_install, score == HideScore::Vmem, use_window());
+    last_issue_n = dst->active ? (uint32_t)dst->pages.size() : 0;
+    if (on_inflight) on_inflight();
     if (!dst->active) return 0;
     dst->tok = next_tok++;
     return dst->tok;

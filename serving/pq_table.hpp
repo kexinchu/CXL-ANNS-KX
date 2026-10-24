@@ -69,18 +69,35 @@ struct PqTable {
     in.read(reinterpret_cast<char*>(&nc), 4);
     if (!in || npts == 0 || nc == 0 || nc != nchunks) return false;
     n = npts;
-    std::vector<uint8_t> raw((size_t)n * nc);
-    in.read(reinterpret_cast<char*>(raw.data()), (std::streamsize)raw.size());
+    // One buffer: read old-id order, then cycle-permute in place. A second
+    // n*nc vector OOM'd on the 32 GiB / overcommit=2 measurement host.
+    codes.resize((size_t)n * nc);
+    in.read(reinterpret_cast<char*>(codes.data()), (std::streamsize)codes.size());
     if (!in) return false;
     if (new_to_old && map_n == n) {
-      codes.resize(raw.size());
+      std::vector<uint8_t> tmp(nc);
+      std::vector<uint8_t> seen(((size_t)n + 7u) / 8u, 0);
+      auto mark = [&](uint32_t i) { seen[i >> 3] |= (uint8_t)(1u << (i & 7)); };
+      auto tes = [&](uint32_t i) {
+        return (seen[i >> 3] & (uint8_t)(1u << (i & 7))) != 0;
+      };
       for (uint32_t i = 0; i < n; ++i) {
-        const uint32_t old = new_to_old[i];
-        if (old >= n) return false;
-        std::memcpy(codes.data() + (size_t)i * nc, raw.data() + (size_t)old * nc, nc);
+        if (tes(i)) continue;
+        uint32_t cur = i;
+        std::memcpy(tmp.data(), codes.data() + (size_t)cur * nc, nc);
+        for (;;) {
+          mark(cur);
+          const uint32_t src = new_to_old[cur];
+          if (src >= n) return false;
+          if (src == i) {
+            std::memcpy(codes.data() + (size_t)cur * nc, tmp.data(), nc);
+            break;
+          }
+          std::memcpy(codes.data() + (size_t)cur * nc,
+                      codes.data() + (size_t)src * nc, nc);
+          cur = src;
+        }
       }
-    } else {
-      codes = std::move(raw);
     }
     return true;
   }
