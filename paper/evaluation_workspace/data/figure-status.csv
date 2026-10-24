@@ -1,0 +1,9 @@
+figure,file,status,aggregate_rows,accepted_runs,data_scope,remaining_gap
+T2I frontier,frontier-t2i.pdf,complete,25,125,"Four systems, including original-layout Demand; all marks have five runs",none
+YFCC frontier,frontier-yfcc.pdf,complete,25,125,"Four systems, including original-layout Demand; all marks have five runs",none
+LAION frontier,frontier-laion.pdf,complete,24,120,"Four systems, including original-layout Demand; all marks have five runs",none
+Wise Prefetcher ablation,wise-ablation.pdf,complete-physical-counters,3,15,"T2I L400 T1: serialized; post-commit batch; co-use plus extent",none
+Continuous batching ablation,batching-ablation.pdf,complete,30,150,"Wise-only versus FlashANNS at T=1/2/4/8/16 on all three datasets",none
+Hide and robustness,hide-robustness.pdf,complete,16,80,"Critical wait; throughput; cold/warm; T2I cache capacity",none
+Open-loop tail latency,load-tail-latency.pdf,complete,45,225,"Curated frozen campaigns on all three datasets; five rates and five runs per mark",none
+Prefetch I/O efficiency,prefetch-io-efficiency.pdf,complete,5,25,"Matched-concurrency layout and prefetch controls using physical NAND counters",none

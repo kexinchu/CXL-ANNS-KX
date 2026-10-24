@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Produce validated Q2--Q4 measurements and final figures for the frozen FlashANNS Wise Prefetcher plus continuous pipeline on T2I-10M, YFCC-10M, and LAION-10M with a fixed 4 GiB CXL-side page cache.
+**Goal:** Produce six validated Evaluation figures for the frozen FlashANNS Wise Prefetcher plus Continuous Batching on T2I-10M, YFCC-10M, and LAION-10M, without an Oracle experiment.
 
-**Architecture:** Preserve the frozen page/I/O/scheduler path at runtime commit `15e6632`, add only the approved MIPS/L2 distance adapter and observation hooks, and drive all systems through a manifest/preflight/runner/validator pipeline. Complete one dataset vertically at a time (T2I, YFCC, LAION), seal immutable run records, then render the three paper figures from accepted JSON only.
+**Architecture:** Preserve the frozen page/I/O/scheduler path at runtime commit `15e6632`, add only the approved MIPS/L2 distance adapter and observation hooks, and drive Demand, PipeANN, FlashANNS, and causal controls through one manifest/preflight/runner/validator pipeline. Complete the three end-to-end frontiers first, then the T2I mechanism studies and combined hide/robustness figure; render all six figures from accepted JSON only.
 
 **Tech Stack:** C++17, GNU Make, Python 3 standard library, JSON, NumPy/Matplotlib, SHA-256, `/dev/vmem0`, vmem sysfs, NVMe block counters.
 
@@ -25,6 +25,8 @@
 - Removed early-CL, lookahead, Blind, score-page, pipe-drive, admit-gap, and
   speculative-beam controls never enter a command.
 - All internal measured runs require `cache_limit=4294967296`.
+- No Oracle system or run is defined. Do not report an Oracle ratio, upper
+  bound, or distance-to-DRAM claim.
 - A runner never loads/unloads a driver, changes sysfs, stages an image, resets
   a cache, or writes a backing device.
 - Raw run directories are immutable and untracked. Commit code, schemas,
@@ -53,7 +55,7 @@
 | `experiments/eval/flashanns/run_matrix.py` | Deterministically expand a phase; never reset hardware. |
 | `experiments/eval/flashanns/validate_run.py` | Recompute sidecars, recall, metrics, and proof gates. |
 | `experiments/eval/flashanns/aggregate.py` | Build five-repeat estimates and bootstrap intervals. |
-| `experiments/eval/flashanns/plot_q2_q4.py` | Render provisional and final Q2--Q4 figures. |
+| `experiments/eval/flashanns/plot_six_figures.py` | Render the three frontiers, two mechanism figures, and hide/robustness figure. |
 | `experiments/eval/flashanns/schema/run.schema.json` | Required run identity and evidence fields. |
 | `experiments/eval/flashanns/tests/` | Offline unit and negative tests. |
 | `results/eval/flashanns/` | Generated manifests, readiness, validated CSV, provenance, and plots. |
@@ -333,7 +335,7 @@ Use these exact T2I artifact keys and paths:
   "source_queries": "/mnt/disk0/chukexin_motivation/data/text2image_10m/query.public.100K.fbin",
   "source_gt": "/mnt/disk0/chukexin_motivation/data/text2image_10m/text2image-10M",
   "execution_base": "/mnt/disk0/chukexin_motivation/data/text2image_10m/base.10M.fbin",
-  "oracle_image": "/mnt/disk0/chukexin_motivation/serving_t2i_10m/diskann_t2i_10m.bin",
+  "base_image": "/mnt/disk0/chukexin_motivation/serving_t2i_10m/diskann_t2i_10m.bin",
   "extent_image": "/mnt/disk0/chukexin_motivation/serving_t2i_10m/diskann_t2i_10m_extent.bin",
   "graph": "/mnt/disk0/chukexin_motivation/serving_t2i_10m/diskann_t2i_10m.graph.bin",
   "nav_graph": "/root/chukexin/CXL-ANNS-KX/results/paper_figs/nav_10k.bin",
@@ -360,12 +362,11 @@ Create these IDs:
 ~~~json
 {
   "demand": {"threads": 8, "flags": ["--no-vmem-prefetch", "--pipe-w", "1", "--no-extent-run", "--no-steal-sched"]},
-  "oracle": {"threads": 8, "flags": ["--oracle-dram"]},
   "flashanns": {"threads": 8, "flags": ["--per-thread-window", "--pipe-depth", "2", "--issue-qd", "0", "--steal-sched", "--extent-run"]},
   "serial-t1": {"threads": 1, "flags": ["--no-vmem-prefetch", "--pipe-w", "1", "--no-extent-run"]},
   "batch-t1": {"threads": 1, "flags": ["--pipe-w", "16", "--no-extent-run"]},
   "extent-t1": {"threads": 1, "flags": ["--pipe-w", "16", "--extent-run"]},
-  "nosteal-t8": {"threads": 8, "flags": ["--per-thread-window", "--pipe-depth", "2", "--issue-qd", "0", "--no-steal-sched", "--extent-run"]}
+  "wise-only": {"threads": "matrix", "flags": ["--per-thread-window", "--pipe-depth", "2", "--issue-qd", "0", "--no-steal-sched", "--extent-run"]}
 }
 ~~~
 
@@ -384,10 +385,13 @@ asynchronous batch I/O, relabel it and do not use it as Demand.
   "extended_L": [2400, 3200],
   "smoke": {"nq": 100, "repeats": 1},
   "calibration": {"nq": 500, "repeats": 1},
-  "q2": {"nq": 10000, "repeats": 5, "systems": ["demand", "pipeann", "oracle", "flashanns"]},
+  "q2": {"nq": 10000, "repeats": 5, "systems": ["demand", "pipeann", "flashanns"], "sweep_L": true},
   "q3_t1": {"nq": 10000, "repeats": 5, "systems": ["serial-t1", "batch-t1", "extent-t1"]},
-  "q3_t8": {"nq": 10000, "repeats": 5, "systems": ["nosteal-t8", "flashanns"]},
-  "q4": {"nq": 10000, "repeats": 5, "systems": ["flashanns"], "states": ["cold", "warm"]}
+  "q3_t8": {"nq": 10000, "repeats": 5, "systems": ["wise-only", "flashanns"], "threads": [1, 2, 4, 8, 16]},
+  "q3_load": {"nq": 10000, "repeats": 5, "systems": ["wise-only", "pipeann", "flashanns"], "arrival_rates": "calibrated_to_saturation"},
+  "q4_hide": {"nq": 10000, "repeats": 5, "systems": ["demand", "flashanns"]},
+  "q4_cold_warm": {"nq": 10000, "repeats": 5, "systems": ["flashanns"], "states": ["cold", "warm"]},
+  "q4_cache": {"dataset": "t2i10m", "nq": 10000, "repeats": 5, "systems": ["flashanns"], "cache_gib": [1, 2, 4, 8]}
 }
 ~~~
 
@@ -812,8 +816,9 @@ deltas, and all schema fields. For same-search blocks, require identical metric,
 artifact manifest, query IDs, `L`, candidate offsets, candidate IDs, returned
 IDs, and recall.
 
-Reject Oracle NAND bytes, FlashANNS bounce scores, score-triggered Flash,
-incomplete queries, or a non-4-GiB preflight.
+Reject FlashANNS bounce scores, score-triggered Flash, incomplete queries, or a
+non-4-GiB main-result preflight. Cache-sensitivity runs are valid only in the
+separate predeclared 1/2/4/8-GiB phase.
 
 - [ ] **Step 6: Run tests and dry-run**
 
@@ -834,11 +839,11 @@ git commit -m "test: add integrated evaluation runner"
 
 ---
 
-### Task 8: Implement Aggregation and Q2--Q4 Plot Tests
+### Task 8: Implement Aggregation and Six-Figure Plot Tests
 
 **Files:**
 - Create: `experiments/eval/flashanns/aggregate.py`
-- Create: `experiments/eval/flashanns/plot_q2_q4.py`
+- Create: `experiments/eval/flashanns/plot_six_figures.py`
 - Create: `experiments/eval/flashanns/tests/test_aggregate.py`
 - Create: `experiments/eval/flashanns/tests/test_plots.py`
 
@@ -846,8 +851,8 @@ git commit -m "test: add integrated evaluation runner"
 
 Build synthetic accepted records for three datasets and assert:
 
-- exactly five repetitions per Q2/Q3 point;
-- exactly five cold/warm pairs per Q4 point;
+- exactly five repetitions per frontier, mechanism, hide, load, and cache point;
+- exactly five cold/warm pairs per dataset;
 - median and seed-20260904 bootstrap intervals are deterministic;
 - a four-repeat block, candidate-hash mismatch, rejected run, or missing
   cold-parent link fails;
@@ -871,19 +876,28 @@ def bootstrap_ci(values, seed=20260904, samples=10000):
 
 Emit run IDs beside every row and a provenance entry for every plotted mark.
 
-- [ ] **Step 3: Implement the fixed figure contracts**
+- [ ] **Step 3: Implement the fixed six-figure contracts**
 
 Generate:
 
 ~~~text
-results/eval/flashanns/figures/q2-main.pdf
-results/eval/flashanns/figures/q3-ablation.pdf
-results/eval/flashanns/figures/q4-cold-warm.pdf
+results/eval/flashanns/figures/frontier-t2i.pdf
+results/eval/flashanns/figures/frontier-yfcc.pdf
+results/eval/flashanns/figures/frontier-laion.pdf
+results/eval/flashanns/figures/wise-ablation.pdf
+results/eval/flashanns/figures/batching-ablation.pdf
+results/eval/flashanns/figures/hide-robustness.pdf
 ~~~
 
-Q2 is 2x2: QPS, mean/p99, critical wait, score source. Q3 has T=1 transfer and
-T=8 scheduler panels. Q4 has paired cold/warm marks for three datasets. Use no
-dual y-axis, keep system colors stable, and show 95% intervals.
+Each frontier has recall--mean-latency and recall--throughput panels for Demand,
+PipeANN, and FlashANNS. Wise ablation uses the supported T=1 serialized,
+post-commit batch, and extent variants: ``when'' is serialized versus
+post-commit issue, ``what'' is the committed/unique/missing counter funnel, and
+``how'' is batch-only versus co-use-plus-extent. Batching
+ablation has concurrency--QPS, concurrency--occupancy, and open-loop
+throughput--P99 panels. Hide/robustness is 2x2: latency breakdown, exact-score
+source, paired cold/warm, and cache capacity. Use no dual y-axis, keep system
+colors stable, and show 95% intervals.
 
 - [ ] **Step 4: Run tests**
 
@@ -896,8 +910,8 @@ Expected: deterministic CSV/provenance and one-page vector PDFs.
 - [ ] **Step 5: Commit**
 
 ~~~bash
-git add experiments/eval/flashanns/aggregate.py experiments/eval/flashanns/plot_q2_q4.py experiments/eval/flashanns/tests/test_aggregate.py experiments/eval/flashanns/tests/test_plots.py
-git commit -m "test: add Q2 Q3 Q4 evidence pipeline"
+git add experiments/eval/flashanns/aggregate.py experiments/eval/flashanns/plot_six_figures.py experiments/eval/flashanns/tests/test_aggregate.py experiments/eval/flashanns/tests/test_plots.py
+git commit -m "test: add six-figure evidence pipeline"
 ~~~
 
 ---
@@ -952,23 +966,28 @@ python3 -m experiments.eval.flashanns.run_matrix --dataset t2i10m --phase calibr
 python3 -m experiments.eval.flashanns.validate_run --freeze-anchor 0.90 --extra-anchor 0.92 results/eval/flashanns/raw/t2i10m/calibration --out results/eval/flashanns/calibration/t2i10m.json
 ~~~
 
-- [ ] **Step 5: Run Q2, Q3, and Q4 in order**
+- [ ] **Step 5: Run the T2I frontier, mechanism, load, hide, cold/warm, and cache phases in order**
 
 ~~~bash
 python3 -m experiments.eval.flashanns.run_matrix --dataset t2i10m --phase q2 --anchors results/eval/flashanns/calibration/t2i10m.json
 python3 -m experiments.eval.flashanns.run_matrix --dataset t2i10m --phase q3_t1 --anchors results/eval/flashanns/calibration/t2i10m.json
 python3 -m experiments.eval.flashanns.run_matrix --dataset t2i10m --phase q3_t8 --anchors results/eval/flashanns/calibration/t2i10m.json
-python3 -m experiments.eval.flashanns.run_matrix --dataset t2i10m --phase q4 --paired-cold-warm --anchors results/eval/flashanns/calibration/t2i10m.json
+python3 -m experiments.eval.flashanns.run_matrix --dataset t2i10m --phase q3_load --anchors results/eval/flashanns/calibration/t2i10m.json
+python3 -m experiments.eval.flashanns.run_matrix --dataset t2i10m --phase q4_hide --anchors results/eval/flashanns/calibration/t2i10m.json
+python3 -m experiments.eval.flashanns.run_matrix --dataset t2i10m --phase q4_cold_warm --paired-cold-warm --anchors results/eval/flashanns/calibration/t2i10m.json
+python3 -m experiments.eval.flashanns.run_matrix --dataset t2i10m --phase q4_cache --anchors results/eval/flashanns/calibration/t2i10m.json --require-cache-change-evidence
 ~~~
 
-Each cold invocation consumes its own approved reset snapshot.
+Each cold invocation consumes its own approved reset snapshot. Each non-default
+cache point requires a separately approved cache-limit change and reset; the
+runner performs neither operation.
 
 - [ ] **Step 6: Seal and render provisional figures**
 
 ~~~bash
 python3 -m experiments.eval.flashanns.validate_run --dataset-milestone t2i10m --out results/eval/flashanns/readiness/t2i-final.json
 python3 -m experiments.eval.flashanns.aggregate --datasets t2i10m --out results/eval/flashanns/provisional/t2i/validated.csv --provenance results/eval/flashanns/provisional/t2i/provenance.json
-MPLCONFIGDIR=/tmp/flashanns-mpl python3 -m experiments.eval.flashanns.plot_q2_q4 --csv results/eval/flashanns/provisional/t2i/validated.csv --out-dir results/eval/flashanns/provisional/t2i
+MPLCONFIGDIR=/tmp/flashanns-mpl python3 -m experiments.eval.flashanns.plot_six_figures --csv results/eval/flashanns/provisional/t2i/validated.csv --out-dir results/eval/flashanns/provisional/t2i --datasets t2i10m
 ~~~
 
 - [ ] **Step 7: Commit only sealed evidence**
@@ -1064,7 +1083,9 @@ python3 -m experiments.eval.flashanns.validate_run --compare-same-search results
 ~~~
 
 Require `metric=l2` in every command and record, identical same-search
-candidate/result sidecars, and no FlashANNS score reads from CXL.
+candidate/result sidecars, and resident-only FlashANNS scoring: host-window and
+CXL-side-cache hits are valid, while bounce reads and score-triggered Flash
+fills are not.
 
 - [ ] **Step 3: Calibrate and freeze the 0.90 recall anchor**
 
@@ -1075,24 +1096,22 @@ python3 -m experiments.eval.flashanns.run_matrix --dataset yfcc10m --phase calib
 python3 -m experiments.eval.flashanns.validate_run --freeze-anchor 0.90 results/eval/flashanns/raw/yfcc10m/calibration --out results/eval/flashanns/calibration/yfcc10m.json
 ~~~
 
-- [ ] **Step 4: Run Q2, Q3, and Q4 in order**
+- [ ] **Step 4: Run the YFCC frontier and paired cold/warm phases**
 
 ~~~bash
 python3 -m experiments.eval.flashanns.run_matrix --dataset yfcc10m --phase q2 --anchors results/eval/flashanns/calibration/yfcc10m.json
-python3 -m experiments.eval.flashanns.run_matrix --dataset yfcc10m --phase q3_t1 --anchors results/eval/flashanns/calibration/yfcc10m.json
-python3 -m experiments.eval.flashanns.run_matrix --dataset yfcc10m --phase q3_t8 --anchors results/eval/flashanns/calibration/yfcc10m.json
-python3 -m experiments.eval.flashanns.run_matrix --dataset yfcc10m --phase q4 --paired-cold-warm --anchors results/eval/flashanns/calibration/yfcc10m.json
+python3 -m experiments.eval.flashanns.run_matrix --dataset yfcc10m --phase q4_cold_warm --paired-cold-warm --anchors results/eval/flashanns/calibration/yfcc10m.json
 ~~~
 
 Each cold invocation consumes a distinct approved reset snapshot. Require five
-accepted repetitions for every Q2/Q3 point and five accepted cold/warm pairs.
+accepted repetitions for every YFCC frontier point and five accepted cold/warm pairs.
 
 - [ ] **Step 5: Seal and render provisional figures**
 
 ~~~bash
 python3 -m experiments.eval.flashanns.validate_run --dataset-milestone yfcc10m --out results/eval/flashanns/readiness/yfcc-final.json
 python3 -m experiments.eval.flashanns.aggregate --datasets yfcc10m --out results/eval/flashanns/provisional/yfcc/validated.csv --provenance results/eval/flashanns/provisional/yfcc/provenance.json
-MPLCONFIGDIR=/tmp/flashanns-mpl python3 -m experiments.eval.flashanns.plot_q2_q4 --csv results/eval/flashanns/provisional/yfcc/validated.csv --out-dir results/eval/flashanns/provisional/yfcc
+MPLCONFIGDIR=/tmp/flashanns-mpl python3 -m experiments.eval.flashanns.plot_six_figures --csv results/eval/flashanns/provisional/yfcc/validated.csv --out-dir results/eval/flashanns/provisional/yfcc --datasets yfcc10m
 ~~~
 
 - [ ] **Step 6: Commit only sealed evidence**
@@ -1178,7 +1197,9 @@ python3 -m experiments.eval.flashanns.validate_run --compare-same-search results
 ~~~
 
 Require `metric=mips` in every command and record, identical same-search
-candidate/result sidecars, and no FlashANNS score reads from CXL.
+candidate/result sidecars, and resident-only FlashANNS scoring: host-window and
+CXL-side-cache hits are valid, while bounce reads and score-triggered Flash
+fills are not.
 
 - [ ] **Step 3: Calibrate and freeze the 0.90 recall anchor**
 
@@ -1189,24 +1210,22 @@ python3 -m experiments.eval.flashanns.run_matrix --dataset laion10m --phase cali
 python3 -m experiments.eval.flashanns.validate_run --freeze-anchor 0.90 results/eval/flashanns/raw/laion10m/calibration --out results/eval/flashanns/calibration/laion10m.json
 ~~~
 
-- [ ] **Step 4: Run Q2, Q3, and Q4 in order**
+- [ ] **Step 4: Run the LAION frontier and paired cold/warm phases**
 
 ~~~bash
 python3 -m experiments.eval.flashanns.run_matrix --dataset laion10m --phase q2 --anchors results/eval/flashanns/calibration/laion10m.json
-python3 -m experiments.eval.flashanns.run_matrix --dataset laion10m --phase q3_t1 --anchors results/eval/flashanns/calibration/laion10m.json
-python3 -m experiments.eval.flashanns.run_matrix --dataset laion10m --phase q3_t8 --anchors results/eval/flashanns/calibration/laion10m.json
-python3 -m experiments.eval.flashanns.run_matrix --dataset laion10m --phase q4 --paired-cold-warm --anchors results/eval/flashanns/calibration/laion10m.json
+python3 -m experiments.eval.flashanns.run_matrix --dataset laion10m --phase q4_cold_warm --paired-cold-warm --anchors results/eval/flashanns/calibration/laion10m.json
 ~~~
 
 Each cold invocation consumes a distinct approved reset snapshot. Require five
-accepted repetitions for every Q2/Q3 point and five accepted cold/warm pairs.
+accepted repetitions for every LAION frontier point and five accepted cold/warm pairs.
 
 - [ ] **Step 5: Seal and render provisional figures**
 
 ~~~bash
 python3 -m experiments.eval.flashanns.validate_run --dataset-milestone laion10m --out results/eval/flashanns/readiness/laion-final.json
 python3 -m experiments.eval.flashanns.aggregate --datasets laion10m --out results/eval/flashanns/provisional/laion/validated.csv --provenance results/eval/flashanns/provisional/laion/provenance.json
-MPLCONFIGDIR=/tmp/flashanns-mpl python3 -m experiments.eval.flashanns.plot_q2_q4 --csv results/eval/flashanns/provisional/laion/validated.csv --out-dir results/eval/flashanns/provisional/laion
+MPLCONFIGDIR=/tmp/flashanns-mpl python3 -m experiments.eval.flashanns.plot_six_figures --csv results/eval/flashanns/provisional/laion/validated.csv --out-dir results/eval/flashanns/provisional/laion --datasets laion10m
 ~~~
 
 - [ ] **Step 6: Commit only sealed evidence**
@@ -1218,14 +1237,17 @@ git commit -m "eval: complete LAION integrated evidence"
 
 ---
 
-### Task 14: Aggregate and Freeze the Three Figures
+### Task 14: Aggregate and Freeze the Six Figures
 
 **Files:**
 - Produce: `results/eval/flashanns/validated.csv`
 - Produce: `results/eval/flashanns/figure-provenance.json`
-- Produce: `results/eval/flashanns/figures/q2-main.pdf`
-- Produce: `results/eval/flashanns/figures/q3-ablation.pdf`
-- Produce: `results/eval/flashanns/figures/q4-cold-warm.pdf`
+- Produce: `results/eval/flashanns/figures/frontier-t2i.pdf`
+- Produce: `results/eval/flashanns/figures/frontier-yfcc.pdf`
+- Produce: `results/eval/flashanns/figures/frontier-laion.pdf`
+- Produce: `results/eval/flashanns/figures/wise-ablation.pdf`
+- Produce: `results/eval/flashanns/figures/batching-ablation.pdf`
+- Produce: `results/eval/flashanns/figures/hide-robustness.pdf`
 
 - [ ] **Step 1: Revalidate every run**
 
@@ -1242,13 +1264,13 @@ python3 -m experiments.eval.flashanns.aggregate --datasets t2i10m,yfcc10m,laion1
 - [ ] **Step 3: Render and inspect**
 
 ~~~bash
-MPLCONFIGDIR=/tmp/flashanns-mpl python3 -m experiments.eval.flashanns.plot_q2_q4 --csv results/eval/flashanns/validated.csv --out-dir results/eval/flashanns/figures
-pdfinfo results/eval/flashanns/figures/q2-main.pdf | rg 'Pages|Page size'
-pdfinfo results/eval/flashanns/figures/q3-ablation.pdf | rg 'Pages|Page size'
-pdfinfo results/eval/flashanns/figures/q4-cold-warm.pdf | rg 'Pages|Page size'
+MPLCONFIGDIR=/tmp/flashanns-mpl python3 -m experiments.eval.flashanns.plot_six_figures --csv results/eval/flashanns/validated.csv --out-dir results/eval/flashanns/figures --datasets t2i10m,yfcc10m,laion10m
+for f in frontier-t2i frontier-yfcc frontier-laion wise-ablation batching-ablation hide-robustness; do
+  pdfinfo "results/eval/flashanns/figures/${f}.pdf" | rg 'Pages|Page size'
+done
 ~~~
 
-Expected: three one-page vector PDFs and provenance for every mark.
+Expected: six one-page vector PDFs and provenance for every mark.
 
 - [ ] **Step 4: Prove reproducibility**
 
@@ -1260,7 +1282,7 @@ tests because PDF metadata may differ.
 
 ~~~bash
 git add results/eval/flashanns/validated.csv results/eval/flashanns/figure-provenance.json results/eval/flashanns/figures results/eval/flashanns/readiness/all-three.json
-git commit -m "eval: freeze integrated Q2 Q3 Q4 figures"
+git commit -m "eval: freeze six-figure evaluation"
 ~~~
 
 ---
@@ -1268,9 +1290,10 @@ git commit -m "eval: freeze integrated Q2 Q3 Q4 figures"
 ### Task 15: Insert Figures Without Absorbing Concurrent Paper Edits
 
 **Files:**
-- Copy: Q2--Q4 PDFs to `paper/figs/`
+- Copy: six validated PDFs to `paper/figs/`
 - Modify narrowly: `paper/sections/eval.tex`
-- Verify only: other `paper/` files
+- Verify only: other `paper/` files contain no stale Oracle result, ratio, or
+  upper-bound claim
 
 - [ ] **Step 1: Capture the current paper diff**
 
@@ -1285,22 +1308,30 @@ git status --short -- paper
 Use distinct stable names:
 
 ~~~text
-paper/figs/eval-q2-main.pdf
-paper/figs/eval-q3-ablation.pdf
-paper/figs/eval-q4-cold-warm.pdf
+paper/figs/eval-frontier-t2i.pdf
+paper/figs/eval-frontier-yfcc.pdf
+paper/figs/eval-frontier-laion.pdf
+paper/figs/eval-wise-ablation.pdf
+paper/figs/eval-batching-ablation.pdf
+paper/figs/eval-hide-robustness.pdf
 ~~~
 
-- [ ] **Step 3: Patch only the three figure blocks and validated table cells**
+- [ ] **Step 3: Patch only the six figure blocks and validated table cells**
 
-Replace the `phbox` bodies for labels `fig:eval-main`,
-`fig:eval-ablate`, and `fig:eval-scale` with `includegraphics`. Populate
-numbers only through the validated CSV/provenance mapping. Update Setup to
-declare three 10M datasets, 4 GiB cache, metric per dataset, T=8 final system,
-and physical-versus-proxy backend truth.
+Replace the six placeholder bodies for the three dataset frontiers, Wise
+ablation, batching ablation, and hide/robustness with `includegraphics`.
+Populate numbers only through the validated CSV/provenance mapping. Update
+Setup to declare three 10M datasets, 4 GiB default cache, metric per dataset,
+T=8 final system, and physical-versus-proxy backend truth. Do not add an Oracle
+row or upper-bound claim.
+
+Audit the Abstract, Introduction, and Discussion for stale Oracle result or
+ratio language. If found, remove only the unsupported comparison sentence;
+do not restructure those sections.
 
 - [ ] **Step 4: Prove unrelated paper edits survived**
 
-Compare the before patch and final diff. Only the three figure blocks, Setup,
+Compare the before patch and final diff. Only the six figure blocks, Setup,
 validated table cells, and generated PDFs may be new evaluation changes.
 
 - [ ] **Step 5: Build and commit narrowly**
@@ -1308,8 +1339,8 @@ validated table cells, and generated PDFs may be new evaluation changes.
 ~~~bash
 latexmk -g -pdf -interaction=nonstopmode -halt-on-error paper/main.tex
 rg -n "undefined references|Reference .* undefined|Citation .* undefined" paper/main.log
-git add paper/sections/eval.tex paper/figs/eval-q2-main.pdf paper/figs/eval-q3-ablation.pdf paper/figs/eval-q4-cold-warm.pdf
-git commit -m "paper: insert validated integrated evaluation"
+git add paper/sections/eval.tex paper/figs/eval-frontier-t2i.pdf paper/figs/eval-frontier-yfcc.pdf paper/figs/eval-frontier-laion.pdf paper/figs/eval-wise-ablation.pdf paper/figs/eval-batching-ablation.pdf paper/figs/eval-hide-robustness.pdf
+git commit -m "paper: insert validated six-figure evaluation"
 ~~~
 
 Do not add other concurrent paper changes.

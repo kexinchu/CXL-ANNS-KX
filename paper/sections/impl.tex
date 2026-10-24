@@ -1,23 +1,9 @@
 % =============================================================================
-% §5 Implementation  — Target: 0.5 page. Disclose what is and is not measured.
+% §5 Implementation  — Target: two paragraphs / about 0.5 page.
 % =============================================================================
 \section{Implementation}
 \label{sec:impl}
 
-\sys{} is a userspace beam search with the adjacency graph and 64-byte PQ codes in host DRAM and full-precision vectors mapped from \texttt{/dev/vmem0}.
-The host completes PQ navigation, commits the $L$ rerank candidates, removes resident and duplicate 4\,KiB pages, and materializes the remaining pages into DramWindow before full-precision MIPS reranking.
-The explicit residency barrier leaves materialization wait on the query path, but prevents the subsequent scoring loads from triggering Flash faults.
-For continuous batching, workers maintain a bounded number of in-flight query stages and share asynchronous copy resources; completion-driven admission lets navigation or reranking from one query overlap another query's materialization without allowing either query to cross its own residency barrier early.
+\sys{} is a C++17 userspace runtime that loads the search-ready adjacency graph and 64-byte PQ codes into host DRAM while keeping full-precision vectors in the Flash-backed \texttt{/dev/vmem0} address space. For each query, the host completes a PQ-ADC beam search, commits the bounded rerank set $C_L$, translates its vector IDs through the physical slot map, and removes duplicate and already-resident 4\,KiB pages. The remaining pages are shaped into dense extent runs and submitted in chunks of at most 32 pages through a shared asynchronous copy pool; reads land in prefaulted bounce slabs before being installed in a bounded \texttt{DramWindow}. Exact MIPS or L2 reranking starts only after every page required by that query is resident, so scoring never dereferences an outstanding Flash page. This path implements the paper's three prefetch decisions directly: issue after candidate commitment, fetch only missing pages of committed vectors, and combine co-use placement, page deduplication, and bounded extent formation to raise useful bytes per transfer.
 
-\paragraph{Measured prototype (2026-08-30, \texttt{gpu01}).}
-We evaluate a userspace \texttt{vmem\_sw} proxy over two CD8P SSDs: \texttt{/dev/vmem0} exposes a 28\,GiB logical map backed by a 4\,GiB device cache with 2\,MiB striping.
-CXL-DRAM DAX and hardware fills into the FPGA BAR are absent, so DramWindow is host memory bound to NUMA node~1.
-The results therefore include proxy copying and cache-lock overhead and are not measurements of a shipping CXL.mem SSD.
-
-\paragraph{Implemented scope.}
-The prototype includes demand access, committed-candidate materialization, host graph and PQ-64 navigation, batched prefetch, co-use/extent layout, the iso-recall $L$ picker, bounded cross-query scheduling, and a pinned entry subgraph of at most 32\,MiB.
-A shared LFU hot set reduced warm-run QPS and is excluded.
-
-\paragraph{Not claimed.}
-Product CXL.mem SSD; HPS fill of the FPGA BAR; Shared FAM; a 160\,GB/s DRAM--SSD engine; closed-loop F9 miss-chop; speculative candidate execution; or an adaptive queue-depth controller.
-DiskANN PQ-off is never placed on the PQ-on line.
+The default serving configuration uses eight CPU workers, a 128\,MiB \texttt{DramWindow} and two query slots per worker, one shared copy pool, and a global issue depth of eight. Its completion-driven scheduler admits and issues work while depth is available, reranks any query whose committed pages are covered, and otherwise pumps completed transfers; only slot reservation is serialized, while entry selection and PQ-table construction remain query-local. Issue-depth accounting follows physical I/O waves rather than query lifetime, and the runtime rechecks and refills a committed page if it is evicted before reranking, preserving both termination and the candidate/recall contract. Our measured prototype realizes the CXL-side hierarchy with \texttt{vmem\_sw}: a 3.87\,TB memory-semantic mapping over two 1.92\,TB Dell CD8P SSDs (2\,MiB striping) and a 4\,GiB software-managed page cache. The scoring windows reside in NUMA-bound host DRAM; therefore the reported results include proxy, bounce-copy, and cache-lock overhead and do not claim a physical CXL.mem SSD, FPGA-BAR fills, or device-side graph traversal.

@@ -1,0 +1,2185 @@
+{
+  "datasets": [
+    "laion10m",
+    "t2i10m",
+    "yfcc10m"
+  ],
+  "marks": [
+    {
+      "key": [
+        "laion10m",
+        "q2",
+        "demand",
+        "extent",
+        "cold",
+        50
+      ],
+      "run_ids": [
+        "laion10m-q2-L50-r0-cold-demand-4ad7-c3ef",
+        "laion10m-q2-L50-r1-cold-demand-4ad7-c3ef",
+        "laion10m-q2-L50-r2-cold-demand-4ad7-c3ef",
+        "laion10m-q2-L50-r3-cold-demand-4ad7-c3ef",
+        "laion10m-q2-L50-r4-cold-demand-4ad7-c3ef"
+      ]
+    },
+    {
+      "key": [
+        "laion10m",
+        "q2",
+        "demand",
+        "extent",
+        "cold",
+        100
+      ],
+      "run_ids": [
+        "laion10m-q2-L100-r0-cold-demand-4ad7-c3ef",
+        "laion10m-q2-L100-r1-cold-demand-4ad7-c3ef",
+        "laion10m-q2-L100-r2-cold-demand-4ad7-c3ef",
+        "laion10m-q2-L100-r3-cold-demand-4ad7-c3ef",
+        "laion10m-q2-L100-r4-cold-demand-4ad7-c3ef"
+      ]
+    },
+    {
+      "key": [
+        "laion10m",
+        "q2",
+        "demand",
+        "extent",
+        "cold",
+        200
+      ],
+      "run_ids": [
+        "laion10m-q2-L200-r0-cold-demand-4ad7-c3ef",
+        "laion10m-q2-L200-r1-cold-demand-4ad7-c3ef",
+        "laion10m-q2-L200-r2-cold-demand-4ad7-c3ef",
+        "laion10m-q2-L200-r3-cold-demand-4ad7-c3ef",
+        "laion10m-q2-L200-r4-cold-demand-4ad7-c3ef"
+      ]
+    },
+    {
+      "key": [
+        "laion10m",
+        "q2",
+        "demand",
+        "extent",
+        "cold",
+        400
+      ],
+      "run_ids": [
+        "laion10m-q2-L400-r0-cold-demand-4ad7-c3ef",
+        "laion10m-q2-L400-r1-cold-demand-4ad7-c3ef",
+        "laion10m-q2-L400-r2-cold-demand-4ad7-c3ef",
+        "laion10m-q2-L400-r3-cold-demand-4ad7-c3ef",
+        "laion10m-q2-L400-r4-cold-demand-4ad7-c3ef"
+      ]
+    },
+    {
+      "key": [
+        "laion10m",
+        "q2",
+        "demand",
+        "extent",
+        "cold",
+        800
+      ],
+      "run_ids": [
+        "laion10m-q2-L800-r0-cold-demand-4ad7-c3ef",
+        "laion10m-q2-L800-r1-cold-demand-4ad7-c3ef",
+        "laion10m-q2-L800-r2-cold-demand-4ad7-c3ef",
+        "laion10m-q2-L800-r3-cold-demand-4ad7-c3ef",
+        "laion10m-q2-L800-r4-cold-demand-4ad7-c3ef"
+      ]
+    },
+    {
+      "key": [
+        "laion10m",
+        "q2",
+        "demand",
+        "extent",
+        "cold",
+        1600
+      ],
+      "run_ids": [
+        "laion10m-q2-L1600-r0-cold-demand-4ad7-c3ef",
+        "laion10m-q2-L1600-r1-cold-demand-4ad7-c3ef",
+        "laion10m-q2-L1600-r2-cold-demand-4ad7-c3ef",
+        "laion10m-q2-L1600-r3-cold-demand-4ad7-c3ef",
+        "laion10m-q2-L1600-r4-cold-demand-4ad7-c3ef"
+      ]
+    },
+    {
+      "key": [
+        "laion10m",
+        "q2",
+        "flashanns",
+        "extent",
+        "cold",
+        50
+      ],
+      "run_ids": [
+        "laion10m-q2-L50-r0-cold-flashanns-4ad7-c3ef",
+        "laion10m-q2-L50-r1-cold-flashanns-4ad7-c3ef",
+        "laion10m-q2-L50-r2-cold-flashanns-4ad7-c3ef",
+        "laion10m-q2-L50-r3-cold-flashanns-4ad7-c3ef",
+        "laion10m-q2-L50-r4-cold-flashanns-4ad7-c3ef"
+      ]
+    },
+    {
+      "key": [
+        "laion10m",
+        "q2",
+        "flashanns",
+        "extent",
+        "cold",
+        100
+      ],
+      "run_ids": [
+        "laion10m-q2-L100-r0-cold-flashanns-4ad7-c3ef",
+        "laion10m-q2-L100-r1-cold-flashanns-4ad7-c3ef",
+        "laion10m-q2-L100-r2-cold-flashanns-4ad7-c3ef",
+        "laion10m-q2-L100-r3-cold-flashanns-4ad7-c3ef",
+        "laion10m-q2-L100-r4-cold-flashanns-4ad7-c3ef"
+      ]
+    },
+    {
+      "key": [
+        "laion10m",
+        "q2",
+        "flashanns",
+        "extent",
+        "cold",
+        200
+      ],
+      "run_ids": [
+        "laion10m-q2-L200-r0-cold-flashanns-4ad7-c3ef",
+        "laion10m-q2-L200-r1-cold-flashanns-4ad7-c3ef",
+        "laion10m-q2-L200-r2-cold-flashanns-4ad7-c3ef",
+        "laion10m-q2-L200-r3-cold-flashanns-4ad7-c3ef",
+        "laion10m-q2-L200-r4-cold-flashanns-4ad7-c3ef"
+      ]
+    },
+    {
+      "key": [
+        "laion10m",
+        "q2",
+        "flashanns",
+        "extent",
+        "cold",
+        400
+      ],
+      "run_ids": [
+        "laion10m-q2-L400-r0-cold-flashanns-4ad7-c3ef",
+        "laion10m-q2-L400-r1-cold-flashanns-4ad7-c3ef",
+        "laion10m-q2-L400-r2-cold-flashanns-4ad7-c3ef",
+        "laion10m-q2-L400-r3-cold-flashanns-4ad7-c3ef",
+        "laion10m-q2-L400-r4-cold-flashanns-4ad7-c3ef"
+      ]
+    },
+    {
+      "key": [
+        "laion10m",
+        "q2",
+        "flashanns",
+        "extent",
+        "cold",
+        800
+      ],
+      "run_ids": [
+        "laion10m-q2-L800-r0-cold-flashanns-4ad7-c3ef",
+        "laion10m-q2-L800-r1-cold-flashanns-4ad7-c3ef",
+        "laion10m-q2-L800-r2-cold-flashanns-4ad7-c3ef",
+        "laion10m-q2-L800-r3-cold-flashanns-4ad7-c3ef",
+        "laion10m-q2-L800-r4-cold-flashanns-4ad7-c3ef"
+      ]
+    },
+    {
+      "key": [
+        "laion10m",
+        "q2",
+        "flashanns",
+        "extent",
+        "cold",
+        1600
+      ],
+      "run_ids": [
+        "laion10m-q2-L1600-r0-cold-flashanns-4ad7-c3ef",
+        "laion10m-q2-L1600-r1-cold-flashanns-4ad7-c3ef",
+        "laion10m-q2-L1600-r2-cold-flashanns-4ad7-c3ef",
+        "laion10m-q2-L1600-r3-cold-flashanns-4ad7-c3ef",
+        "laion10m-q2-L1600-r4-cold-flashanns-4ad7-c3ef"
+      ]
+    },
+    {
+      "key": [
+        "laion10m",
+        "q2",
+        "pipeann",
+        "external",
+        "cold",
+        50
+      ],
+      "run_ids": [
+        "laion10m-q2-L50-r0-cold-pipeann-4ad7-c3ef",
+        "laion10m-q2-L50-r1-cold-pipeann-4ad7-c3ef",
+        "laion10m-q2-L50-r2-cold-pipeann-4ad7-c3ef",
+        "laion10m-q2-L50-r3-cold-pipeann-4ad7-c3ef",
+        "laion10m-q2-L50-r4-cold-pipeann-4ad7-c3ef"
+      ]
+    },
+    {
+      "key": [
+        "laion10m",
+        "q2",
+        "pipeann",
+        "external",
+        "cold",
+        100
+      ],
+      "run_ids": [
+        "laion10m-q2-L100-r0-cold-pipeann-4ad7-c3ef",
+        "laion10m-q2-L100-r1-cold-pipeann-4ad7-c3ef",
+        "laion10m-q2-L100-r2-cold-pipeann-4ad7-c3ef",
+        "laion10m-q2-L100-r3-cold-pipeann-4ad7-c3ef",
+        "laion10m-q2-L100-r4-cold-pipeann-4ad7-c3ef"
+      ]
+    },
+    {
+      "key": [
+        "laion10m",
+        "q2",
+        "pipeann",
+        "external",
+        "cold",
+        200
+      ],
+      "run_ids": [
+        "laion10m-q2-L200-r0-cold-pipeann-4ad7-c3ef",
+        "laion10m-q2-L200-r1-cold-pipeann-4ad7-c3ef",
+        "laion10m-q2-L200-r2-cold-pipeann-4ad7-c3ef",
+        "laion10m-q2-L200-r3-cold-pipeann-4ad7-c3ef",
+        "laion10m-q2-L200-r4-cold-pipeann-4ad7-c3ef"
+      ]
+    },
+    {
+      "key": [
+        "laion10m",
+        "q2",
+        "pipeann",
+        "external",
+        "cold",
+        400
+      ],
+      "run_ids": [
+        "laion10m-q2-L400-r0-cold-pipeann-4ad7-c3ef",
+        "laion10m-q2-L400-r1-cold-pipeann-4ad7-c3ef",
+        "laion10m-q2-L400-r2-cold-pipeann-4ad7-c3ef",
+        "laion10m-q2-L400-r3-cold-pipeann-4ad7-c3ef",
+        "laion10m-q2-L400-r4-cold-pipeann-4ad7-c3ef"
+      ]
+    },
+    {
+      "key": [
+        "laion10m",
+        "q2",
+        "pipeann",
+        "external",
+        "cold",
+        800
+      ],
+      "run_ids": [
+        "laion10m-q2-L800-r0-cold-pipeann-4ad7-c3ef",
+        "laion10m-q2-L800-r1-cold-pipeann-4ad7-c3ef",
+        "laion10m-q2-L800-r2-cold-pipeann-4ad7-c3ef",
+        "laion10m-q2-L800-r3-cold-pipeann-4ad7-c3ef",
+        "laion10m-q2-L800-r4-cold-pipeann-4ad7-c3ef"
+      ]
+    },
+    {
+      "key": [
+        "laion10m",
+        "q2",
+        "pipeann",
+        "external",
+        "cold",
+        1600
+      ],
+      "run_ids": [
+        "laion10m-q2-L1600-r0-cold-pipeann-4ad7-c3ef",
+        "laion10m-q2-L1600-r1-cold-pipeann-4ad7-c3ef",
+        "laion10m-q2-L1600-r2-cold-pipeann-4ad7-c3ef",
+        "laion10m-q2-L1600-r3-cold-pipeann-4ad7-c3ef",
+        "laion10m-q2-L1600-r4-cold-pipeann-4ad7-c3ef"
+      ]
+    },
+    {
+      "key": [
+        "laion10m",
+        "q2_original",
+        "demand-orc",
+        "original",
+        "cold",
+        50
+      ],
+      "run_ids": [
+        "laion10m-q2_original-L50-r0-cold-demand-orc-33ba-orc1",
+        "laion10m-q2_original-L50-r1-cold-demand-orc-33ba-orc1",
+        "laion10m-q2_original-L50-r2-cold-demand-orc-33ba-orc1",
+        "laion10m-q2_original-L50-r3-cold-demand-orc-33ba-orc1",
+        "laion10m-q2_original-L50-r4-cold-demand-orc-33ba-orc1"
+      ]
+    },
+    {
+      "key": [
+        "laion10m",
+        "q2_original",
+        "demand-orc",
+        "original",
+        "cold",
+        100
+      ],
+      "run_ids": [
+        "laion10m-q2_original-L100-r0-cold-demand-orc-33ba-orc1",
+        "laion10m-q2_original-L100-r1-cold-demand-orc-33ba-orc1",
+        "laion10m-q2_original-L100-r2-cold-demand-orc-33ba-orc1",
+        "laion10m-q2_original-L100-r3-cold-demand-orc-33ba-orc1",
+        "laion10m-q2_original-L100-r4-cold-demand-orc-33ba-orc1"
+      ]
+    },
+    {
+      "key": [
+        "laion10m",
+        "q2_original",
+        "demand-orc",
+        "original",
+        "cold",
+        200
+      ],
+      "run_ids": [
+        "laion10m-q2_original-L200-r0-cold-demand-orc-33ba-orc1",
+        "laion10m-q2_original-L200-r1-cold-demand-orc-33ba-orc1",
+        "laion10m-q2_original-L200-r2-cold-demand-orc-33ba-orc1",
+        "laion10m-q2_original-L200-r3-cold-demand-orc-33ba-orc1",
+        "laion10m-q2_original-L200-r4-cold-demand-orc-33ba-orc1"
+      ]
+    },
+    {
+      "key": [
+        "laion10m",
+        "q2_original",
+        "demand-orc",
+        "original",
+        "cold",
+        400
+      ],
+      "run_ids": [
+        "laion10m-q2_original-L400-r0-cold-demand-orc-33ba-orc1",
+        "laion10m-q2_original-L400-r1-cold-demand-orc-33ba-orc1",
+        "laion10m-q2_original-L400-r2-cold-demand-orc-33ba-orc1",
+        "laion10m-q2_original-L400-r3-cold-demand-orc-33ba-orc1",
+        "laion10m-q2_original-L400-r4-cold-demand-orc-33ba-orc1"
+      ]
+    },
+    {
+      "key": [
+        "laion10m",
+        "q2_original",
+        "demand-orc",
+        "original",
+        "cold",
+        800
+      ],
+      "run_ids": [
+        "laion10m-q2_original-L800-r0-cold-demand-orc-33ba-orc1",
+        "laion10m-q2_original-L800-r1-cold-demand-orc-33ba-orc1",
+        "laion10m-q2_original-L800-r2-cold-demand-orc-33ba-orc1",
+        "laion10m-q2_original-L800-r3-cold-demand-orc-33ba-orc1",
+        "laion10m-q2_original-L800-r4-cold-demand-orc-33ba-orc1"
+      ]
+    },
+    {
+      "key": [
+        "laion10m",
+        "q2_original",
+        "demand-orc",
+        "original",
+        "cold",
+        1600
+      ],
+      "run_ids": [
+        "laion10m-q2_original-L1600-r0-cold-demand-orc-33ba-orc1",
+        "laion10m-q2_original-L1600-r1-cold-demand-orc-33ba-orc1",
+        "laion10m-q2_original-L1600-r2-cold-demand-orc-33ba-orc1",
+        "laion10m-q2_original-L1600-r3-cold-demand-orc-33ba-orc1",
+        "laion10m-q2_original-L1600-r4-cold-demand-orc-33ba-orc1"
+      ]
+    },
+    {
+      "key": [
+        "laion10m",
+        "q3_t1",
+        "batch-t1",
+        "extent",
+        "cold",
+        400
+      ],
+      "run_ids": [
+        "laion10m-q3_t1-L400-r0-cold-batch-t1-4ad7-c3ef",
+        "laion10m-q3_t1-L400-r1-cold-batch-t1-4ad7-c3ef",
+        "laion10m-q3_t1-L400-r2-cold-batch-t1-4ad7-c3ef",
+        "laion10m-q3_t1-L400-r3-cold-batch-t1-4ad7-c3ef",
+        "laion10m-q3_t1-L400-r4-cold-batch-t1-4ad7-c3ef"
+      ]
+    },
+    {
+      "key": [
+        "laion10m",
+        "q3_t1",
+        "extent-t1",
+        "extent",
+        "cold",
+        400
+      ],
+      "run_ids": [
+        "laion10m-q3_t1-L400-r0-cold-extent-t1-4ad7-c3ef",
+        "laion10m-q3_t1-L400-r1-cold-extent-t1-4ad7-c3ef",
+        "laion10m-q3_t1-L400-r2-cold-extent-t1-4ad7-c3ef",
+        "laion10m-q3_t1-L400-r3-cold-extent-t1-4ad7-c3ef",
+        "laion10m-q3_t1-L400-r4-cold-extent-t1-4ad7-c3ef"
+      ]
+    },
+    {
+      "key": [
+        "laion10m",
+        "q3_t1",
+        "serial-t1",
+        "extent",
+        "cold",
+        400
+      ],
+      "run_ids": [
+        "laion10m-q3_t1-L400-r0-cold-serial-t1-4ad7-c3ef",
+        "laion10m-q3_t1-L400-r1-cold-serial-t1-4ad7-c3ef",
+        "laion10m-q3_t1-L400-r2-cold-serial-t1-4ad7-c3ef",
+        "laion10m-q3_t1-L400-r3-cold-serial-t1-4ad7-c3ef",
+        "laion10m-q3_t1-L400-r4-cold-serial-t1-4ad7-c3ef"
+      ]
+    },
+    {
+      "key": [
+        "laion10m",
+        "q3_t8",
+        "flashanns",
+        "extent",
+        "cold",
+        400
+      ],
+      "run_ids": [
+        "laion10m-q3_t8-L400-r0-cold-flashanns-T1-4ad7-c3ef",
+        "laion10m-q3_t8-L400-r1-cold-flashanns-T1-4ad7-c3ef",
+        "laion10m-q3_t8-L400-r2-cold-flashanns-T1-4ad7-c3ef",
+        "laion10m-q3_t8-L400-r3-cold-flashanns-T1-4ad7-c3ef",
+        "laion10m-q3_t8-L400-r4-cold-flashanns-T1-4ad7-c3ef"
+      ]
+    },
+    {
+      "key": [
+        "laion10m",
+        "q3_t8",
+        "flashanns",
+        "extent",
+        "cold",
+        400
+      ],
+      "run_ids": [
+        "laion10m-q3_t8-L400-r0-cold-flashanns-T2-4ad7-c3ef",
+        "laion10m-q3_t8-L400-r1-cold-flashanns-T2-4ad7-c3ef",
+        "laion10m-q3_t8-L400-r2-cold-flashanns-T2-4ad7-c3ef",
+        "laion10m-q3_t8-L400-r3-cold-flashanns-T2-4ad7-c3ef",
+        "laion10m-q3_t8-L400-r4-cold-flashanns-T2-4ad7-c3ef"
+      ]
+    },
+    {
+      "key": [
+        "laion10m",
+        "q3_t8",
+        "flashanns",
+        "extent",
+        "cold",
+        400
+      ],
+      "run_ids": [
+        "laion10m-q3_t8-L400-r0-cold-flashanns-T4-4ad7-c3ef",
+        "laion10m-q3_t8-L400-r1-cold-flashanns-T4-4ad7-c3ef",
+        "laion10m-q3_t8-L400-r2-cold-flashanns-T4-4ad7-c3ef",
+        "laion10m-q3_t8-L400-r3-cold-flashanns-T4-4ad7-c3ef",
+        "laion10m-q3_t8-L400-r4-cold-flashanns-T4-4ad7-c3ef"
+      ]
+    },
+    {
+      "key": [
+        "laion10m",
+        "q3_t8",
+        "flashanns",
+        "extent",
+        "cold",
+        400
+      ],
+      "run_ids": [
+        "laion10m-q3_t8-L400-r0-cold-flashanns-T8-4ad7-c3ef",
+        "laion10m-q3_t8-L400-r1-cold-flashanns-T8-4ad7-c3ef",
+        "laion10m-q3_t8-L400-r2-cold-flashanns-T8-4ad7-c3ef",
+        "laion10m-q3_t8-L400-r3-cold-flashanns-T8-4ad7-c3ef",
+        "laion10m-q3_t8-L400-r4-cold-flashanns-T8-4ad7-c3ef"
+      ]
+    },
+    {
+      "key": [
+        "laion10m",
+        "q3_t8",
+        "flashanns",
+        "extent",
+        "cold",
+        400
+      ],
+      "run_ids": [
+        "laion10m-q3_t8-L400-r0-cold-flashanns-T16-4ad7-c3ef",
+        "laion10m-q3_t8-L400-r1-cold-flashanns-T16-4ad7-c3ef",
+        "laion10m-q3_t8-L400-r2-cold-flashanns-T16-4ad7-c3ef",
+        "laion10m-q3_t8-L400-r3-cold-flashanns-T16-4ad7-c3ef",
+        "laion10m-q3_t8-L400-r4-cold-flashanns-T16-4ad7-c3ef"
+      ]
+    },
+    {
+      "key": [
+        "laion10m",
+        "q3_t8",
+        "wise-only",
+        "extent",
+        "cold",
+        400
+      ],
+      "run_ids": [
+        "laion10m-q3_t8-L400-r0-cold-wise-only-T1-4ad7-c3ef",
+        "laion10m-q3_t8-L400-r1-cold-wise-only-T1-4ad7-c3ef",
+        "laion10m-q3_t8-L400-r2-cold-wise-only-T1-4ad7-c3ef",
+        "laion10m-q3_t8-L400-r3-cold-wise-only-T1-4ad7-c3ef",
+        "laion10m-q3_t8-L400-r4-cold-wise-only-T1-4ad7-c3ef"
+      ]
+    },
+    {
+      "key": [
+        "laion10m",
+        "q3_t8",
+        "wise-only",
+        "extent",
+        "cold",
+        400
+      ],
+      "run_ids": [
+        "laion10m-q3_t8-L400-r0-cold-wise-only-T2-4ad7-c3ef",
+        "laion10m-q3_t8-L400-r1-cold-wise-only-T2-4ad7-c3ef",
+        "laion10m-q3_t8-L400-r2-cold-wise-only-T2-4ad7-c3ef",
+        "laion10m-q3_t8-L400-r3-cold-wise-only-T2-4ad7-c3ef",
+        "laion10m-q3_t8-L400-r4-cold-wise-only-T2-4ad7-c3ef"
+      ]
+    },
+    {
+      "key": [
+        "laion10m",
+        "q3_t8",
+        "wise-only",
+        "extent",
+        "cold",
+        400
+      ],
+      "run_ids": [
+        "laion10m-q3_t8-L400-r0-cold-wise-only-T4-4ad7-c3ef",
+        "laion10m-q3_t8-L400-r1-cold-wise-only-T4-4ad7-c3ef",
+        "laion10m-q3_t8-L400-r2-cold-wise-only-T4-4ad7-c3ef",
+        "laion10m-q3_t8-L400-r3-cold-wise-only-T4-4ad7-c3ef",
+        "laion10m-q3_t8-L400-r4-cold-wise-only-T4-4ad7-c3ef"
+      ]
+    },
+    {
+      "key": [
+        "laion10m",
+        "q3_t8",
+        "wise-only",
+        "extent",
+        "cold",
+        400
+      ],
+      "run_ids": [
+        "laion10m-q3_t8-L400-r0-cold-wise-only-T8-4ad7-c3ef",
+        "laion10m-q3_t8-L400-r1-cold-wise-only-T8-4ad7-c3ef",
+        "laion10m-q3_t8-L400-r2-cold-wise-only-T8-4ad7-c3ef",
+        "laion10m-q3_t8-L400-r3-cold-wise-only-T8-4ad7-c3ef",
+        "laion10m-q3_t8-L400-r4-cold-wise-only-T8-4ad7-c3ef"
+      ]
+    },
+    {
+      "key": [
+        "laion10m",
+        "q3_t8",
+        "wise-only",
+        "extent",
+        "cold",
+        400
+      ],
+      "run_ids": [
+        "laion10m-q3_t8-L400-r0-cold-wise-only-T16-4ad7-c3ef",
+        "laion10m-q3_t8-L400-r1-cold-wise-only-T16-4ad7-c3ef",
+        "laion10m-q3_t8-L400-r2-cold-wise-only-T16-4ad7-c3ef",
+        "laion10m-q3_t8-L400-r3-cold-wise-only-T16-4ad7-c3ef",
+        "laion10m-q3_t8-L400-r4-cold-wise-only-T16-4ad7-c3ef"
+      ]
+    },
+    {
+      "key": [
+        "laion10m",
+        "q4_cold_warm",
+        "flashanns",
+        "extent",
+        "cold",
+        400
+      ],
+      "run_ids": [
+        "laion10m-q4_cold_warm-L400-r0-cold-flashanns-4ad7-c3ef",
+        "laion10m-q4_cold_warm-L400-r1-cold-flashanns-4ad7-c3ef",
+        "laion10m-q4_cold_warm-L400-r2-cold-flashanns-4ad7-c3ef",
+        "laion10m-q4_cold_warm-L400-r3-cold-flashanns-4ad7-c3ef",
+        "laion10m-q4_cold_warm-L400-r4-cold-flashanns-4ad7-c3ef"
+      ]
+    },
+    {
+      "key": [
+        "laion10m",
+        "q4_cold_warm",
+        "flashanns",
+        "extent",
+        "warm",
+        400
+      ],
+      "run_ids": [
+        "laion10m-q4_cold_warm-L400-r0-warm-flashanns-4ad7-c3ef",
+        "laion10m-q4_cold_warm-L400-r1-warm-flashanns-4ad7-c3ef",
+        "laion10m-q4_cold_warm-L400-r2-warm-flashanns-4ad7-c3ef",
+        "laion10m-q4_cold_warm-L400-r3-warm-flashanns-4ad7-c3ef",
+        "laion10m-q4_cold_warm-L400-r4-warm-flashanns-4ad7-c3ef"
+      ]
+    },
+    {
+      "key": [
+        "laion10m",
+        "q4_hide",
+        "demand",
+        "extent",
+        "cold",
+        400
+      ],
+      "run_ids": [
+        "laion10m-q4_hide-L400-r0-cold-demand-4ad7-c3ef",
+        "laion10m-q4_hide-L400-r1-cold-demand-4ad7-c3ef",
+        "laion10m-q4_hide-L400-r2-cold-demand-4ad7-c3ef",
+        "laion10m-q4_hide-L400-r3-cold-demand-4ad7-c3ef",
+        "laion10m-q4_hide-L400-r4-cold-demand-4ad7-c3ef"
+      ]
+    },
+    {
+      "key": [
+        "laion10m",
+        "q4_hide",
+        "flashanns",
+        "extent",
+        "cold",
+        400
+      ],
+      "run_ids": [
+        "laion10m-q4_hide-L400-r0-cold-flashanns-4ad7-c3ef",
+        "laion10m-q4_hide-L400-r1-cold-flashanns-4ad7-c3ef",
+        "laion10m-q4_hide-L400-r2-cold-flashanns-4ad7-c3ef",
+        "laion10m-q4_hide-L400-r3-cold-flashanns-4ad7-c3ef",
+        "laion10m-q4_hide-L400-r4-cold-flashanns-4ad7-c3ef"
+      ]
+    },
+    {
+      "key": [
+        "t2i10m",
+        "q2",
+        "demand",
+        "extent",
+        "cold",
+        50
+      ],
+      "run_ids": [
+        "t2i10m-q2-L50-r0-cold-demand-4ad7-c3ef",
+        "t2i10m-q2-L50-r1-cold-demand-4ad7-c3ef",
+        "t2i10m-q2-L50-r2-cold-demand-4ad7-c3ef",
+        "t2i10m-q2-L50-r3-cold-demand-4ad7-c3ef",
+        "t2i10m-q2-L50-r4-cold-demand-4ad7-c3ef"
+      ]
+    },
+    {
+      "key": [
+        "t2i10m",
+        "q2",
+        "demand",
+        "extent",
+        "cold",
+        100
+      ],
+      "run_ids": [
+        "t2i10m-q2-L100-r0-cold-demand-4ad7-c3ef",
+        "t2i10m-q2-L100-r1-cold-demand-4ad7-c3ef",
+        "t2i10m-q2-L100-r2-cold-demand-4ad7-c3ef",
+        "t2i10m-q2-L100-r3-cold-demand-4ad7-c3ef",
+        "t2i10m-q2-L100-r4-cold-demand-4ad7-c3ef"
+      ]
+    },
+    {
+      "key": [
+        "t2i10m",
+        "q2",
+        "demand",
+        "extent",
+        "cold",
+        200
+      ],
+      "run_ids": [
+        "t2i10m-q2-L200-r0-cold-demand-4ad7-c3ef",
+        "t2i10m-q2-L200-r1-cold-demand-4ad7-c3ef",
+        "t2i10m-q2-L200-r2-cold-demand-4ad7-c3ef",
+        "t2i10m-q2-L200-r3-cold-demand-4ad7-c3ef",
+        "t2i10m-q2-L200-r4-cold-demand-4ad7-c3ef"
+      ]
+    },
+    {
+      "key": [
+        "t2i10m",
+        "q2",
+        "demand",
+        "extent",
+        "cold",
+        400
+      ],
+      "run_ids": [
+        "t2i10m-q2-L400-r0-cold-demand-4ad7-c3ef",
+        "t2i10m-q2-L400-r1-cold-demand-4ad7-c3ef",
+        "t2i10m-q2-L400-r2-cold-demand-4ad7-c3ef",
+        "t2i10m-q2-L400-r3-cold-demand-4ad7-c3ef",
+        "t2i10m-q2-L400-r4-cold-demand-4ad7-c3ef"
+      ]
+    },
+    {
+      "key": [
+        "t2i10m",
+        "q2",
+        "demand",
+        "extent",
+        "cold",
+        800
+      ],
+      "run_ids": [
+        "t2i10m-q2-L800-r0-cold-demand-4ad7-c3ef",
+        "t2i10m-q2-L800-r1-cold-demand-4ad7-c3ef",
+        "t2i10m-q2-L800-r2-cold-demand-4ad7-c3ef",
+        "t2i10m-q2-L800-r3-cold-demand-4ad7-c3ef",
+        "t2i10m-q2-L800-r4-cold-demand-4ad7-c3ef"
+      ]
+    },
+    {
+      "key": [
+        "t2i10m",
+        "q2",
+        "demand",
+        "extent",
+        "cold",
+        1600
+      ],
+      "run_ids": [
+        "t2i10m-q2-L1600-r0-cold-demand-4ad7-c3ef",
+        "t2i10m-q2-L1600-r1-cold-demand-4ad7-c3ef",
+        "t2i10m-q2-L1600-r2-cold-demand-4ad7-c3ef",
+        "t2i10m-q2-L1600-r3-cold-demand-4ad7-c3ef",
+        "t2i10m-q2-L1600-r4-cold-demand-4ad7-c3ef"
+      ]
+    },
+    {
+      "key": [
+        "t2i10m",
+        "q2",
+        "flashanns",
+        "extent",
+        "cold",
+        50
+      ],
+      "run_ids": [
+        "t2i10m-q2-L50-r0-cold-flashanns-4ad7-c3ef",
+        "t2i10m-q2-L50-r1-cold-flashanns-4ad7-c3ef",
+        "t2i10m-q2-L50-r2-cold-flashanns-4ad7-c3ef",
+        "t2i10m-q2-L50-r3-cold-flashanns-4ad7-c3ef",
+        "t2i10m-q2-L50-r4-cold-flashanns-4ad7-c3ef"
+      ]
+    },
+    {
+      "key": [
+        "t2i10m",
+        "q2",
+        "flashanns",
+        "extent",
+        "cold",
+        100
+      ],
+      "run_ids": [
+        "t2i10m-q2-L100-r0-cold-flashanns-4ad7-c3ef",
+        "t2i10m-q2-L100-r1-cold-flashanns-4ad7-c3ef",
+        "t2i10m-q2-L100-r2-cold-flashanns-4ad7-c3ef",
+        "t2i10m-q2-L100-r3-cold-flashanns-4ad7-c3ef",
+        "t2i10m-q2-L100-r4-cold-flashanns-4ad7-c3ef"
+      ]
+    },
+    {
+      "key": [
+        "t2i10m",
+        "q2",
+        "flashanns",
+        "extent",
+        "cold",
+        200
+      ],
+      "run_ids": [
+        "t2i10m-q2-L200-r0-cold-flashanns-4ad7-c3ef",
+        "t2i10m-q2-L200-r1-cold-flashanns-4ad7-c3ef",
+        "t2i10m-q2-L200-r2-cold-flashanns-4ad7-c3ef",
+        "t2i10m-q2-L200-r3-cold-flashanns-4ad7-c3ef",
+        "t2i10m-q2-L200-r4-cold-flashanns-4ad7-c3ef"
+      ]
+    },
+    {
+      "key": [
+        "t2i10m",
+        "q2",
+        "flashanns",
+        "extent",
+        "cold",
+        400
+      ],
+      "run_ids": [
+        "t2i10m-q2-L400-r0-cold-flashanns-4ad7-c3ef",
+        "t2i10m-q2-L400-r1-cold-flashanns-4ad7-c3ef",
+        "t2i10m-q2-L400-r2-cold-flashanns-4ad7-c3ef",
+        "t2i10m-q2-L400-r3-cold-flashanns-4ad7-c3ef",
+        "t2i10m-q2-L400-r4-cold-flashanns-4ad7-c3ef"
+      ]
+    },
+    {
+      "key": [
+        "t2i10m",
+        "q2",
+        "flashanns",
+        "extent",
+        "cold",
+        800
+      ],
+      "run_ids": [
+        "t2i10m-q2-L800-r0-cold-flashanns-4ad7-c3ef",
+        "t2i10m-q2-L800-r1-cold-flashanns-4ad7-c3ef",
+        "t2i10m-q2-L800-r2-cold-flashanns-4ad7-c3ef",
+        "t2i10m-q2-L800-r3-cold-flashanns-4ad7-c3ef",
+        "t2i10m-q2-L800-r4-cold-flashanns-4ad7-c3ef"
+      ]
+    },
+    {
+      "key": [
+        "t2i10m",
+        "q2",
+        "flashanns",
+        "extent",
+        "cold",
+        1600
+      ],
+      "run_ids": [
+        "t2i10m-q2-L1600-r0-cold-flashanns-4ad7-c3ef",
+        "t2i10m-q2-L1600-r1-cold-flashanns-4ad7-c3ef",
+        "t2i10m-q2-L1600-r2-cold-flashanns-4ad7-c3ef",
+        "t2i10m-q2-L1600-r3-cold-flashanns-4ad7-c3ef",
+        "t2i10m-q2-L1600-r4-cold-flashanns-4ad7-c3ef"
+      ]
+    },
+    {
+      "key": [
+        "t2i10m",
+        "q2",
+        "pipeann",
+        "external",
+        "cold",
+        50
+      ],
+      "run_ids": [
+        "t2i10m-q2-L50-r0-cold-pipeann-4ad7-c3ef",
+        "t2i10m-q2-L50-r1-cold-pipeann-4ad7-c3ef",
+        "t2i10m-q2-L50-r2-cold-pipeann-4ad7-c3ef",
+        "t2i10m-q2-L50-r3-cold-pipeann-4ad7-c3ef",
+        "t2i10m-q2-L50-r4-cold-pipeann-4ad7-c3ef"
+      ]
+    },
+    {
+      "key": [
+        "t2i10m",
+        "q2",
+        "pipeann",
+        "external",
+        "cold",
+        100
+      ],
+      "run_ids": [
+        "t2i10m-q2-L100-r0-cold-pipeann-4ad7-c3ef",
+        "t2i10m-q2-L100-r1-cold-pipeann-4ad7-c3ef",
+        "t2i10m-q2-L100-r2-cold-pipeann-4ad7-c3ef",
+        "t2i10m-q2-L100-r3-cold-pipeann-4ad7-c3ef",
+        "t2i10m-q2-L100-r4-cold-pipeann-4ad7-c3ef"
+      ]
+    },
+    {
+      "key": [
+        "t2i10m",
+        "q2",
+        "pipeann",
+        "external",
+        "cold",
+        200
+      ],
+      "run_ids": [
+        "t2i10m-q2-L200-r0-cold-pipeann-4ad7-c3ef",
+        "t2i10m-q2-L200-r1-cold-pipeann-4ad7-c3ef",
+        "t2i10m-q2-L200-r2-cold-pipeann-4ad7-c3ef",
+        "t2i10m-q2-L200-r3-cold-pipeann-4ad7-c3ef",
+        "t2i10m-q2-L200-r4-cold-pipeann-4ad7-c3ef"
+      ]
+    },
+    {
+      "key": [
+        "t2i10m",
+        "q2",
+        "pipeann",
+        "external",
+        "cold",
+        400
+      ],
+      "run_ids": [
+        "t2i10m-q2-L400-r0-cold-pipeann-4ad7-c3ef",
+        "t2i10m-q2-L400-r1-cold-pipeann-4ad7-c3ef",
+        "t2i10m-q2-L400-r2-cold-pipeann-4ad7-c3ef",
+        "t2i10m-q2-L400-r3-cold-pipeann-4ad7-c3ef",
+        "t2i10m-q2-L400-r4-cold-pipeann-4ad7-c3ef"
+      ]
+    },
+    {
+      "key": [
+        "t2i10m",
+        "q2",
+        "pipeann",
+        "external",
+        "cold",
+        800
+      ],
+      "run_ids": [
+        "t2i10m-q2-L800-r0-cold-pipeann-4ad7-c3ef",
+        "t2i10m-q2-L800-r1-cold-pipeann-4ad7-c3ef",
+        "t2i10m-q2-L800-r2-cold-pipeann-4ad7-c3ef",
+        "t2i10m-q2-L800-r3-cold-pipeann-4ad7-c3ef",
+        "t2i10m-q2-L800-r4-cold-pipeann-4ad7-c3ef"
+      ]
+    },
+    {
+      "key": [
+        "t2i10m",
+        "q2",
+        "pipeann",
+        "external",
+        "cold",
+        1600
+      ],
+      "run_ids": [
+        "t2i10m-q2-L1600-r0-cold-pipeann-4ad7-c3ef",
+        "t2i10m-q2-L1600-r1-cold-pipeann-4ad7-c3ef",
+        "t2i10m-q2-L1600-r2-cold-pipeann-4ad7-c3ef",
+        "t2i10m-q2-L1600-r3-cold-pipeann-4ad7-c3ef",
+        "t2i10m-q2-L1600-r4-cold-pipeann-4ad7-c3ef"
+      ]
+    },
+    {
+      "key": [
+        "t2i10m",
+        "q2",
+        "pipeann",
+        "external",
+        "cold",
+        2400
+      ],
+      "run_ids": [
+        "t2i10m-q2-L2400-r0-cold-pipeann-4ad7-c3ef",
+        "t2i10m-q2-L2400-r1-cold-pipeann-4ad7-c3ef",
+        "t2i10m-q2-L2400-r2-cold-pipeann-4ad7-c3ef",
+        "t2i10m-q2-L2400-r3-cold-pipeann-4ad7-c3ef",
+        "t2i10m-q2-L2400-r4-cold-pipeann-4ad7-c3ef"
+      ]
+    },
+    {
+      "key": [
+        "t2i10m",
+        "q2_original",
+        "demand-orc",
+        "original",
+        "cold",
+        50
+      ],
+      "run_ids": [
+        "t2i10m-q2_original-L50-r0-cold-demand-orc-33ba-orc1",
+        "t2i10m-q2_original-L50-r1-cold-demand-orc-33ba-orc1",
+        "t2i10m-q2_original-L50-r2-cold-demand-orc-33ba-orc1",
+        "t2i10m-q2_original-L50-r3-cold-demand-orc-33ba-orc1",
+        "t2i10m-q2_original-L50-r4-cold-demand-orc-33ba-orc1"
+      ]
+    },
+    {
+      "key": [
+        "t2i10m",
+        "q2_original",
+        "demand-orc",
+        "original",
+        "cold",
+        100
+      ],
+      "run_ids": [
+        "t2i10m-q2_original-L100-r0-cold-demand-orc-33ba-orc1",
+        "t2i10m-q2_original-L100-r1-cold-demand-orc-33ba-orc1",
+        "t2i10m-q2_original-L100-r2-cold-demand-orc-33ba-orc1",
+        "t2i10m-q2_original-L100-r3-cold-demand-orc-33ba-orc1",
+        "t2i10m-q2_original-L100-r4-cold-demand-orc-33ba-orc1"
+      ]
+    },
+    {
+      "key": [
+        "t2i10m",
+        "q2_original",
+        "demand-orc",
+        "original",
+        "cold",
+        200
+      ],
+      "run_ids": [
+        "t2i10m-q2_original-L200-r0-cold-demand-orc-33ba-orc1",
+        "t2i10m-q2_original-L200-r1-cold-demand-orc-33ba-orc1",
+        "t2i10m-q2_original-L200-r2-cold-demand-orc-33ba-orc1",
+        "t2i10m-q2_original-L200-r3-cold-demand-orc-33ba-orc1",
+        "t2i10m-q2_original-L200-r4-cold-demand-orc-33ba-orc1"
+      ]
+    },
+    {
+      "key": [
+        "t2i10m",
+        "q2_original",
+        "demand-orc",
+        "original",
+        "cold",
+        400
+      ],
+      "run_ids": [
+        "t2i10m-q2_original-L400-r0-cold-demand-orc-33ba-orc1",
+        "t2i10m-q2_original-L400-r1-cold-demand-orc-33ba-orc1",
+        "t2i10m-q2_original-L400-r2-cold-demand-orc-33ba-orc1",
+        "t2i10m-q2_original-L400-r3-cold-demand-orc-33ba-orc1",
+        "t2i10m-q2_original-L400-r4-cold-demand-orc-33ba-orc1"
+      ]
+    },
+    {
+      "key": [
+        "t2i10m",
+        "q2_original",
+        "demand-orc",
+        "original",
+        "cold",
+        800
+      ],
+      "run_ids": [
+        "t2i10m-q2_original-L800-r0-cold-demand-orc-33ba-orc1",
+        "t2i10m-q2_original-L800-r1-cold-demand-orc-33ba-orc1",
+        "t2i10m-q2_original-L800-r2-cold-demand-orc-33ba-orc1",
+        "t2i10m-q2_original-L800-r3-cold-demand-orc-33ba-orc1",
+        "t2i10m-q2_original-L800-r4-cold-demand-orc-33ba-orc1"
+      ]
+    },
+    {
+      "key": [
+        "t2i10m",
+        "q2_original",
+        "demand-orc",
+        "original",
+        "cold",
+        1600
+      ],
+      "run_ids": [
+        "t2i10m-q2_original-L1600-r0-cold-demand-orc-33ba-orc1",
+        "t2i10m-q2_original-L1600-r1-cold-demand-orc-33ba-orc1",
+        "t2i10m-q2_original-L1600-r2-cold-demand-orc-33ba-orc1",
+        "t2i10m-q2_original-L1600-r3-cold-demand-orc-33ba-orc1",
+        "t2i10m-q2_original-L1600-r4-cold-demand-orc-33ba-orc1"
+      ]
+    },
+    {
+      "key": [
+        "t2i10m",
+        "q3_t1",
+        "batch-t1",
+        "extent",
+        "cold",
+        400
+      ],
+      "run_ids": [
+        "t2i10m-q3_t1-L400-r0-cold-batch-t1-4ad7-c3ef",
+        "t2i10m-q3_t1-L400-r1-cold-batch-t1-4ad7-c3ef",
+        "t2i10m-q3_t1-L400-r2-cold-batch-t1-4ad7-c3ef",
+        "t2i10m-q3_t1-L400-r3-cold-batch-t1-4ad7-c3ef",
+        "t2i10m-q3_t1-L400-r4-cold-batch-t1-4ad7-c3ef"
+      ]
+    },
+    {
+      "key": [
+        "t2i10m",
+        "q3_t1",
+        "extent-t1",
+        "extent",
+        "cold",
+        400
+      ],
+      "run_ids": [
+        "t2i10m-q3_t1-L400-r0-cold-extent-t1-4ad7-c3ef",
+        "t2i10m-q3_t1-L400-r1-cold-extent-t1-4ad7-c3ef",
+        "t2i10m-q3_t1-L400-r2-cold-extent-t1-4ad7-c3ef",
+        "t2i10m-q3_t1-L400-r3-cold-extent-t1-4ad7-c3ef",
+        "t2i10m-q3_t1-L400-r4-cold-extent-t1-4ad7-c3ef"
+      ]
+    },
+    {
+      "key": [
+        "t2i10m",
+        "q3_t1",
+        "serial-t1",
+        "extent",
+        "cold",
+        400
+      ],
+      "run_ids": [
+        "t2i10m-q3_t1-L400-r0-cold-serial-t1-4ad7-c3ef",
+        "t2i10m-q3_t1-L400-r1-cold-serial-t1-4ad7-c3ef",
+        "t2i10m-q3_t1-L400-r2-cold-serial-t1-4ad7-c3ef",
+        "t2i10m-q3_t1-L400-r3-cold-serial-t1-4ad7-c3ef",
+        "t2i10m-q3_t1-L400-r4-cold-serial-t1-4ad7-c3ef"
+      ]
+    },
+    {
+      "key": [
+        "t2i10m",
+        "q3_t8",
+        "flashanns",
+        "extent",
+        "cold",
+        400
+      ],
+      "run_ids": [
+        "t2i10m-q3_t8-L400-r0-cold-flashanns-T1-4ad7-c3ef",
+        "t2i10m-q3_t8-L400-r1-cold-flashanns-T1-4ad7-c3ef",
+        "t2i10m-q3_t8-L400-r2-cold-flashanns-T1-4ad7-c3ef",
+        "t2i10m-q3_t8-L400-r3-cold-flashanns-T1-4ad7-c3ef",
+        "t2i10m-q3_t8-L400-r4-cold-flashanns-T1-4ad7-c3ef"
+      ]
+    },
+    {
+      "key": [
+        "t2i10m",
+        "q3_t8",
+        "flashanns",
+        "extent",
+        "cold",
+        400
+      ],
+      "run_ids": [
+        "t2i10m-q3_t8-L400-r0-cold-flashanns-T2-4ad7-c3ef",
+        "t2i10m-q3_t8-L400-r1-cold-flashanns-T2-4ad7-c3ef",
+        "t2i10m-q3_t8-L400-r2-cold-flashanns-T2-4ad7-c3ef",
+        "t2i10m-q3_t8-L400-r3-cold-flashanns-T2-4ad7-c3ef",
+        "t2i10m-q3_t8-L400-r4-cold-flashanns-T2-4ad7-c3ef"
+      ]
+    },
+    {
+      "key": [
+        "t2i10m",
+        "q3_t8",
+        "flashanns",
+        "extent",
+        "cold",
+        400
+      ],
+      "run_ids": [
+        "t2i10m-q3_t8-L400-r0-cold-flashanns-T4-4ad7-c3ef",
+        "t2i10m-q3_t8-L400-r1-cold-flashanns-T4-4ad7-c3ef",
+        "t2i10m-q3_t8-L400-r2-cold-flashanns-T4-4ad7-c3ef",
+        "t2i10m-q3_t8-L400-r3-cold-flashanns-T4-4ad7-c3ef",
+        "t2i10m-q3_t8-L400-r4-cold-flashanns-T4-4ad7-c3ef"
+      ]
+    },
+    {
+      "key": [
+        "t2i10m",
+        "q3_t8",
+        "flashanns",
+        "extent",
+        "cold",
+        400
+      ],
+      "run_ids": [
+        "t2i10m-q3_t8-L400-r0-cold-flashanns-T8-4ad7-c3ef",
+        "t2i10m-q3_t8-L400-r1-cold-flashanns-T8-4ad7-c3ef",
+        "t2i10m-q3_t8-L400-r2-cold-flashanns-T8-4ad7-c3ef",
+        "t2i10m-q3_t8-L400-r3-cold-flashanns-T8-4ad7-c3ef",
+        "t2i10m-q3_t8-L400-r4-cold-flashanns-T8-4ad7-c3ef"
+      ]
+    },
+    {
+      "key": [
+        "t2i10m",
+        "q3_t8",
+        "flashanns",
+        "extent",
+        "cold",
+        400
+      ],
+      "run_ids": [
+        "t2i10m-q3_t8-L400-r0-cold-flashanns-T16-4ad7-c3ef",
+        "t2i10m-q3_t8-L400-r1-cold-flashanns-T16-4ad7-c3ef",
+        "t2i10m-q3_t8-L400-r2-cold-flashanns-T16-4ad7-c3ef",
+        "t2i10m-q3_t8-L400-r3-cold-flashanns-T16-4ad7-c3ef",
+        "t2i10m-q3_t8-L400-r4-cold-flashanns-T16-4ad7-c3ef"
+      ]
+    },
+    {
+      "key": [
+        "t2i10m",
+        "q3_t8",
+        "wise-only",
+        "extent",
+        "cold",
+        400
+      ],
+      "run_ids": [
+        "t2i10m-q3_t8-L400-r0-cold-wise-only-T1-4ad7-c3ef",
+        "t2i10m-q3_t8-L400-r1-cold-wise-only-T1-4ad7-c3ef",
+        "t2i10m-q3_t8-L400-r2-cold-wise-only-T1-4ad7-c3ef",
+        "t2i10m-q3_t8-L400-r3-cold-wise-only-T1-4ad7-c3ef",
+        "t2i10m-q3_t8-L400-r4-cold-wise-only-T1-4ad7-c3ef"
+      ]
+    },
+    {
+      "key": [
+        "t2i10m",
+        "q3_t8",
+        "wise-only",
+        "extent",
+        "cold",
+        400
+      ],
+      "run_ids": [
+        "t2i10m-q3_t8-L400-r0-cold-wise-only-T2-4ad7-c3ef",
+        "t2i10m-q3_t8-L400-r1-cold-wise-only-T2-4ad7-c3ef",
+        "t2i10m-q3_t8-L400-r2-cold-wise-only-T2-4ad7-c3ef",
+        "t2i10m-q3_t8-L400-r3-cold-wise-only-T2-4ad7-c3ef",
+        "t2i10m-q3_t8-L400-r4-cold-wise-only-T2-4ad7-c3ef"
+      ]
+    },
+    {
+      "key": [
+        "t2i10m",
+        "q3_t8",
+        "wise-only",
+        "extent",
+        "cold",
+        400
+      ],
+      "run_ids": [
+        "t2i10m-q3_t8-L400-r0-cold-wise-only-T4-4ad7-c3ef",
+        "t2i10m-q3_t8-L400-r1-cold-wise-only-T4-4ad7-c3ef",
+        "t2i10m-q3_t8-L400-r2-cold-wise-only-T4-4ad7-c3ef",
+        "t2i10m-q3_t8-L400-r3-cold-wise-only-T4-4ad7-c3ef",
+        "t2i10m-q3_t8-L400-r4-cold-wise-only-T4-4ad7-c3ef"
+      ]
+    },
+    {
+      "key": [
+        "t2i10m",
+        "q3_t8",
+        "wise-only",
+        "extent",
+        "cold",
+        400
+      ],
+      "run_ids": [
+        "t2i10m-q3_t8-L400-r0-cold-wise-only-T8-4ad7-c3ef",
+        "t2i10m-q3_t8-L400-r1-cold-wise-only-T8-4ad7-c3ef",
+        "t2i10m-q3_t8-L400-r2-cold-wise-only-T8-4ad7-c3ef",
+        "t2i10m-q3_t8-L400-r3-cold-wise-only-T8-4ad7-c3ef",
+        "t2i10m-q3_t8-L400-r4-cold-wise-only-T8-4ad7-c3ef"
+      ]
+    },
+    {
+      "key": [
+        "t2i10m",
+        "q3_t8",
+        "wise-only",
+        "extent",
+        "cold",
+        400
+      ],
+      "run_ids": [
+        "t2i10m-q3_t8-L400-r0-cold-wise-only-T16-4ad7-c3ef",
+        "t2i10m-q3_t8-L400-r1-cold-wise-only-T16-4ad7-c3ef",
+        "t2i10m-q3_t8-L400-r2-cold-wise-only-T16-4ad7-c3ef",
+        "t2i10m-q3_t8-L400-r3-cold-wise-only-T16-4ad7-c3ef",
+        "t2i10m-q3_t8-L400-r4-cold-wise-only-T16-4ad7-c3ef"
+      ]
+    },
+    {
+      "key": [
+        "t2i10m",
+        "q4_cache",
+        "flashanns",
+        "extent",
+        "cold",
+        400
+      ],
+      "run_ids": [
+        "t2i10m-q4_cache-L400-r0-cold-flashanns-C1G-4ad7-c3ef",
+        "t2i10m-q4_cache-L400-r1-cold-flashanns-C1G-4ad7-c3ef",
+        "t2i10m-q4_cache-L400-r2-cold-flashanns-C1G-4ad7-c3ef",
+        "t2i10m-q4_cache-L400-r3-cold-flashanns-C1G-4ad7-c3ef",
+        "t2i10m-q4_cache-L400-r4-cold-flashanns-C1G-4ad7-c3ef"
+      ]
+    },
+    {
+      "key": [
+        "t2i10m",
+        "q4_cache",
+        "flashanns",
+        "extent",
+        "cold",
+        400
+      ],
+      "run_ids": [
+        "t2i10m-q4_cache-L400-r0-cold-flashanns-C2G-4ad7-c3ef",
+        "t2i10m-q4_cache-L400-r1-cold-flashanns-C2G-4ad7-c3ef",
+        "t2i10m-q4_cache-L400-r2-cold-flashanns-C2G-4ad7-c3ef",
+        "t2i10m-q4_cache-L400-r3-cold-flashanns-C2G-4ad7-c3ef",
+        "t2i10m-q4_cache-L400-r4-cold-flashanns-C2G-4ad7-c3ef"
+      ]
+    },
+    {
+      "key": [
+        "t2i10m",
+        "q4_cache",
+        "flashanns",
+        "extent",
+        "cold",
+        400
+      ],
+      "run_ids": [
+        "t2i10m-q4_cache-L400-r0-cold-flashanns-C4G-4ad7-c3ef",
+        "t2i10m-q4_cache-L400-r1-cold-flashanns-C4G-4ad7-c3ef",
+        "t2i10m-q4_cache-L400-r2-cold-flashanns-C4G-4ad7-c3ef",
+        "t2i10m-q4_cache-L400-r3-cold-flashanns-C4G-4ad7-c3ef",
+        "t2i10m-q4_cache-L400-r4-cold-flashanns-C4G-4ad7-c3ef"
+      ]
+    },
+    {
+      "key": [
+        "t2i10m",
+        "q4_cache",
+        "flashanns",
+        "extent",
+        "cold",
+        400
+      ],
+      "run_ids": [
+        "t2i10m-q4_cache-L400-r0-cold-flashanns-C8G-4ad7-c3ef",
+        "t2i10m-q4_cache-L400-r1-cold-flashanns-C8G-4ad7-c3ef",
+        "t2i10m-q4_cache-L400-r2-cold-flashanns-C8G-4ad7-c3ef",
+        "t2i10m-q4_cache-L400-r3-cold-flashanns-C8G-4ad7-c3ef",
+        "t2i10m-q4_cache-L400-r4-cold-flashanns-C8G-4ad7-c3ef"
+      ]
+    },
+    {
+      "key": [
+        "t2i10m",
+        "q4_cold_warm",
+        "flashanns",
+        "extent",
+        "cold",
+        400
+      ],
+      "run_ids": [
+        "t2i10m-q4_cold_warm-L400-r0-cold-flashanns-4ad7-c3ef",
+        "t2i10m-q4_cold_warm-L400-r1-cold-flashanns-4ad7-c3ef",
+        "t2i10m-q4_cold_warm-L400-r2-cold-flashanns-4ad7-c3ef",
+        "t2i10m-q4_cold_warm-L400-r3-cold-flashanns-4ad7-c3ef",
+        "t2i10m-q4_cold_warm-L400-r4-cold-flashanns-4ad7-c3ef"
+      ]
+    },
+    {
+      "key": [
+        "t2i10m",
+        "q4_cold_warm",
+        "flashanns",
+        "extent",
+        "warm",
+        400
+      ],
+      "run_ids": [
+        "t2i10m-q4_cold_warm-L400-r0-warm-flashanns-4ad7-c3ef",
+        "t2i10m-q4_cold_warm-L400-r1-warm-flashanns-4ad7-c3ef",
+        "t2i10m-q4_cold_warm-L400-r2-warm-flashanns-4ad7-c3ef",
+        "t2i10m-q4_cold_warm-L400-r3-warm-flashanns-4ad7-c3ef",
+        "t2i10m-q4_cold_warm-L400-r4-warm-flashanns-4ad7-c3ef"
+      ]
+    },
+    {
+      "key": [
+        "t2i10m",
+        "q4_hide",
+        "demand",
+        "extent",
+        "cold",
+        400
+      ],
+      "run_ids": [
+        "t2i10m-q4_hide-L400-r0-cold-demand-4ad7-c3ef",
+        "t2i10m-q4_hide-L400-r1-cold-demand-4ad7-c3ef",
+        "t2i10m-q4_hide-L400-r2-cold-demand-4ad7-c3ef",
+        "t2i10m-q4_hide-L400-r3-cold-demand-4ad7-c3ef",
+        "t2i10m-q4_hide-L400-r4-cold-demand-4ad7-c3ef"
+      ]
+    },
+    {
+      "key": [
+        "t2i10m",
+        "q4_hide",
+        "flashanns",
+        "extent",
+        "cold",
+        400
+      ],
+      "run_ids": [
+        "t2i10m-q4_hide-L400-r0-cold-flashanns-4ad7-c3ef",
+        "t2i10m-q4_hide-L400-r1-cold-flashanns-4ad7-c3ef",
+        "t2i10m-q4_hide-L400-r2-cold-flashanns-4ad7-c3ef",
+        "t2i10m-q4_hide-L400-r3-cold-flashanns-4ad7-c3ef",
+        "t2i10m-q4_hide-L400-r4-cold-flashanns-4ad7-c3ef"
+      ]
+    },
+    {
+      "key": [
+        "yfcc10m",
+        "q2",
+        "demand",
+        "extent",
+        "cold",
+        50
+      ],
+      "run_ids": [
+        "yfcc10m-q2-L50-r0-cold-demand-4ad7-c3ef",
+        "yfcc10m-q2-L50-r1-cold-demand-4ad7-c3ef",
+        "yfcc10m-q2-L50-r2-cold-demand-4ad7-c3ef",
+        "yfcc10m-q2-L50-r3-cold-demand-4ad7-c3ef",
+        "yfcc10m-q2-L50-r4-cold-demand-4ad7-c3ef"
+      ]
+    },
+    {
+      "key": [
+        "yfcc10m",
+        "q2",
+        "demand",
+        "extent",
+        "cold",
+        100
+      ],
+      "run_ids": [
+        "yfcc10m-q2-L100-r0-cold-demand-4ad7-c3ef",
+        "yfcc10m-q2-L100-r1-cold-demand-4ad7-c3ef",
+        "yfcc10m-q2-L100-r2-cold-demand-4ad7-c3ef",
+        "yfcc10m-q2-L100-r3-cold-demand-4ad7-c3ef",
+        "yfcc10m-q2-L100-r4-cold-demand-4ad7-c3ef"
+      ]
+    },
+    {
+      "key": [
+        "yfcc10m",
+        "q2",
+        "demand",
+        "extent",
+        "cold",
+        200
+      ],
+      "run_ids": [
+        "yfcc10m-q2-L200-r0-cold-demand-4ad7-c3ef",
+        "yfcc10m-q2-L200-r1-cold-demand-4ad7-c3ef",
+        "yfcc10m-q2-L200-r2-cold-demand-4ad7-c3ef",
+        "yfcc10m-q2-L200-r3-cold-demand-4ad7-c3ef",
+        "yfcc10m-q2-L200-r4-cold-demand-4ad7-c3ef"
+      ]
+    },
+    {
+      "key": [
+        "yfcc10m",
+        "q2",
+        "demand",
+        "extent",
+        "cold",
+        400
+      ],
+      "run_ids": [
+        "yfcc10m-q2-L400-r0-cold-demand-4ad7-c3ef",
+        "yfcc10m-q2-L400-r1-cold-demand-4ad7-c3ef",
+        "yfcc10m-q2-L400-r2-cold-demand-4ad7-c3ef",
+        "yfcc10m-q2-L400-r3-cold-demand-4ad7-c3ef",
+        "yfcc10m-q2-L400-r4-cold-demand-4ad7-c3ef"
+      ]
+    },
+    {
+      "key": [
+        "yfcc10m",
+        "q2",
+        "demand",
+        "extent",
+        "cold",
+        800
+      ],
+      "run_ids": [
+        "yfcc10m-q2-L800-r0-cold-demand-4ad7-c3ef",
+        "yfcc10m-q2-L800-r1-cold-demand-4ad7-c3ef",
+        "yfcc10m-q2-L800-r2-cold-demand-4ad7-c3ef",
+        "yfcc10m-q2-L800-r3-cold-demand-4ad7-c3ef",
+        "yfcc10m-q2-L800-r4-cold-demand-4ad7-c3ef"
+      ]
+    },
+    {
+      "key": [
+        "yfcc10m",
+        "q2",
+        "demand",
+        "extent",
+        "cold",
+        1600
+      ],
+      "run_ids": [
+        "yfcc10m-q2-L1600-r0-cold-demand-4ad7-c3ef",
+        "yfcc10m-q2-L1600-r1-cold-demand-4ad7-c3ef",
+        "yfcc10m-q2-L1600-r2-cold-demand-4ad7-c3ef",
+        "yfcc10m-q2-L1600-r3-cold-demand-4ad7-c3ef",
+        "yfcc10m-q2-L1600-r4-cold-demand-4ad7-c3ef"
+      ]
+    },
+    {
+      "key": [
+        "yfcc10m",
+        "q2",
+        "flashanns",
+        "extent",
+        "cold",
+        50
+      ],
+      "run_ids": [
+        "yfcc10m-q2-L50-r0-cold-flashanns-4ad7-c3ef",
+        "yfcc10m-q2-L50-r1-cold-flashanns-4ad7-c3ef",
+        "yfcc10m-q2-L50-r2-cold-flashanns-4ad7-c3ef",
+        "yfcc10m-q2-L50-r3-cold-flashanns-4ad7-c3ef",
+        "yfcc10m-q2-L50-r4-cold-flashanns-4ad7-c3ef"
+      ]
+    },
+    {
+      "key": [
+        "yfcc10m",
+        "q2",
+        "flashanns",
+        "extent",
+        "cold",
+        100
+      ],
+      "run_ids": [
+        "yfcc10m-q2-L100-r0-cold-flashanns-4ad7-c3ef",
+        "yfcc10m-q2-L100-r1-cold-flashanns-4ad7-c3ef",
+        "yfcc10m-q2-L100-r2-cold-flashanns-4ad7-c3ef",
+        "yfcc10m-q2-L100-r3-cold-flashanns-4ad7-c3ef",
+        "yfcc10m-q2-L100-r4-cold-flashanns-4ad7-c3ef"
+      ]
+    },
+    {
+      "key": [
+        "yfcc10m",
+        "q2",
+        "flashanns",
+        "extent",
+        "cold",
+        200
+      ],
+      "run_ids": [
+        "yfcc10m-q2-L200-r0-cold-flashanns-4ad7-c3ef",
+        "yfcc10m-q2-L200-r1-cold-flashanns-4ad7-c3ef",
+        "yfcc10m-q2-L200-r2-cold-flashanns-4ad7-c3ef",
+        "yfcc10m-q2-L200-r3-cold-flashanns-4ad7-c3ef",
+        "yfcc10m-q2-L200-r4-cold-flashanns-4ad7-c3ef"
+      ]
+    },
+    {
+      "key": [
+        "yfcc10m",
+        "q2",
+        "flashanns",
+        "extent",
+        "cold",
+        400
+      ],
+      "run_ids": [
+        "yfcc10m-q2-L400-r0-cold-flashanns-4ad7-c3ef",
+        "yfcc10m-q2-L400-r1-cold-flashanns-4ad7-c3ef",
+        "yfcc10m-q2-L400-r2-cold-flashanns-4ad7-c3ef",
+        "yfcc10m-q2-L400-r3-cold-flashanns-4ad7-c3ef",
+        "yfcc10m-q2-L400-r4-cold-flashanns-4ad7-c3ef"
+      ]
+    },
+    {
+      "key": [
+        "yfcc10m",
+        "q2",
+        "flashanns",
+        "extent",
+        "cold",
+        800
+      ],
+      "run_ids": [
+        "yfcc10m-q2-L800-r0-cold-flashanns-4ad7-c3ef",
+        "yfcc10m-q2-L800-r1-cold-flashanns-4ad7-c3ef",
+        "yfcc10m-q2-L800-r2-cold-flashanns-4ad7-c3ef",
+        "yfcc10m-q2-L800-r3-cold-flashanns-4ad7-c3ef",
+        "yfcc10m-q2-L800-r4-cold-flashanns-4ad7-c3ef"
+      ]
+    },
+    {
+      "key": [
+        "yfcc10m",
+        "q2",
+        "flashanns",
+        "extent",
+        "cold",
+        1600
+      ],
+      "run_ids": [
+        "yfcc10m-q2-L1600-r0-cold-flashanns-4ad7-c3ef",
+        "yfcc10m-q2-L1600-r1-cold-flashanns-4ad7-c3ef",
+        "yfcc10m-q2-L1600-r2-cold-flashanns-4ad7-c3ef",
+        "yfcc10m-q2-L1600-r3-cold-flashanns-4ad7-c3ef",
+        "yfcc10m-q2-L1600-r4-cold-flashanns-4ad7-c3ef"
+      ]
+    },
+    {
+      "key": [
+        "yfcc10m",
+        "q2",
+        "pipeann",
+        "external",
+        "cold",
+        50
+      ],
+      "run_ids": [
+        "yfcc10m-q2-L50-r0-cold-pipeann-4ad7-c3ef",
+        "yfcc10m-q2-L50-r1-cold-pipeann-4ad7-c3ef",
+        "yfcc10m-q2-L50-r2-cold-pipeann-4ad7-c3ef",
+        "yfcc10m-q2-L50-r3-cold-pipeann-4ad7-c3ef",
+        "yfcc10m-q2-L50-r4-cold-pipeann-4ad7-c3ef"
+      ]
+    },
+    {
+      "key": [
+        "yfcc10m",
+        "q2",
+        "pipeann",
+        "external",
+        "cold",
+        100
+      ],
+      "run_ids": [
+        "yfcc10m-q2-L100-r0-cold-pipeann-4ad7-c3ef",
+        "yfcc10m-q2-L100-r1-cold-pipeann-4ad7-c3ef",
+        "yfcc10m-q2-L100-r2-cold-pipeann-4ad7-c3ef",
+        "yfcc10m-q2-L100-r3-cold-pipeann-4ad7-c3ef",
+        "yfcc10m-q2-L100-r4-cold-pipeann-4ad7-c3ef"
+      ]
+    },
+    {
+      "key": [
+        "yfcc10m",
+        "q2",
+        "pipeann",
+        "external",
+        "cold",
+        200
+      ],
+      "run_ids": [
+        "yfcc10m-q2-L200-r0-cold-pipeann-4ad7-c3ef",
+        "yfcc10m-q2-L200-r1-cold-pipeann-4ad7-c3ef",
+        "yfcc10m-q2-L200-r2-cold-pipeann-4ad7-c3ef",
+        "yfcc10m-q2-L200-r3-cold-pipeann-4ad7-c3ef",
+        "yfcc10m-q2-L200-r4-cold-pipeann-4ad7-c3ef"
+      ]
+    },
+    {
+      "key": [
+        "yfcc10m",
+        "q2",
+        "pipeann",
+        "external",
+        "cold",
+        400
+      ],
+      "run_ids": [
+        "yfcc10m-q2-L400-r0-cold-pipeann-4ad7-c3ef",
+        "yfcc10m-q2-L400-r1-cold-pipeann-4ad7-c3ef",
+        "yfcc10m-q2-L400-r2-cold-pipeann-4ad7-c3ef",
+        "yfcc10m-q2-L400-r3-cold-pipeann-4ad7-c3ef",
+        "yfcc10m-q2-L400-r4-cold-pipeann-4ad7-c3ef"
+      ]
+    },
+    {
+      "key": [
+        "yfcc10m",
+        "q2",
+        "pipeann",
+        "external",
+        "cold",
+        800
+      ],
+      "run_ids": [
+        "yfcc10m-q2-L800-r0-cold-pipeann-4ad7-c3ef",
+        "yfcc10m-q2-L800-r1-cold-pipeann-4ad7-c3ef",
+        "yfcc10m-q2-L800-r2-cold-pipeann-4ad7-c3ef",
+        "yfcc10m-q2-L800-r3-cold-pipeann-4ad7-c3ef",
+        "yfcc10m-q2-L800-r4-cold-pipeann-4ad7-c3ef"
+      ]
+    },
+    {
+      "key": [
+        "yfcc10m",
+        "q2",
+        "pipeann",
+        "external",
+        "cold",
+        1600
+      ],
+      "run_ids": [
+        "yfcc10m-q2-L1600-r0-cold-pipeann-4ad7-c3ef",
+        "yfcc10m-q2-L1600-r1-cold-pipeann-4ad7-c3ef",
+        "yfcc10m-q2-L1600-r2-cold-pipeann-4ad7-c3ef",
+        "yfcc10m-q2-L1600-r3-cold-pipeann-4ad7-c3ef",
+        "yfcc10m-q2-L1600-r4-cold-pipeann-4ad7-c3ef"
+      ]
+    },
+    {
+      "key": [
+        "yfcc10m",
+        "q2_original",
+        "demand-orc",
+        "original",
+        "cold",
+        50
+      ],
+      "run_ids": [
+        "yfcc10m-q2_original-L50-r0-cold-demand-orc-33ba-orc1",
+        "yfcc10m-q2_original-L50-r1-cold-demand-orc-33ba-orc1",
+        "yfcc10m-q2_original-L50-r2-cold-demand-orc-33ba-orc1",
+        "yfcc10m-q2_original-L50-r3-cold-demand-orc-33ba-orc1",
+        "yfcc10m-q2_original-L50-r4-cold-demand-orc-33ba-orc1"
+      ]
+    },
+    {
+      "key": [
+        "yfcc10m",
+        "q2_original",
+        "demand-orc",
+        "original",
+        "cold",
+        100
+      ],
+      "run_ids": [
+        "yfcc10m-q2_original-L100-r0-cold-demand-orc-33ba-orc1",
+        "yfcc10m-q2_original-L100-r1-cold-demand-orc-33ba-orc1",
+        "yfcc10m-q2_original-L100-r2-cold-demand-orc-33ba-orc1",
+        "yfcc10m-q2_original-L100-r3-cold-demand-orc-33ba-orc1",
+        "yfcc10m-q2_original-L100-r4-cold-demand-orc-33ba-orc1"
+      ]
+    },
+    {
+      "key": [
+        "yfcc10m",
+        "q2_original",
+        "demand-orc",
+        "original",
+        "cold",
+        200
+      ],
+      "run_ids": [
+        "yfcc10m-q2_original-L200-r0-cold-demand-orc-33ba-orc1",
+        "yfcc10m-q2_original-L200-r1-cold-demand-orc-33ba-orc1",
+        "yfcc10m-q2_original-L200-r2-cold-demand-orc-33ba-orc1",
+        "yfcc10m-q2_original-L200-r3-cold-demand-orc-33ba-orc1",
+        "yfcc10m-q2_original-L200-r4-cold-demand-orc-33ba-orc1"
+      ]
+    },
+    {
+      "key": [
+        "yfcc10m",
+        "q2_original",
+        "demand-orc",
+        "original",
+        "cold",
+        400
+      ],
+      "run_ids": [
+        "yfcc10m-q2_original-L400-r0-cold-demand-orc-33ba-orc1",
+        "yfcc10m-q2_original-L400-r1-cold-demand-orc-33ba-orc1",
+        "yfcc10m-q2_original-L400-r2-cold-demand-orc-33ba-orc1",
+        "yfcc10m-q2_original-L400-r3-cold-demand-orc-33ba-orc1",
+        "yfcc10m-q2_original-L400-r4-cold-demand-orc-33ba-orc1"
+      ]
+    },
+    {
+      "key": [
+        "yfcc10m",
+        "q2_original",
+        "demand-orc",
+        "original",
+        "cold",
+        800
+      ],
+      "run_ids": [
+        "yfcc10m-q2_original-L800-r0-cold-demand-orc-33ba-orc1",
+        "yfcc10m-q2_original-L800-r1-cold-demand-orc-33ba-orc1",
+        "yfcc10m-q2_original-L800-r2-cold-demand-orc-33ba-orc1",
+        "yfcc10m-q2_original-L800-r3-cold-demand-orc-33ba-orc1",
+        "yfcc10m-q2_original-L800-r4-cold-demand-orc-33ba-orc1"
+      ]
+    },
+    {
+      "key": [
+        "yfcc10m",
+        "q2_original",
+        "demand-orc",
+        "original",
+        "cold",
+        1600
+      ],
+      "run_ids": [
+        "yfcc10m-q2_original-L1600-r0-cold-demand-orc-33ba-orc1",
+        "yfcc10m-q2_original-L1600-r1-cold-demand-orc-33ba-orc1",
+        "yfcc10m-q2_original-L1600-r2-cold-demand-orc-33ba-orc1",
+        "yfcc10m-q2_original-L1600-r3-cold-demand-orc-33ba-orc1",
+        "yfcc10m-q2_original-L1600-r4-cold-demand-orc-33ba-orc1"
+      ]
+    },
+    {
+      "key": [
+        "yfcc10m",
+        "q3_t1",
+        "batch-t1",
+        "extent",
+        "cold",
+        50
+      ],
+      "run_ids": [
+        "yfcc10m-q3_t1-L50-r0-cold-batch-t1-4ad7-c3ef",
+        "yfcc10m-q3_t1-L50-r1-cold-batch-t1-4ad7-c3ef",
+        "yfcc10m-q3_t1-L50-r2-cold-batch-t1-4ad7-c3ef",
+        "yfcc10m-q3_t1-L50-r3-cold-batch-t1-4ad7-c3ef",
+        "yfcc10m-q3_t1-L50-r4-cold-batch-t1-4ad7-c3ef"
+      ]
+    },
+    {
+      "key": [
+        "yfcc10m",
+        "q3_t1",
+        "extent-t1",
+        "extent",
+        "cold",
+        50
+      ],
+      "run_ids": [
+        "yfcc10m-q3_t1-L50-r0-cold-extent-t1-4ad7-c3ef",
+        "yfcc10m-q3_t1-L50-r1-cold-extent-t1-4ad7-c3ef",
+        "yfcc10m-q3_t1-L50-r2-cold-extent-t1-4ad7-c3ef",
+        "yfcc10m-q3_t1-L50-r3-cold-extent-t1-4ad7-c3ef",
+        "yfcc10m-q3_t1-L50-r4-cold-extent-t1-4ad7-c3ef"
+      ]
+    },
+    {
+      "key": [
+        "yfcc10m",
+        "q3_t1",
+        "serial-t1",
+        "extent",
+        "cold",
+        50
+      ],
+      "run_ids": [
+        "yfcc10m-q3_t1-L50-r0-cold-serial-t1-4ad7-c3ef",
+        "yfcc10m-q3_t1-L50-r1-cold-serial-t1-4ad7-c3ef",
+        "yfcc10m-q3_t1-L50-r2-cold-serial-t1-4ad7-c3ef",
+        "yfcc10m-q3_t1-L50-r3-cold-serial-t1-4ad7-c3ef",
+        "yfcc10m-q3_t1-L50-r4-cold-serial-t1-4ad7-c3ef"
+      ]
+    },
+    {
+      "key": [
+        "yfcc10m",
+        "q3_t8",
+        "flashanns",
+        "extent",
+        "cold",
+        50
+      ],
+      "run_ids": [
+        "yfcc10m-q3_t8-L50-r0-cold-flashanns-T1-4ad7-c3ef",
+        "yfcc10m-q3_t8-L50-r1-cold-flashanns-T1-4ad7-c3ef",
+        "yfcc10m-q3_t8-L50-r2-cold-flashanns-T1-4ad7-c3ef",
+        "yfcc10m-q3_t8-L50-r3-cold-flashanns-T1-4ad7-c3ef",
+        "yfcc10m-q3_t8-L50-r4-cold-flashanns-T1-4ad7-c3ef"
+      ]
+    },
+    {
+      "key": [
+        "yfcc10m",
+        "q3_t8",
+        "flashanns",
+        "extent",
+        "cold",
+        50
+      ],
+      "run_ids": [
+        "yfcc10m-q3_t8-L50-r0-cold-flashanns-T2-4ad7-c3ef",
+        "yfcc10m-q3_t8-L50-r1-cold-flashanns-T2-4ad7-c3ef",
+        "yfcc10m-q3_t8-L50-r2-cold-flashanns-T2-4ad7-c3ef",
+        "yfcc10m-q3_t8-L50-r3-cold-flashanns-T2-4ad7-c3ef",
+        "yfcc10m-q3_t8-L50-r4-cold-flashanns-T2-4ad7-c3ef"
+      ]
+    },
+    {
+      "key": [
+        "yfcc10m",
+        "q3_t8",
+        "flashanns",
+        "extent",
+        "cold",
+        50
+      ],
+      "run_ids": [
+        "yfcc10m-q3_t8-L50-r0-cold-flashanns-T4-4ad7-c3ef",
+        "yfcc10m-q3_t8-L50-r1-cold-flashanns-T4-4ad7-c3ef",
+        "yfcc10m-q3_t8-L50-r2-cold-flashanns-T4-4ad7-c3ef",
+        "yfcc10m-q3_t8-L50-r3-cold-flashanns-T4-4ad7-c3ef",
+        "yfcc10m-q3_t8-L50-r4-cold-flashanns-T4-4ad7-c3ef"
+      ]
+    },
+    {
+      "key": [
+        "yfcc10m",
+        "q3_t8",
+        "flashanns",
+        "extent",
+        "cold",
+        50
+      ],
+      "run_ids": [
+        "yfcc10m-q3_t8-L50-r0-cold-flashanns-T8-4ad7-c3ef",
+        "yfcc10m-q3_t8-L50-r1-cold-flashanns-T8-4ad7-c3ef",
+        "yfcc10m-q3_t8-L50-r2-cold-flashanns-T8-4ad7-c3ef",
+        "yfcc10m-q3_t8-L50-r3-cold-flashanns-T8-4ad7-c3ef",
+        "yfcc10m-q3_t8-L50-r4-cold-flashanns-T8-4ad7-c3ef"
+      ]
+    },
+    {
+      "key": [
+        "yfcc10m",
+        "q3_t8",
+        "flashanns",
+        "extent",
+        "cold",
+        50
+      ],
+      "run_ids": [
+        "yfcc10m-q3_t8-L50-r0-cold-flashanns-T16-4ad7-c3ef",
+        "yfcc10m-q3_t8-L50-r1-cold-flashanns-T16-4ad7-c3ef",
+        "yfcc10m-q3_t8-L50-r2-cold-flashanns-T16-4ad7-c3ef",
+        "yfcc10m-q3_t8-L50-r3-cold-flashanns-T16-4ad7-c3ef",
+        "yfcc10m-q3_t8-L50-r4-cold-flashanns-T16-4ad7-c3ef"
+      ]
+    },
+    {
+      "key": [
+        "yfcc10m",
+        "q3_t8",
+        "wise-only",
+        "extent",
+        "cold",
+        50
+      ],
+      "run_ids": [
+        "yfcc10m-q3_t8-L50-r0-cold-wise-only-T1-4ad7-c3ef",
+        "yfcc10m-q3_t8-L50-r1-cold-wise-only-T1-4ad7-c3ef",
+        "yfcc10m-q3_t8-L50-r2-cold-wise-only-T1-4ad7-c3ef",
+        "yfcc10m-q3_t8-L50-r3-cold-wise-only-T1-4ad7-c3ef",
+        "yfcc10m-q3_t8-L50-r4-cold-wise-only-T1-4ad7-c3ef"
+      ]
+    },
+    {
+      "key": [
+        "yfcc10m",
+        "q3_t8",
+        "wise-only",
+        "extent",
+        "cold",
+        50
+      ],
+      "run_ids": [
+        "yfcc10m-q3_t8-L50-r0-cold-wise-only-T2-4ad7-c3ef",
+        "yfcc10m-q3_t8-L50-r1-cold-wise-only-T2-4ad7-c3ef",
+        "yfcc10m-q3_t8-L50-r2-cold-wise-only-T2-4ad7-c3ef",
+        "yfcc10m-q3_t8-L50-r3-cold-wise-only-T2-4ad7-c3ef",
+        "yfcc10m-q3_t8-L50-r4-cold-wise-only-T2-4ad7-c3ef"
+      ]
+    },
+    {
+      "key": [
+        "yfcc10m",
+        "q3_t8",
+        "wise-only",
+        "extent",
+        "cold",
+        50
+      ],
+      "run_ids": [
+        "yfcc10m-q3_t8-L50-r0-cold-wise-only-T4-4ad7-c3ef",
+        "yfcc10m-q3_t8-L50-r1-cold-wise-only-T4-4ad7-c3ef",
+        "yfcc10m-q3_t8-L50-r2-cold-wise-only-T4-4ad7-c3ef",
+        "yfcc10m-q3_t8-L50-r3-cold-wise-only-T4-4ad7-c3ef",
+        "yfcc10m-q3_t8-L50-r4-cold-wise-only-T4-4ad7-c3ef"
+      ]
+    },
+    {
+      "key": [
+        "yfcc10m",
+        "q3_t8",
+        "wise-only",
+        "extent",
+        "cold",
+        50
+      ],
+      "run_ids": [
+        "yfcc10m-q3_t8-L50-r0-cold-wise-only-T8-4ad7-c3ef",
+        "yfcc10m-q3_t8-L50-r1-cold-wise-only-T8-4ad7-c3ef",
+        "yfcc10m-q3_t8-L50-r2-cold-wise-only-T8-4ad7-c3ef",
+        "yfcc10m-q3_t8-L50-r3-cold-wise-only-T8-4ad7-c3ef",
+        "yfcc10m-q3_t8-L50-r4-cold-wise-only-T8-4ad7-c3ef"
+      ]
+    },
+    {
+      "key": [
+        "yfcc10m",
+        "q3_t8",
+        "wise-only",
+        "extent",
+        "cold",
+        50
+      ],
+      "run_ids": [
+        "yfcc10m-q3_t8-L50-r0-cold-wise-only-T16-4ad7-c3ef",
+        "yfcc10m-q3_t8-L50-r1-cold-wise-only-T16-4ad7-c3ef",
+        "yfcc10m-q3_t8-L50-r2-cold-wise-only-T16-4ad7-c3ef",
+        "yfcc10m-q3_t8-L50-r3-cold-wise-only-T16-4ad7-c3ef",
+        "yfcc10m-q3_t8-L50-r4-cold-wise-only-T16-4ad7-c3ef"
+      ]
+    },
+    {
+      "key": [
+        "yfcc10m",
+        "q4_cold_warm",
+        "flashanns",
+        "extent",
+        "cold",
+        50
+      ],
+      "run_ids": [
+        "yfcc10m-q4_cold_warm-L50-r0-cold-flashanns-4ad7-c3ef",
+        "yfcc10m-q4_cold_warm-L50-r1-cold-flashanns-4ad7-c3ef",
+        "yfcc10m-q4_cold_warm-L50-r2-cold-flashanns-4ad7-c3ef",
+        "yfcc10m-q4_cold_warm-L50-r3-cold-flashanns-4ad7-c3ef",
+        "yfcc10m-q4_cold_warm-L50-r4-cold-flashanns-4ad7-c3ef"
+      ]
+    },
+    {
+      "key": [
+        "yfcc10m",
+        "q4_cold_warm",
+        "flashanns",
+        "extent",
+        "warm",
+        50
+      ],
+      "run_ids": [
+        "yfcc10m-q4_cold_warm-L50-r0-warm-flashanns-4ad7-c3ef",
+        "yfcc10m-q4_cold_warm-L50-r1-warm-flashanns-4ad7-c3ef",
+        "yfcc10m-q4_cold_warm-L50-r2-warm-flashanns-4ad7-c3ef",
+        "yfcc10m-q4_cold_warm-L50-r3-warm-flashanns-4ad7-c3ef",
+        "yfcc10m-q4_cold_warm-L50-r4-warm-flashanns-4ad7-c3ef"
+      ]
+    },
+    {
+      "key": [
+        "yfcc10m",
+        "q4_hide",
+        "demand",
+        "extent",
+        "cold",
+        50
+      ],
+      "run_ids": [
+        "yfcc10m-q4_hide-L50-r0-cold-demand-4ad7-c3ef",
+        "yfcc10m-q4_hide-L50-r1-cold-demand-4ad7-c3ef",
+        "yfcc10m-q4_hide-L50-r2-cold-demand-4ad7-c3ef",
+        "yfcc10m-q4_hide-L50-r3-cold-demand-4ad7-c3ef",
+        "yfcc10m-q4_hide-L50-r4-cold-demand-4ad7-c3ef"
+      ]
+    },
+    {
+      "key": [
+        "yfcc10m",
+        "q4_hide",
+        "flashanns",
+        "extent",
+        "cold",
+        50
+      ],
+      "run_ids": [
+        "yfcc10m-q4_hide-L50-r0-cold-flashanns-4ad7-c3ef",
+        "yfcc10m-q4_hide-L50-r1-cold-flashanns-4ad7-c3ef",
+        "yfcc10m-q4_hide-L50-r2-cold-flashanns-4ad7-c3ef",
+        "yfcc10m-q4_hide-L50-r3-cold-flashanns-4ad7-c3ef",
+        "yfcc10m-q4_hide-L50-r4-cold-flashanns-4ad7-c3ef"
+      ]
+    }
+  ]
+}

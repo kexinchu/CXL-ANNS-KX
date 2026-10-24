@@ -1,4 +1,4 @@
-This is pdfTeX, Version 3.141592653-2.6-1.40.28 (TeX Live 2025/Debian) (preloaded format=pdflatex 2026.7.16)  4 SEP 2026 21:13
+This is pdfTeX, Version 3.141592653-2.6-1.40.28 (TeX Live 2025/Debian) (preloaded format=pdflatex 2026.7.16)  8 SEP 2026 07:48
 entering extended mode
  restricted \write18 enabled.
  %&-line parsing enabled.
@@ -816,6 +816,9 @@ File: pgfmodulematrix.code.tex 2025-08-29 v3.1.11a (3.1.11a)
 zlibrarytopaths.code.tex
 File: tikzlibrarytopaths.code.tex 2025-08-29 v3.1.11a (3.1.11a)
 )))
+(/usr/share/texlive/texmf-dist/tex/latex/placeins/placeins.sty
+Package: placeins 2005/04/18  v 2.2
+)
 (/usr/share/texlive/texmf-dist/tex/generic/pgf/frontendlayer/tikz/libraries/tik
 zlibrarypatterns.code.tex
 File: tikzlibrarypatterns.code.tex 2025-08-29 v3.1.11a (3.1.11a)
@@ -824,8 +827,8 @@ File: tikzlibrarypatterns.code.tex 2025-08-29 v3.1.11a (3.1.11a)
 e.tex
 File: pgflibrarypatterns.code.tex 2025-08-29 v3.1.11a (3.1.11a)
 )) (./macros.tex)
-Package hyperref Info: Option `colorlinks' set `true' on input line 30.
-Package hyperref Info: Option `pdfdisplaydoctitle' set `true' on input line 32.
+Package hyperref Info: Option `colorlinks' set `true' on input line 31.
+Package hyperref Info: Option `pdfdisplaydoctitle' set `true' on input line 33.
 
 \c@theorem=\count352
 
@@ -842,44 +845,44 @@ File: l3backend-pdftex.def 2025-10-09 L3 backend support: PDF output (pdfTeX)
 (./main.aux)
 \openout1 = `main.aux'.
 
-LaTeX Font Info:    Checking defaults for OML/cmm/m/it on input line 32.
-LaTeX Font Info:    ... okay on input line 32.
-LaTeX Font Info:    Checking defaults for OMS/cmsy/m/n on input line 32.
-LaTeX Font Info:    ... okay on input line 32.
-LaTeX Font Info:    Checking defaults for OT1/cmr/m/n on input line 32.
-LaTeX Font Info:    ... okay on input line 32.
-LaTeX Font Info:    Checking defaults for T1/cmr/m/n on input line 32.
-LaTeX Font Info:    ... okay on input line 32.
-LaTeX Font Info:    Checking defaults for TS1/cmr/m/n on input line 32.
-LaTeX Font Info:    ... okay on input line 32.
-LaTeX Font Info:    Checking defaults for OMX/cmex/m/n on input line 32.
-LaTeX Font Info:    ... okay on input line 32.
-LaTeX Font Info:    Checking defaults for U/cmr/m/n on input line 32.
-LaTeX Font Info:    ... okay on input line 32.
-LaTeX Font Info:    Checking defaults for PD1/pdf/m/n on input line 32.
-LaTeX Font Info:    ... okay on input line 32.
-LaTeX Font Info:    Checking defaults for PU/pdf/m/n on input line 32.
-LaTeX Font Info:    ... okay on input line 32.
+LaTeX Font Info:    Checking defaults for OML/cmm/m/it on input line 33.
+LaTeX Font Info:    ... okay on input line 33.
+LaTeX Font Info:    Checking defaults for OMS/cmsy/m/n on input line 33.
+LaTeX Font Info:    ... okay on input line 33.
+LaTeX Font Info:    Checking defaults for OT1/cmr/m/n on input line 33.
+LaTeX Font Info:    ... okay on input line 33.
+LaTeX Font Info:    Checking defaults for T1/cmr/m/n on input line 33.
+LaTeX Font Info:    ... okay on input line 33.
+LaTeX Font Info:    Checking defaults for TS1/cmr/m/n on input line 33.
+LaTeX Font Info:    ... okay on input line 33.
+LaTeX Font Info:    Checking defaults for OMX/cmex/m/n on input line 33.
+LaTeX Font Info:    ... okay on input line 33.
+LaTeX Font Info:    Checking defaults for U/cmr/m/n on input line 33.
+LaTeX Font Info:    ... okay on input line 33.
+LaTeX Font Info:    Checking defaults for PD1/pdf/m/n on input line 33.
+LaTeX Font Info:    ... okay on input line 33.
+LaTeX Font Info:    Checking defaults for PU/pdf/m/n on input line 33.
+LaTeX Font Info:    ... okay on input line 33.
 <<ot1.cmap>><<oml.cmap>><<oms.cmap>><<omx.cmap>>
-LaTeX Font Info:    Trying to load font information for U+msa on input line 32.
+LaTeX Font Info:    Trying to load font information for U+msa on input line 33.
 
 
 (/usr/share/texlive/texmf-dist/tex/latex/amsfonts/umsa.fd
 File: umsa.fd 2013/01/14 v3.01 AMS symbols A
 )
-LaTeX Font Info:    Trying to load font information for U+msb on input line 32.
+LaTeX Font Info:    Trying to load font information for U+msb on input line 33.
 
 
 (/usr/share/texlive/texmf-dist/tex/latex/amsfonts/umsb.fd
 File: umsb.fd 2013/01/14 v3.01 AMS symbols B
 )
-LaTeX Info: Redefining \microtypecontext on input line 32.
-Package microtype Info: Applying patch `item' on input line 32.
-Package microtype Info: Applying patch `toc' on input line 32.
-Package microtype Info: Applying patch `eqnum' on input line 32.
-Package microtype Info: Applying patch `footnote' on input line 32.
-Package microtype Info: Applying patch `verbatim' on input line 32.
-LaTeX Info: Redefining \microtypesetup on input line 32.
+LaTeX Info: Redefining \microtypecontext on input line 33.
+Package microtype Info: Applying patch `item' on input line 33.
+Package microtype Info: Applying patch `toc' on input line 33.
+Package microtype Info: Applying patch `eqnum' on input line 33.
+Package microtype Info: Applying patch `footnote' on input line 33.
+Package microtype Info: Applying patch `verbatim' on input line 33.
+LaTeX Info: Redefining \microtypesetup on input line 33.
 Package microtype Info: Generating PDF output.
 Package microtype Info: Character protrusion enabled (level 2).
 Package microtype Info: Using default protrusion set `alltext'.
@@ -895,7 +898,7 @@ Package microtype Info: No adjustment of character kerning.
 File: mt-cmr.cfg 2013/05/19 v2.2 microtype config. file: Computer Modern Roman 
 (RS)
 )
-Package hyperref Info: Link coloring OFF on input line 32.
+Package hyperref Info: Link coloring OFF on input line 33.
  (./main.out)
 (./main.out)
 \@outlinefile=\write5
@@ -988,11 +991,6 @@ Underfull \vbox (badness 10000) has occurred while \output is active []
 Underfull \vbox (badness 10000) has occurred while \output is active []
 
 
-Overfull \hbox (2.102pt too wide) in paragraph at lines 130--133
-\OT1/cmr/m/n/10 (-20) zero score-triggered Flash fills, while the full-corpus
- []
-
-
 Underfull \vbox (badness 2698) has occurred while \output is active []
 
 Package microtype Info: Loading generic protrusion settings for font family
@@ -1024,70 +1022,74 @@ File: figs/mot-pathology-prefetch.pdf Graphic file (type pdf)
 Package pdftex.def Info: figs/mot-pathology-prefetch.pdf  used on input line 96
 .
 (pdftex.def)             Requested size: 247.88887pt x 139.43875pt.
-[4.4 <./figs/mot-cliff.pdf>] (./sections/fig_mot_bubbles.tex)
-Underfull \hbox (badness 10000) in paragraph at lines 175--176
+[4.4 <./figs/mot-cliff.pdf>]
+<figs/mot-c3-io-concurrency.pdf, id=287, 242.10449pt x 169.8345pt>
+File: figs/mot-c3-io-concurrency.pdf Graphic file (type pdf)
+<use figs/mot-c3-io-concurrency.pdf>
+Package pdftex.def Info: figs/mot-c3-io-concurrency.pdf  used on input line 137
+.
+(pdftex.def)             Requested size: 228.897pt x 160.57477pt.
+
+Underfull \hbox (badness 10000) in paragraph at lines 176--177
 []\OT1/cmr/m/n/9 (+20) FlashANNS
  []
 
 
-Underfull \hbox (badness 10000) in paragraph at lines 177--177
+Underfull \hbox (badness 10000) in paragraph at lines 178--178
 []\OT1/cmr/m/n/9 (+20) Miss cliff $\OMS/cmsy/m/n/9 ^^X$\OT1/cmr/m/n/9 (+20) 130
 --
  []
 
 
-Underfull \hbox (badness 10000) in paragraph at lines 177--178
+Underfull \hbox (badness 10000) in paragraph at lines 178--179
 []\OT1/cmr/m/n/9 (+20) Score-hide
  []
 
 
-Underfull \hbox (badness 10000) in paragraph at lines 178--178
+Underfull \hbox (badness 10000) in paragraph at lines 179--179
 []\OT1/cmr/m/n/9 (+20) Commit, se-
  []
 
 
-Underfull \hbox (badness 10000) in paragraph at lines 178--179
+Underfull \hbox (badness 10000) in paragraph at lines 179--180
 []\OT1/cmr/m/n/9 (+20) Wise
  []
 
 
-Underfull \hbox (badness 10000) in paragraph at lines 179--179
+Underfull \hbox (badness 10000) in paragraph at lines 180--180
 []\OT1/cmr/m/n/9 (+20) One com-mit-ted
  []
 
 
-Underfull \hbox (badness 2245) in paragraph at lines 179--179
+Underfull \hbox (badness 2245) in paragraph at lines 180--180
 \OT1/cmr/m/n/9 (+20) wave; block-ing fill
  []
 
 
-Underfull \hbox (badness 10000) in paragraph at lines 179--179
+Underfull \hbox (badness 10000) in paragraph at lines 180--180
 []\OT1/cmr/m/n/9 (+20) Overlap in-
  []
 
 
-Underfull \hbox (badness 10000) in paragraph at lines 179--179
+Underfull \hbox (badness 10000) in paragraph at lines 180--180
 \OT1/cmr/m/n/9 (+20) de-pen-dent
  []
 
 
-Underfull \hbox (badness 10000) in paragraph at lines 179--180
+Underfull \hbox (badness 10000) in paragraph at lines 180--181
 []\OT1/cmr/m/n/9 (+20) Continuous
  []
 
 
-Overfull \hbox (1.08774pt too wide) in paragraph at lines 173--182
+Overfull \hbox (1.08774pt too wide) in paragraph at lines 174--183
  [][] 
  []
 
 ) (./sections/design.tex
 Underfull \vbox (badness 2875) has occurred while \output is active []
 
-
-
-LaTeX Warning: Text page 5 contains only floats.
-
-[5.5 <./figs/mot-pathology-admission.pdf> <./figs/mot-pathology-prefetch.pdf>]
+ [5.5 <./figs/mot-pathology-admission.pdf> <./figs/mot-pathology-prefetch.pdf> 
+<./figs/mot-c3-io-concurrency.pdf>]
 Underfull \hbox (badness 10000) in paragraph at lines 60--60
 []\OT1/cmr/m/n/9 (+20) Full-precision
  []
@@ -1113,38 +1115,99 @@ Overfull \hbox (2.01367pt too wide) in paragraph at lines 83--88
 arches
  []
 
-[6.6] (./sections/fig_design_wise.tex) (./sections/fig_design_cont.tex))
-(./sections/impl.tex
-Underfull \vbox (badness 3291) has occurred while \output is active []
+(./sections/fig_design_wise.tex) [6.6] (./sections/fig_design_cont.tex))
+(./sections/impl.tex [7.7]) (./sections/eval.tex
+Underfull \vbox (badness 10000) has occurred while \output is active []
 
- [7.7]
-LaTeX Font Info:    Font shape `OT1/cmtt/bx/it' in size <10> not available
-(Font)              Font shape `OT1/cmtt/m/it' tried instead on input line 13.
-)
-(./sections/eval.tex
-Underfull \vbox (badness 1325) has occurred while \output is active []
+
+Overfull \hbox (12.75539pt too wide) in paragraph at lines 11--12
+[]\OT1/cmr/m/n/10 (-20) At matched re-call, how do the original- and optimized-
+
+ []
+
+
+Overfull \hbox (11.38939pt too wide) in paragraph at lines 11--12
+\OT1/cmr/m/n/10 (-20) layout De-mand base-lines, Pi-peANN, and FlashANNS
+ []
 
 
 Underfull \hbox (badness 10000) in paragraph at lines 33--33
-[]\OT1/cmr/m/n/9 (+20) Host CPU /
+[]\OT1/cmr/m/n/9 (+20) Host-resident
  []
 
 
-Underfull \hbox (badness 10000) in paragraph at lines 34--34
-[]\OT1/cmr/m/n/9 (+20) CXL-DRAM
+Underfull \hbox (badness 6016) in paragraph at lines 35--36
+[]\OT1/cmr/m/n/9 (+20) two 1.92TB Dell CD8P NVMe
  []
 
 
-Underfull \hbox (badness 10000) in paragraph at lines 35--36
-[]\OT1/cmr/m/n/9 (+20) FPGA \OT1/cmtt/m/n/9 nvmex\OT1/cmr/m/n/9 (+20) +CD8P;
+Underfull \hbox (badness 6220) in paragraph at lines 36--37
+\OT1/cmr/m/n/9 (+20) (192-d, L2), LAION-10M (512-d,
  []
 
 
-Underfull \hbox (badness 1270) in paragraph at lines 39--40
-[]\OT1/cmr/m/n/9 (+20) default vs. co-use/extent lay-out; $\OML/cmm/m/it/9 L$
+Underfull \hbox (badness 5274) in paragraph at lines 38--39
+[]\OT1/cmr/m/n/9 (+20) 10,000 fixed queries; five rep-e-ti-
  []
 
-[8.8]) (./sections/related.tex
+
+Overfull \hbox (32.27275pt too wide) in paragraph at lines 52--60
+\OT1/cmr/m/n/10 (-20) machine block-I/O com-par-i-son with its own DiskANN/Pipe
+ANN
+ []
+
+[8.8]
+<figs/frontier-t2i.pdf, id=421, 467.24738pt x 211.2501pt>
+File: figs/frontier-t2i.pdf Graphic file (type pdf)
+<use figs/frontier-t2i.pdf>
+Package pdftex.def Info: figs/frontier-t2i.pdf  used on input line 82.
+(pdftex.def)             Requested size: 247.88887pt x 112.07483pt.
+<figs/frontier-yfcc.pdf, id=422, 462.25598pt x 211.2501pt>
+File: figs/frontier-yfcc.pdf Graphic file (type pdf)
+<use figs/frontier-yfcc.pdf>
+Package pdftex.def Info: figs/frontier-yfcc.pdf  used on input line 83.
+(pdftex.def)             Requested size: 247.88887pt x 113.2836pt.
+<figs/frontier-laion.pdf, id=423, 462.25598pt x 211.2501pt>
+File: figs/frontier-laion.pdf Graphic file (type pdf)
+<use figs/frontier-laion.pdf>
+Package pdftex.def Info: figs/frontier-laion.pdf  used on input line 84.
+(pdftex.def)             Requested size: 247.88887pt x 113.2836pt.
+<figs/wise-ablation.pdf, id=428, 543.22902pt x 214.40051pt>
+File: figs/wise-ablation.pdf Graphic file (type pdf)
+<use figs/wise-ablation.pdf>
+Package pdftex.def Info: figs/wise-ablation.pdf  used on input line 130.
+(pdftex.def)             Requested size: 247.88887pt x 97.83699pt.
+<figs/batching-ablation.pdf, id=429, 538.1963pt x 207.92569pt>
+File: figs/batching-ablation.pdf Graphic file (type pdf)
+<use figs/batching-ablation.pdf>
+Package pdftex.def Info: figs/batching-ablation.pdf  used on input line 131.
+(pdftex.def)             Requested size: 247.88887pt x 95.76753pt.
+<figs/prefetch-io-efficiency.pdf, id=430, 534.79799pt x 213.19649pt>
+File: figs/prefetch-io-efficiency.pdf Graphic file (type pdf)
+<use figs/prefetch-io-efficiency.pdf>
+Package pdftex.def Info: figs/prefetch-io-efficiency.pdf  used on input line 14
+4.
+(pdftex.def)             Requested size: 414.8335pt x 165.3752pt.
+<figs/load-tail-latency.pdf, id=431, 534.79799pt x 205.9695pt>
+File: figs/load-tail-latency.pdf Graphic file (type pdf)
+<use figs/load-tail-latency.pdf>
+Package pdftex.def Info: figs/load-tail-latency.pdf  used on input line 170.
+(pdftex.def)             Requested size: 414.8335pt x 159.76927pt.
+<figs/hide-robustness.pdf, id=432, 499.867pt x 369.781pt>
+File: figs/hide-robustness.pdf Graphic file (type pdf)
+<use figs/hide-robustness.pdf>
+Package pdftex.def Info: figs/hide-robustness.pdf  used on input line 195.
+(pdftex.def)             Requested size: 303.53708pt x 224.55045pt.
+
+Underfull \vbox (badness 10000) has occurred while \output is active []
+
+ [9.9]
+Underfull \vbox (badness 10000) has occurred while \output is active []
+
+ [10.10 <./figs/frontier-t2i.pdf> <./figs/frontier-yfcc.pdf> <./figs/frontier-l
+aion.pdf> <./figs/wise-ablation.pdf> <./figs/batching-ablation.pdf>] [11.11 <./
+figs/prefetch-io-efficiency.pdf> <./figs/load-tail-latency.pdf>] [12.12 <./figs
+/hide-robustness.pdf>]) (./sections/related.tex
 Underfull \hbox (badness 2503) in paragraph at lines 22--22
 []\OT1/cmr/m/n/7 (+20) DiskANN / Pi-
  []
@@ -1164,15 +1227,13 @@ Underfull \hbox (badness 6125) in paragraph at lines 25--25
 []\OT1/cmr/m/n/7 (+20) CXL-SSD hard-
  []
 
-[9.9]
+
 Underfull \vbox (badness 10000) has occurred while \output is active []
 
 )
-(./sections/discussion.tex
-Underfull \vbox (badness 5105) has occurred while \output is active []
+(./sections/discussion.tex [13.13
 
- [10.10])
-(./sections/conclusion.tex) (./main.bbl [11.11]
+]) (./sections/conclusion.tex) (./main.bbl
 Underfull \hbox (badness 5050) in paragraph at lines 88--100
 []\OT1/cmr/m/n/8 (+20) Qi Chen, Bing Zhao, Haidong Wang, Mingqin Li,
  []
@@ -1198,21 +1259,24 @@ Underfull \hbox (badness 2343) in paragraph at lines 88--100
  neurips . cc / paper / 2021 / hash /
  []
 
+
+Underfull \vbox (badness 1270) has occurred while \output is active []
+
 LaTeX Info: Redefining \tempurl on input line 123.
 LaTeX Info: Redefining \tempurl on input line 196.
 LaTeX Info: Redefining \tempurl on input line 212.
 LaTeX Info: Redefining \tempurl on input line 228.
 LaTeX Info: Redefining \tempurl on input line 245.
-
-Underfull \vbox (badness 10000) has occurred while \output is active []
-
 LaTeX Info: Redefining \tempurl on input line 263.
-LaTeX Info: Redefining \tempurl on input line 352.
 
 Underfull \vbox (badness 10000) has occurred while \output is active []
 
- [12.12]
+ [14.14]
+LaTeX Info: Redefining \tempurl on input line 352.
 LaTeX Info: Redefining \tempurl on input line 430.
+
+Underfull \vbox (badness 10000) has occurred while \output is active []
+
 LaTeX Info: Redefining \tempurl on input line 464.
 LaTeX Info: Redefining \tempurl on input line 480.
 LaTeX Info: Redefining \tempurl on input line 502.
@@ -1253,71 +1317,63 @@ LaTeX Info: Redefining \tempurl on input line 570.
 
 Underfull \vbox (badness 10000) has occurred while \output is active []
 
+ [15.15]
 LaTeX Info: Redefining \tempurl on input line 628.
 LaTeX Info: Redefining \tempurl on input line 663.
 LaTeX Info: Redefining \tempurl on input line 680.
 LaTeX Info: Redefining \tempurl on input line 742.
-
-Underfull \vbox (badness 10000) has occurred while \output is active []
-
- [13.13])
-Overfull \vbox (2.0pt too high) has occurred while \output is active []
-
-
+)
 (/usr/share/texlive/texmf-dist/tex/generic/stringenc/se-pdfdoc.def
 File: se-pdfdoc.def 2019/11/29 v1.12 stringenc: PDFDocEncoding
 )
 (/usr/share/texlive/texmf-dist/tex/generic/stringenc/se-utf8.def
 File: se-utf8.def 2019/11/29 v1.12 stringenc: UTF-8
-) [14.14]
+) [16.16]
 (./main.aux)
  ***********
 LaTeX2e <2025-11-01>
 L3 programming layer <2026-01-19>
  ***********
 Package rerunfilecheck Info: File `main.out' has not changed.
-(rerunfilecheck)             Checksum: A1914E73FA268485D7DA2665E0C802A1;5598.
+(rerunfilecheck)             Checksum: 5EE9AF137F232DBC704D71C346E9B54D;5508.
  ) 
 Here is how much of TeX's memory you used:
- 28385 strings out of 469438
- 514440 string characters out of 5468410
- 1037419 words of memory out of 5000000
- 55831 multiletter control sequences out of 15000+600000
- 652582 words of font info for 272 fonts, out of 8000000 for 9000
+ 28403 strings out of 469438
+ 516094 string characters out of 5468410
+ 1045958 words of memory out of 5000000
+ 55876 multiletter control sequences out of 15000+600000
+ 651403 words of font info for 258 fonts, out of 8000000 for 9000
  220 hyphenation exceptions out of 8191
- 90i,16n,131p,1001b,894s stack positions out of 10000i,1000n,20000p,200000b,200000s
+ 90i,16n,131p,1179b,894s stack positions out of 10000i,1000n,20000p,200000b,200000s
 </usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmbx10.pfb></us
 r/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmbx12.pfb></usr/shar
 e/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmbx7.pfb></usr/share/texli
 ve/texmf-dist/fonts/type1/public/amsfonts/cm/cmbx8.pfb></usr/share/texlive/texm
 f-dist/fonts/type1/public/amsfonts/cm/cmbx9.pfb></usr/share/texlive/texmf-dist/
 fonts/type1/public/amsfonts/cm/cmbxti10.pfb></usr/share/texlive/texmf-dist/font
-s/type1/public/amsfonts/cm/cmitt10.pfb></usr/share/texlive/texmf-dist/fonts/typ
-e1/public/amsfonts/cm/cmmi10.pfb></usr/share/texlive/texmf-dist/fonts/type1/pub
-lic/amsfonts/cm/cmmi5.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/ams
-fonts/cm/cmmi6.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/c
-m/cmmi7.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi9
-.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmr10.pfb></
-usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmr12.pfb></usr/sha
-re/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmr5.pfb></usr/share/texli
-ve/texmf-dist/fonts/type1/public/amsfonts/cm/cmr6.pfb></usr/share/texlive/texmf
--dist/fonts/type1/public/amsfonts/cm/cmr7.pfb></usr/share/texlive/texmf-dist/fo
-nts/type1/public/amsfonts/cm/cmr8.pfb></usr/share/texlive/texmf-dist/fonts/type
-1/public/amsfonts/cm/cmr9.pfb></usr/share/texlive/texmf-dist/fonts/type1/public
-/amsfonts/cm/cmss8.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfon
-ts/cm/cmsy10.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/
-cmsy7.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy9.p
-fb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmti10.pfb></u
-sr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmti8.pfb></usr/shar
-e/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmtt10.pfb></usr/share/texl
-ive/texmf-dist/fonts/type1/public/amsfonts/cm/cmtt8.pfb></usr/share/texlive/tex
-mf-dist/fonts/type1/public/amsfonts/cm/cmtt9.pfb></usr/share/texmf/fonts/type1/
-public/cm-super/sfrm0800.pfb></usr/share/texmf/fonts/type1/public/cm-super/sfrm
-1000.pfb>
-Output written on main.pdf (14 pages, 540610 bytes).
+s/type1/public/amsfonts/cm/cmmi10.pfb></usr/share/texlive/texmf-dist/fonts/type
+1/public/amsfonts/cm/cmmi5.pfb></usr/share/texlive/texmf-dist/fonts/type1/publi
+c/amsfonts/cm/cmmi6.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfo
+nts/cm/cmmi7.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/
+cmmi9.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmr10.p
+fb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmr12.pfb></us
+r/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmr6.pfb></usr/share/
+texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmr7.pfb></usr/share/texlive/
+texmf-dist/fonts/type1/public/amsfonts/cm/cmr8.pfb></usr/share/texlive/texmf-di
+st/fonts/type1/public/amsfonts/cm/cmr9.pfb></usr/share/texlive/texmf-dist/fonts
+/type1/public/amsfonts/cm/cmss8.pfb></usr/share/texlive/texmf-dist/fonts/type1/
+public/amsfonts/cm/cmsy10.pfb></usr/share/texlive/texmf-dist/fonts/type1/public
+/amsfonts/cm/cmsy7.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfon
+ts/cm/cmsy9.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/c
+mti10.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmti8.p
+fb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmtt10.pfb></u
+sr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmtt8.pfb></usr/shar
+e/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmtt9.pfb></usr/share/texmf
+/fonts/type1/public/cm-super/sfrm1000.pfb>
+Output written on main.pdf (16 pages, 709804 bytes).
 PDF statistics:
- 692 PDF objects out of 1000 (max. 8388607)
- 606 compressed objects within 7 object streams
- 141 named destinations out of 1000 (max. 500000)
- 49448 words of extra memory for PDF output out of 51595 (max. 10000000)
+ 893 PDF objects out of 1000 (max. 8388607)
+ 673 compressed objects within 7 object streams
+ 140 named destinations out of 1000 (max. 500000)
+ 46929 words of extra memory for PDF output out of 51595 (max. 10000000)
 

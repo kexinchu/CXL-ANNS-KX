@@ -1,401 +1,255 @@
-# FlashANNS Integrated Evaluation Design
+# FlashANNS Six-Figure Evaluation Design
 
-**Status:** Approved for implementation-plan drafting
+**Status:** Approved
 
-**Date:** 2026-09-04
+**Updated:** 2026-09-05
 
-**Scope:** Evaluate the frozen Wise Prefetcher plus continuous pipeline on
-T2I-10M, YFCC-10M, and LAION-10M, then replace the current paper's Q2--Q4
-figure blocks with validated measurements.
+**Scope:** Evaluate the frozen Wise Prefetcher plus Continuous Batching on
+T2I-10M, YFCC-10M, and LAION-10M using six Evaluation figures, without an
+Oracle experiment.
 
-## 1. Relationship to Existing Plans
+## 1. Reviewer-Facing Evidence Contract
 
-This specification replaces the T=1-only contract in
-`docs/superpowers/plans/2026-09-04-flashanns-prefetcher-evaluation.md`.
-Continuous scheduling and the pipelined fill path are no longer future work:
-they are part of the frozen system under test.
+The Evaluation must establish one causal chain:
 
-The three-dataset scope is deliberately limited to 10M vectors per dataset:
+1. FlashANNS improves the recall--latency and recall--throughput frontier over
+   demand access to the same Flash-backed address space.
+2. The Wise Prefetcher improves the timing, selection, and physical efficiency
+   of committed full-precision page movement.
+3. Continuous Batching converts those precise transfers into useful Flash
+   parallelism without changing per-query candidates or recall.
+4. Exact reranking reads resident bytes and does not trigger a Flash fill.
+5. Cold/warm and cache-capacity tests expose the boundary of the result.
 
-- T2I-10M;
-- YFCC-10M;
-- the first verified 10M vectors of the local LAION source.
+No Oracle is measured. Consequently, the Evaluation makes no claim about an
+upper bound, percentage of Oracle, or distance to an all-DRAM system. Absolute
+performance, matched-recall comparisons, hide counters, and causal controls
+carry the argument.
 
-LAION-100M is not part of this execution. It may be added later as a separate
-scalability study without invalidating the three 10M results.
+## 2. Frozen System and Storage Contract
 
-This specification controls the Setup text and Q2--Q4 figures in
-`paper/sections/eval.tex`. Q1's motivation figures and Q5's limitations prose
-remain outside the measurement rewrite except for terminology or platform facts
-that must be synchronized with the validated configuration.
-
-## 2. Frozen Implementation Contract
-
-The source baseline is commit `15e6632`, which freezes the integrated path as:
+The system under test is the integrated PQ-64 path frozen at runtime commit
+`15e6632`:
 
 ```text
-host PQ-64 navigation
-  -> commit the bounded full-precision rerank candidate set C_L
-  -> translate candidate IDs to missing vector pages
-  -> issue 32-page READ_BATCH waves through one shared PageCopyPool
-  -> copy completed pages into per-thread host scoring windows
-  -> steal scheduler: issue held work while QD permits, otherwise fill,
-     rank a covered query, or pump completions
-  -> exact full-precision rerank from resident window bytes
+host graph and PQ navigation
+  -> commit C_L
+  -> select missing unique full-precision vector pages
+  -> coalesce dense extent runs
+  -> materialize into bounded host scoring windows
+  -> exact rerank after this query's residency barrier
 ```
 
-The final-system settings are fixed:
+The final configuration uses eight workers, 128 MiB of host scoring window per
+worker, pipeline depth two, effective issue depth equal to the worker count,
+one shared copy pool, and completion-driven cross-query scheduling. Candidate
+selection, page formation, issue ordering, and scoring residency remain frozen;
+the evaluation may add only observation hooks and the approved MIPS/L2 metric
+adapter.
 
-```text
-threads = 8
-per-thread host scoring window = 128 MiB
-pipeline depth = 2
-issue_qd = 0, meaning effective QD equals threads
-stagger = 0 us
-shared PageCopyPool = enabled
-steal scheduler = enabled
-direct install = disabled
-score source = host scoring window
-PQ code width = 64 bytes
-final k = 10
-query shuffle seed = 42
-```
+All internal runs use the same three-tier placement:
 
-The page-formation, I/O, completion, pipeline, and scheduling behavior is
-frozen. The evaluation may add observation-only tracing, sidecars, counters,
-runners, validators, plotting code, and one dataset-semantic distance adapter:
+- host DRAM: full graph adjacency, PQ-64 codes, query state, and bounded
+  scoring windows;
+- CXL side: a 4 GiB page cache, identified as physical CXL-DRAM only when live
+  DAX/BAR evidence proves it, otherwise named a software proxy;
+- Flash: the full-precision vector corpus on the two CD8P SSDs.
 
-- T2I and LAION use MIPS;
-- YFCC uses its official Euclidean/L2 metric;
-- the runtime accepts only `mips` or `l2` and applies that choice consistently
-  to PQ lookup-table construction and final full-precision reranking.
+## 3. Dataset Contract
 
-The metric adapter must be covered by exact synthetic ranking tests and must
-not change page formation, request ordering, completion scheduling, scoring
-residency, or returned-ID mapping. Removed controls such as early-CL,
-lookahead, Blind, admit-gap, pipe-drive, score-page, and speculative beam
-expansion must not be reintroduced as evaluation variants.
+The evaluation uses native dataset semantics:
 
-Any runtime change must pass a source-diff audit against `15e6632`: only
-observation hooks and the approved distance dispatch may touch frozen
-functions. Candidate-list management and every page/scheduler statement remain
-byte-for-byte unchanged.
+| Dataset | Size | Dimension/type | Metric | Role |
+|---|---:|---|---|---|
+| T2I-10M | 10M | 200-d float32 | MIPS | primary analysis and all ablations |
+| YFCC-10M | 10M | 192-d uint8 | L2 | cross-metric generality |
+| LAION-10M | 10M | 512-d float32 | MIPS | large-payload sensitivity |
 
-## 3. Memory and Resource Contract
+Each dataset requires a hashed source, fixed 10,000-query subset, exact
+recall@10 ground truth, graph, PQ-64 artifacts, packed Flash image, entry point,
+ID map, and ID-to-slot map. Values may be widened losslessly where required but
+must not be normalized, projected, truncated, or evaluated under a different
+metric.
 
-All measured FlashANNS and demand runs use a CXL-side page-cache limit of
-exactly:
+## 4. Systems and Causal Controls
 
-```text
-4 GiB = 4,294,967,296 bytes
-```
+### End-to-End Systems
 
-This page cache is distinct from the per-thread 128 MiB host scoring windows.
-With eight workers, the declared scoring-window budget is 1 GiB in aggregate.
-The shared copy pool, host graph, PQ codes, query buffers, and process peak RSS
-are recorded separately rather than hidden inside either cache number.
-
-The older freeze note's instruction not to raise the 10M cache to 4 GiB is
-superseded for this evaluation by the approved resource contract above. Its
-historical 100 MiB performance rows remain historical evidence and cannot be
-mixed with or used as repetitions for the new 4 GiB results.
-
-Before each live run, preflight must validate:
-
-- the configured cache limit is exactly 4 GiB;
-- cache backend and physical identity;
-- backing NVMe device identities and BDFs;
-- dataset image offset, length, magic, and sampled content digest;
-- zero I/O errors and zero dirty bytes;
-- no unexpected process holding the device;
-- the required cold or warm cache state;
-- CPU affinity, NUMA policy, and available host memory.
-
-Changing the live cache limit, loading or unloading the driver, switching a
-backing device, staging an image, or resetting the cache is not performed by
-the measurement runner. Each is a separate explicitly approved operation.
-
-If the active backend is the software `vmem_sw` proxy backed by host memory,
-the paper calls it a software CXL-side page-cache proxy. A physical CXL-DRAM
-claim requires a separate DAX/BAR/device identity record proving that physical
-backend for the measured run.
-
-## 4. Dataset Contract and Admission Order
-
-Each dataset retains its native dimension, dtype, distance metric, and record
-stride. No vector may be truncated, projected, or reinterpreted to fit the
-T2I layout.
-
-### T2I-10M
-
-T2I is admitted first using the existing 10M MIPS corpus, graph, PQ-64
-artifacts, query set, recall@10 ground truth, packed extent image, entry point,
-ID map, and ID-to-slot map. The existing artifacts are still rehashed and
-sample-read before use; historical logs do not substitute for admission.
-
-### YFCC-10M
-
-YFCC uses the local 10M x 192 `uint8` base set, official public queries, and
-ground truth under its native L2 contract. It is not ready for live execution
-until the exact 10k query subset, graph, PQ-64 files, packed image, entry point,
-ID map, and slot map have been built and independently verified.
-
-The packed representation may widen `uint8` coordinates to exactly
-value-preserving `float32` if required by the index builder. Admission must
-prove coordinate equality on deterministic samples and must prove that exact
-top-k ordering under the runtime L2 kernel matches direct L2 on the native
-bytes. It must not normalize, project, or use a MIPS reduction.
-
-### LAION-10M
-
-LAION uses a deterministic first-10M subset of the local 25M x 512 `float32`
-source. It is not ready for live execution until the subset identity, metric,
-10k query IDs, recall@10 ground truth, graph, PQ-64 files, packed image, entry
-point, ID map, and slot map have been built and independently verified.
-
-For every dataset, admission requires:
-
-1. exact header, count, dimension, dtype, metric, and file-size checks;
-2. SHA-256 identity for every immutable input;
-3. 10,000 unique query IDs and aligned ground-truth rows;
-4. slot-map permutation and ID-map bounds checks;
-5. deterministic readback of 1,024 packed vector and neighbor records;
-6. a sampled digest match between the staged device image and host image;
-7. a dataset-specific live preflight with the 4 GiB cache contract.
-
-Missing upstream artifacts block only that dataset. They are reported as a
-readiness failure and are never replaced with invented paths or synthetic
-measurements.
-
-## 5. Systems and Causal Comparisons
-
-### Q2 core systems
-
-The main result compares these systems at the same dataset, queries, final
-`k`, CPU-core budget, and declared memory budget:
-
-| ID | System | Purpose |
+| ID | System | Evidence role |
 |---|---|---|
-| `demand` | same PQ search and committed candidate set, with blocking CXL-SSD materialization | NAND-critical-path baseline |
-| `pipeann` | official block-I/O path on the same machine and recall floor | external block-SSD reference |
-| `oracle` | same PQ search with the full FP corpus resident before timing | no-NAND upper bound |
-| `flashanns` | frozen T=8 Wise Prefetcher plus steal pipeline | proposed complete system |
+| `demand` | same host graph/PQ and committed candidates, demand Flash materialization | memory-semantic Flash baseline |
+| `pipeann` | official block-I/O implementation on the same machine | external SSD-ANNS reference |
+| `flashanns` | Wise Prefetcher plus Continuous Batching | complete system |
 
-The three internal systems (`demand`, `oracle`, and `flashanns`) additionally
-share the graph, PQ artifacts, `L`, and candidate set and must prove candidate
-and returned-ID equivalence. PipeANN is matched by query IDs, corpus, metric,
-`k`, CPU budget, and measured recall, but uses its native index/search controls
-and is not claimed to have identical internal candidates.
+Demand and FlashANNS must share graph/PQ artifacts, query order, candidate set,
+CPU budget, cache capacity, and recall parameters. PipeANN uses its native
+search controls but is matched by corpus, query IDs, metric, final `k`, CPU
+budget, and measured recall.
 
-Throughput comparisons use the same eight-core budget. The Oracle is warmed and
-prefaulted outside the timed interval and must record zero timed NAND bytes.
-Demand may block on NAND but must not receive a larger cache or a different
-query order.
+### Wise Prefetcher Controls
 
-### Q3 frozen ablations
+The T2I-10M Wise ablation answers exactly three questions using only supported
+frozen paths and counters:
 
-Q3 has two causal groups so thread count does not confound the mechanism:
+- **When:** serialized materialization versus one batch issued after candidate
+  commitment, with the committed candidate set held fixed.
+- **What:** the measured funnel from committed candidates to unique pages and
+  then cache-missing pages; this is an accounting decomposition, not an
+  invented fetch policy.
+- **How:** post-commit batch without dense extent formation versus the co-use
+  layout with dense extent formation.
 
-1. **T=1 transfer formation:** serialized committed transfer, batched
-   committed transfer without extent expansion, and batched plus extent-aware
-   transfer. Candidate IDs and returned IDs must be byte-identical.
-2. **T=8 scheduling:** the frozen transfer path with the supported non-steal
-   scheduling control versus the final steal scheduler with pipeline depth 2
-   and QD=8. Both receive the same eight workers, query stream, cache, and
-   candidate sets.
+Every accepted comparison preserves candidate IDs and returned IDs. Removed or
+no-op controls are not revived as pseudo-ablations.
 
-The plan must map these semantic controls to flags that still exist at
-`15e6632` and add a dry-run test rejecting removed flags. If the non-steal path
-cannot execute the same candidates and page formation, it is labeled a
-different implementation and is excluded from the causal speedup.
+### Continuous Batching Controls
 
-### Q4 cold and warm states
+The T2I-10M scheduling ablation compares Wise-only and full Continuous
+Batching at the same concurrency, then sweeps `T = 1, 2, 4, 8, 16`. A separate
+open-loop load sweep compares Wise-only, FlashANNS, and PipeANN from low load to
+saturation. Candidate hashes and recall must remain unchanged between internal
+scheduling controls.
 
-Q4 uses only the full `flashanns` configuration. A true-cold run starts from a
-validated empty 4 GiB page cache and empty scoring windows. Its immediate warm
-partner follows without reset, uses the identical query order, and cites the
-cold run ID. A warm run without such a parent is invalid.
+## 5. Recall, Repetition, and Service Protocol
 
-## 6. Recall Calibration and Repetition
-
-The common cross-dataset anchor is recall@10 >= 0.90. T2I additionally reports
-the nearest measured point at or above recall@10 0.92.
-
-For each dataset, use fixed query IDs and sweep:
+For each end-to-end method, measure:
 
 ```text
 L = 50, 100, 200, 400, 800, 1600
 ```
 
-The predeclared extension `L = 2400, 3200` is allowed only if the base sweep
-does not reach an anchor. The selected `L` is frozen by the validator before
-formal runs. Plotting code may not choose or interpolate a different operating
-point.
+Extend to `L = 2400, 3200` only when the base sweep does not reach the declared
+recall floor. The common cross-dataset anchor is recall@10 at least 0.90; T2I
+also marks the nearest measured point at or above 0.92.
 
-Run sizes are:
+- smoke proof: 100 fixed queries;
+- recall calibration: 500 fixed queries per operating point;
+- final points: 10,000 fixed queries and five independent repetitions;
+- estimates: five-run median with deterministic 95% bootstrap interval;
+- system order: randomized within each matched block using seed 20260904;
+- latency: retain the complete per-query array and report mean, P50, P95, P99,
+  and maximum.
 
-- offline and command-expansion tests: no device execution;
-- correctness smoke: 100 fixed queries, one run per system/ablation;
-- recall calibration: 500 fixed queries per `L`;
-- final Q2, Q3, and Q4 points: 10,000 fixed queries and five independent
-  repetitions;
-- each Q4 repetition is one cold run followed immediately by its warm partner.
+Maximum-throughput experiments use a closed-loop stream. The serving-load panel
+uses an open-loop arrival process and plots achieved throughput against P99
+latency so queueing cannot masquerade as useful throughput.
 
-System order is randomized within matched blocks using recorded seed 20260904.
-Negative or neutral results remain in the sealed records.
+## 6. Six-Figure Contract
 
-## 7. Sequential Execution
+### Figure 1: T2I-10M Frontier
 
-Work proceeds in this order:
+Two panels: recall@10 versus mean latency, and recall@10 versus throughput.
+Show Demand, PipeANN, and FlashANNS with 95% intervals and mark the 0.90 and
+0.92 recall anchors.
 
-```text
-shared schemas, instrumentation, runner, validator, and plotting tests
-  -> T2I admission and full Q2/Q3/Q4 vertical slice
-  -> T2I provisional figures and review gate
-  -> YFCC admission and full Q2/Q3/Q4 vertical slice
-  -> YFCC provisional figures and review gate
-  -> LAION admission and full Q2/Q3/Q4 vertical slice
-  -> LAION provisional figures and review gate
-  -> three-dataset aggregation, paper replacement, and final audit
-```
+### Figure 2: YFCC-10M Frontier
 
-Within each dataset, the sequence is:
+The same two panels and visual encoding as Figure 1. This figure establishes
+generality under native L2 distance; it does not repeat the mechanism analysis.
 
-```text
-artifact admission
-  -> offline identity and format tests
-  -> 100-query candidate/result proof
-  -> recall calibration
-  -> Q2 five-repeat main matrix
-  -> Q3 five-repeat ablations
-  -> Q4 five paired cold/warm repetitions
-  -> validation and sealing
-  -> provisional plot
-```
+### Figure 3: LAION-10M Frontier
 
-A failed stage stops that dataset before the next stage. Valid sealed results
-from an earlier dataset are not rerun after a later dataset is unblocked unless
-the binary, schema, cache contract, system flags, or aggregation semantics
-change.
+The same two panels and visual encoding as Figure 1. Interpretation may refer
+to the larger full-precision payload only when NAND bytes per query support it.
 
-## 8. Measurement Record
+### Figure 4: Wise Prefetcher Ablation
 
-Every invocation writes an immutable `run.json` plus binary sidecars for query
-IDs, per-query latency, candidate IDs with offsets, and returned IDs. The run
-record includes:
+Three panels on T2I-10M:
 
-- git commit, dirty patch hash, binary hash, command, and environment;
-- dataset and artifact-manifest hashes;
-- system/ablation ID, `L`, `k`, query count, repeat, and seeds;
-- cache/backend/device preflight before and after;
-- cold-parent identity for warm runs;
-- QPS and mean, p50, p95, p99, and maximum latency;
-- recall recomputed from sidecars;
-- NAND reads, commands, bytes, useful bandwidth, and busy time;
+1. **When:** matched-recall performance for serialized materialization versus
+   the post-commit batch.
+2. **What:** committed-candidate, unique-page, and cache-missing-page counts,
+   alongside NAND MiB/query and commands/query.
+3. **How:** vector-slot and extent utilization without and with co-use-plus-
+   extent formation, with one aligned performance marker.
+
+### Figure 5: Continuous Batching Ablation
+
+Three panels on T2I-10M:
+
+1. QPS versus concurrency for Wise-only and Continuous Batching.
+2. NAND occupancy/useful bandwidth versus concurrency, with mean in-flight
+   fills.
+3. P99 latency versus achieved QPS under open-loop load for Wise-only,
+   FlashANNS, and PipeANN.
+
+The causal batching claim uses the same-`T` Wise-only control, never a T=8/T=1
+division.
+
+### Figure 6: Hide Proof and Robustness
+
+One double-column 2-by-2 figure:
+
+1. latency breakdown into PQ navigation, materialization critical wait, exact
+   rerank, and scheduling/queue wait;
+2. exact-score source percentages from host window, CXL-side cache, bounce,
+   and score-triggered Flash;
+3. paired true-cold and immediate-warm QPS/P99/Flash-fills results for all three
+   datasets;
+4. T2I cache-capacity sensitivity at 1, 2, 4, and 8 GiB.
+
+The default 4 GiB result remains part of the formal matrix. The 1/2/8 GiB
+capacity sweep is an explicitly approved sensitivity phase rather than a silent
+change to the main cache contract.
+
+## 7. Tables
+
+The figures are accompanied by two tables only:
+
+- **Setup:** hardware/backend identity, datasets, metrics, placement, cache and
+  scoring-window budgets, CPU/NUMA allocation, query count, repetitions, and
+  cold/warm definition.
+- **Selected operating points:** Recall@10, QPS, mean/P50/P95/P99, NAND
+  reads and MiB per query, CPU utilization, host/CXL memory footprint, and
+  score-triggered Flash fills for Demand, PipeANN, and FlashANNS.
+
+Tail latency and resource cost do not receive separate figures.
+
+## 8. One-Pass Measurement Record
+
+Every run seals its command and identities plus:
+
+- query IDs, returned IDs, candidate IDs, and per-query latency;
+- recall, QPS, mean/P50/P95/P99/max;
 - requested, deduplicated, extent-added, useful, evicted, and late pages;
+- NAND commands, bytes, busy time, and useful bandwidth;
 - page precision, vector-slot utilization, and extent utilization;
-- materialization critical wait, copy time, and in-flight-depth histogram;
-- score-source counts from host window, cache, bounce, and direct Flash;
-- CPU utilization, peak RSS, graph/PQ bytes, shared-pool bytes, host scoring
-  windows, and 4 GiB CXL-side page cache.
+- materialization critical wait, copy/queue time, and in-flight histogram;
+- score-source counts from host window, CXL cache, bounce, and Flash;
+- CPU utilization, peak RSS, graph/PQ bytes, host-window bytes, and CXL-cache
+  bytes;
+- git/binary hashes, dataset manifest, query seed, cache state, backend, and
+  device identities.
 
-Stdout is diagnostic evidence only. Validators recompute sidecar lengths,
-hashes, recall, percentiles, and matched-block identity before accepting a run.
+Plotting and LaTeX tables consume only validated records, never console values.
 
-## 9. Figure Contracts
+## 9. Fail-Closed Gates
 
-### Q2: end-to-end iso-recall and hide proof
+A run is rejected when artifacts, query IDs, metric, CPU/NUMA placement,
+candidate hashes, recall protocol, cache state, or binary identity do not match
+its comparison block; when fewer than the declared queries complete; or when
+sidecar-derived recall/latency disagrees with the summary.
 
-Replace `fig:eval-main` with one double-column 2-by-2 figure:
+A FlashANNS hide point is additionally rejected if exact scoring uses bounce
+bytes or triggers a Flash fill. Cold runs require empty-cache evidence; warm
+runs require an immediate named cold parent. Negative and rejected runs remain
+recorded and are never overwritten under the same run ID.
 
-- **(a) QPS:** grouped absolute-QPS marks for demand, PipeANN, Oracle, and
-  FlashANNS across T2I, YFCC, and LAION.
-- **(b) Latency:** aligned mean and p99 markers in milliseconds for the same
-  validated runs.
-- **(c) Critical wait:** materialization critical-wait milliseconds per query;
-  no QPS axis is overlaid.
-- **(d) Score source:** stacked percentages from host window, CXL-side cache,
-  bounce, and score-triggered Flash. Non-applicable PipeANN categories are
-  explicitly marked rather than treated as zero.
+## 10. Completion Criteria
 
-All performance bars use the frozen recall anchors and five-run medians with
-95% bootstrap confidence intervals. The figure uses no twin y-axis. Table
-`tab:eval-main` is regenerated from the same validated CSV and contains run IDs
-through its provenance record.
+The Evaluation is complete only when:
 
-### Q3: Wise Prefetcher and scheduling ablation
-
-Replace `fig:eval-ablate` with two aligned panels:
-
-- **(a) T=1 transfer formation:** serialized, batched, and extent-aware
-  committed transfer. Show normalized QPS plus separate traffic/utilization
-  marks for NAND MiB/query, commands/query, vector-slot utilization, and extent
-  utilization.
-- **(b) T=8 scheduling:** supported non-steal control versus final steal
-  pipeline. Show absolute QPS and p99; a compact inset reports useful device
-  bandwidth and mean in-flight fill depth.
-
-The figure never labels removed speculative policies as live ablations. A
-variant that changes candidates or recall is visibly rejected and cannot enter
-the normalized bars.
-
-### Q4: true-cold versus immediate-warm
-
-Replace `fig:eval-scale` with three dataset groups. Each group contains paired
-cold/warm marks for:
-
-- QPS;
-- p99 latency;
-- critical wait milliseconds per query;
-- cache hits and Flash fills per query.
-
-The top-level page-cache limit remains 4 GiB for both states. The figure tests
-state, not cache capacity. If only the warm pass hides NAND, the caption and
-paper call the result service hide and remove any true-cold claim.
-
-All three figures are generated from accepted JSON records through one
-validated CSV and one provenance map. No historical console value or manually
-entered performance number may appear in a final plot.
-
-## 10. Fail-Closed Gates
-
-A run is rejected if any of the following holds:
-
-- artifact, binary, command, dataset, query, or cache identity differs within
-  a matched block;
-- the live cache limit is not exactly 4 GiB;
-- dirty bytes, I/O errors, reset errors, open users, or topology drift appear;
-- a cold run lacks empty-cache evidence or a warm run lacks its cold parent;
-- fewer than the declared queries complete;
-- sidecar sizes, hashes, result IDs, candidate IDs, recall, or latency
-  recomputation disagree;
-- Oracle timed NAND bytes are nonzero;
-- FlashANNS scores from bounce or triggers Flash from an exact-scoring load;
-- the candidate set changes between same-search transfer or scheduling
-  controls;
-- the configured metric differs from the dataset manifest or PQ/final scoring
-  use different metrics;
-- CPU affinity, frequency, memory availability, or throttling violates the
-  resource contract.
-
-Rejected runs remain immutable with machine-readable reasons and are never
-silently overwritten or retried under the same run ID.
-
-## 11. Completion Criteria
-
-The work is complete only when:
-
-1. shared offline tests, exact MIPS/L2 ranking tests, and negative
-   schema/preflight tests pass;
-2. T2I, YFCC, and LAION artifact manifests and live-image identities pass;
-3. every dataset passes its 100-query candidate/result proof;
-4. all recall anchors are selected from measured calibration points;
-5. every Q2 and Q3 block has five accepted 10k-query repetitions;
-6. every Q4 block has five accepted cold/warm pairs;
-7. FlashANNS has zero bounce scores and no score-triggered Flash fills;
-8. Oracle has zero timed NAND bytes;
-9. all three final figures and tables regenerate byte-for-byte from validated
-   records and expose their run-ID provenance;
-10. `paper/sections/eval.tex` declares the 4 GiB cache, three 10M datasets,
-    physical-versus-proxy backend truth, frozen T=8 system, negative results,
-    and the exact limits of the claims.
+1. all three datasets pass artifact, metric, and 100-query correctness gates;
+2. Figures 1--3 contain validated recall--mean-latency and recall--throughput
+   frontiers for Demand, PipeANN, and FlashANNS;
+3. Wise when/what/how controls preserve candidates and support their claimed
+   traffic or utilization effect;
+4. the same-concurrency scheduling control shows whether batching changes QPS,
+   occupancy, and P99 without changing recall;
+5. exact scoring records zero bounce and zero score-triggered Flash fills;
+6. five accepted cold/warm pairs exist for every dataset and the T2I cache
+   sensitivity is complete;
+7. both paper tables and all six vector-PDF figures regenerate from one
+   validated CSV and provenance map;
+8. the paper contains no Oracle result, ratio, or upper-bound claim, and
+   `paper/sections/eval.tex` states the physical-versus-proxy backend truth.

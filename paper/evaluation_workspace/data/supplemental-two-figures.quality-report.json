@@ -1,0 +1,13 @@
+{
+  "io_marks": 5,
+  "load_marks": 45,
+  "metric_notes": {
+    "extent_use_pct": "excluded because the frozen counter is zero and invalid for claims",
+    "nand_mib_per_query": "physical NVMe device read bytes per query",
+    "physical_kib_per_read": "physical NAND bytes divided by NAND read commands",
+    "physical_read_amplification": "physical NAND bytes divided by slots_scored times exact-vector payload bytes",
+    "requested_pages_per_query": "host-window requests, not physical NAND misses"
+  },
+  "status": "accepted",
+  "unique_run_count": 250
+}
